@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Nexus Workspace",
+    "slug": "nexus-workspace",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nexus.workspace"
+    },
+    "android": {
+      "package": "com.nexus.workspace"
+    },
+    "updates": {
+      "enabled": false
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

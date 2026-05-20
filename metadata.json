@@ -1,0 +1,6 @@
+{
+  "name": "Nexus Workspace",
+  "description": "An enterprise-grade unified SaaS workspace for meetings, mail, chat, tasks, and document collaboration.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
