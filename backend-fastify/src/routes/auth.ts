@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User';
+import { Tenant } from '../models/Tenant';
 import { RefreshToken } from '../models/RefreshToken';
 import { authenticate } from '../middlewares/auth';
 import { 
@@ -16,10 +17,14 @@ const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'nexus-refresh-secr
 
 export async function authRoutes(fastify: FastifyInstance) {
   
-  // Helper to issue tokens
+  // Helper to issue tokens (aligned with Web App tenant / user schemas)
   async function issueTokens(user: any) {
+    const email = user.email || user.adminEmail;
+    const role = user.role || 'company-admin';
+    const workspaceId = user.workspaceId || 'antigraviity-hq';
+
     const accessToken = jwt.sign(
-      { userId: user._id, email: user.email, name: user.name },
+      { userId: user._id, email, name: user.name, role, workspaceId },
       JWT_SECRET,
       { expiresIn: '15m' }
     );
@@ -45,10 +50,12 @@ export async function authRoutes(fastify: FastifyInstance) {
       refreshToken: refreshTokenString,
       user: {
         id: user._id,
-        email: user.email,
+        email,
         name: user.name,
-        avatarUrl: user.avatarUrl,
-        mfaEnabled: user.mfaEnabled
+        avatarUrl: user.avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name)}`,
+        mfaEnabled: !!user.mfaEnabled,
+        role,
+        workspaceId
       }
     };
   }
@@ -103,15 +110,39 @@ export async function authRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Fetch User
+      // 1. Check Tenant Collection (Workspace Owners)
+      const tenant = await Tenant.findOne({ adminEmail: normEmail });
+      if (tenant) {
+        const activeHash = tenant.password!;
+        const isValid = await bcrypt.compare(password, activeHash);
+        if (!isValid) {
+          const isLockedNow = await registerFailedAttempt(normEmail);
+          if (isLockedNow) {
+            return reply.code(423).send({ 
+              error: 'Account locked: 5 failed attempts triggered. Please wait 15 minutes.' 
+            });
+          }
+          return reply.code(401).send({ error: 'Invalid login credentials.' });
+        }
+
+        // Clear lockouts
+        await resetFailedAttempts(normEmail);
+
+        // Direct Login tokens bundle
+        const tokenBundle = await issueTokens(tenant);
+        return reply.code(200).send(tokenBundle);
+      }
+
+      // 2. Check User Collection (Workspace Members & Super Admins)
       const user = await User.findOne({ email: normEmail });
-      if (!user || !user.passwordHash) {
+      if (!user || (!user.passwordHash && !user.password)) {
         await registerFailedAttempt(normEmail);
         return reply.code(401).send({ error: 'Invalid login credentials.' });
       }
 
-      // Verify Password hash
-      const isValid = await bcrypt.compare(password, user.passwordHash);
+      // Verify Password hash (using either passwordHash or password fallback)
+      const activeHash = user.passwordHash || user.password!;
+      const isValid = await bcrypt.compare(password, activeHash);
       if (!isValid) {
         const isLockedNow = await registerFailedAttempt(normEmail);
         if (isLockedNow) {

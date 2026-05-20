@@ -61,6 +61,33 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         videoMuted: false
       });
 
+      // Fire Webhook event to the web application
+      const webhookUrl = `${process.env.WEB_APP_URL || 'http://localhost:3000'}/api/webhooks/meetings`;
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-webhook-secret': process.env.WEBHOOK_SECRET || 'nexus_webhook_secure_secret_123'
+        },
+        body: JSON.stringify({
+          event: 'meeting.created',
+          data: {
+            workspaceId: 'antigraviity-hq',
+            title: meeting.title,
+            host: request.user!.name || 'Host User',
+            hostEmail: request.user!.email || 'host@antigraviity.com',
+            roomId: meeting.joinCode.replace(/-/g, ''),
+            startTime: meeting.scheduledAt,
+            duration: meeting.durationMinutes,
+            password: passcode
+          }
+        })
+      }).then(res => {
+        console.log(`🪝 [WEBHOOK] Successfully dispatched meeting.created: Status ${res.status}`);
+      }).catch(err => {
+        console.error('🪝 [WEBHOOK] dispatch failed:', err.message);
+      });
+
       return reply.code(201).send(meeting);
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to create meeting room.', details: err.message });
@@ -193,6 +220,27 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // Fire Webhook event to the web application
+      const webhookUrl = `${process.env.WEB_APP_URL || 'http://localhost:3000'}/api/webhooks/meetings`;
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-webhook-secret': process.env.WEBHOOK_SECRET || 'nexus_webhook_secure_secret_123'
+        },
+        body: JSON.stringify({
+          event: 'meeting.started',
+          data: {
+            roomId: meeting.joinCode.replace(/-/g, ''),
+            status: 'Live'
+          }
+        })
+      }).then(res => {
+        console.log(`🪝 [WEBHOOK] Successfully dispatched meeting.started: Status ${res.status}`);
+      }).catch(err => {
+        console.error('🪝 [WEBHOOK] dispatch failed:', err.message);
+      });
+
       return reply.code(200).send({ success: true, status: 'live', meeting });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to boot meeting session.', details: err.message });
@@ -215,6 +263,27 @@ export async function meetingRoutes(fastify: FastifyInstance) {
 
       meeting.status = 'ended';
       await meeting.save();
+
+      // Fire Webhook event to the web application
+      const webhookUrl = `${process.env.WEB_APP_URL || 'http://localhost:3000'}/api/webhooks/meetings`;
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-webhook-secret': process.env.WEBHOOK_SECRET || 'nexus_webhook_secure_secret_123'
+        },
+        body: JSON.stringify({
+          event: 'meeting.ended',
+          data: {
+            roomId: meeting.joinCode.replace(/-/g, ''),
+            status: 'Ended'
+          }
+        })
+      }).then(res => {
+        console.log(`🪝 [WEBHOOK] Successfully dispatched meeting.ended: Status ${res.status}`);
+      }).catch(err => {
+        console.error('🪝 [WEBHOOK] dispatch failed:', err.message);
+      });
 
       // Invalidate all lingering participants
       await Participant.updateMany(

@@ -63,6 +63,17 @@ async function bootstrap() {
     }
   });
 
+  // Log responses so we can correlate request -> status for debugging 404s
+  server.addHook('onResponse', async (request, reply) => {
+    try {
+      const logFile = path.join(__dirname, '../../socket_debug.log');
+      const entry = `[${new Date().toISOString()}] [onResponse Hook] URL: "${request.url}", Method: "${request.method}", Status: "${reply.statusCode}", ResponseTimeMs: "${reply.getResponseTime ? reply.getResponseTime() : 'n/a'}"\n`;
+      fs.appendFileSync(logFile, entry);
+    } catch (e) {
+      console.error("Failed to write to socket_debug.log inside onResponse hook:", e);
+    }
+  });
+
   // Fastify Websocket plugin integration
   await server.register(websocket);
 

@@ -11,8 +11,21 @@ const getHostIp = () => {
 };
 
 export const BASE_IP = getHostIp();
-export const API_URL = `http://${BASE_IP}:3001`;
-export const SOCKET_URL = `http://${BASE_IP}:3001`;
+
+const LOCAL_API_HOST = Platform.OS === 'android' && typeof __DEV__ !== 'undefined' && __DEV__ ? '10.0.2.2' : BASE_IP;
+const LOCAL_API_URL = `http://${LOCAL_API_HOST}:3001`;
+const LOCAL_SOCKET_URL = `ws://${LOCAL_API_HOST}:3001`;
+
+// Use the publicly deployed backend for release APK builds.
+const PRODUCTION_API_URL = 'https://workspace-dkwd.onrender.com';
+const PRODUCTION_SOCKET_URL = 'wss://workspace-dkwd.onrender.com';
+
+const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : (process.env.NODE_ENV === 'development' || true); // Force dev mode for local testing
+
+export const API_URL = isDev ? LOCAL_API_URL : PRODUCTION_API_URL;
+export const SOCKET_URL = isDev ? LOCAL_SOCKET_URL : PRODUCTION_SOCKET_URL;
+
+// If you need a fully custom backend for release builds, replace PRODUCTION_API_URL with your hosted backend domain.
 
 // Client Session Token Storage using global persistence for robust hot-reload & cross-platform support
 export const setSession = (token: string, user: any, refreshToken?: string) => {
@@ -198,7 +211,17 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    const errorMessage = errorData.error || `HTTP Error ${response.status}: Request failed`;
+    
+    // Auto-logout UI redirect on persistent 401s to break infinite loops
+    if (response.status === 401) {
+      clearSession();
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+    }
+    
+    throw new Error(errorMessage);
   }
 
   return response.json();

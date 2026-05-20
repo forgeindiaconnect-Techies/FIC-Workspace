@@ -10,13 +10,19 @@
       "bundleIdentifier": "com.nexus.workspace"
     },
     "android": {
-      "package": "com.nexus.workspace"
+      "package": "com.nexus.workspace",
+      "usesCleartextTraffic": true
     },
     "updates": {
       "enabled": false
     },
     "web": {
       "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7b0a8d9a-396b-4a9f-8745-ea37a51ca24d"
+      }
     }
   }
 }

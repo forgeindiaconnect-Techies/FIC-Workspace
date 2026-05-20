@@ -32,7 +32,7 @@ import {
 const { width } = Dimensions.get('window');
 const isMobile = width < 768;
 
-import { api, getSession, BASE_IP } from '../lib/api';
+import { api, getSession, SOCKET_URL } from '../lib/api';
 
 export default function Mail() {
   const [activeFolder, setActiveFolder] = React.useState('inbox');
@@ -97,10 +97,9 @@ export default function Mail() {
 
     let ws: WebSocket | null = null;
     try {
-      const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
-      const protocol = isWeb && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = isWeb ? window.location.hostname : BASE_IP;
-      const wsUrl = `${protocol}//${host}:3001/ws/mail?email=${encodeURIComponent(user.email)}`;
+      // Derive WebSocket base: replace https:// → wss:// and http:// → ws://
+      const wsBase = SOCKET_URL.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+      const wsUrl = `${wsBase}/ws/mail?email=${encodeURIComponent(user.email)}`;
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => console.log('Mail Socket Connected for Real-Time Sync');

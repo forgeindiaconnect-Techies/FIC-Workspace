@@ -557,6 +557,32 @@ export default function Meetings() {
               </View>
             </View>
 
+            {/* Meeting ID & Password Info Banner */}
+            <View style={styles.meetingInfoBanner}>
+              <View style={styles.meetingInfoItem}>
+                <Copy size={12} color="#94a3b8" />
+                <Text style={styles.meetingInfoLabel}>MEETING ID</Text>
+                <Text style={styles.meetingInfoValue} selectable>
+                  {activeMeetingRoom.roomId || activeMeetingRoom.id || 'N/A'}
+                </Text>
+              </View>
+              {activeMeetingRoom.password ? (
+                <View style={styles.meetingInfoItem}>
+                  <Lock size={12} color="#94a3b8" />
+                  <Text style={styles.meetingInfoLabel}>PASSCODE</Text>
+                  <Text style={styles.meetingInfoValue} selectable>
+                    {activeMeetingRoom.password}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.meetingInfoItem}>
+                  <Lock size={12} color="#64748b" />
+                  <Text style={styles.meetingInfoLabel}>PASSCODE</Text>
+                  <Text style={[styles.meetingInfoValue, { color: '#475569' }]}>No Password</Text>
+                </View>
+              )}
+            </View>
+
             {/* Split Video Feed Grid (Square shape only, max 4 participants per frame, horizontal swipeable slides) */}
             <View 
               style={styles.immersiveVideoGridContainer}
@@ -613,7 +639,6 @@ export default function Meetings() {
                                       <Text style={styles.codeTextAmber}>{"  return connection.sessionToken;"}</Text>
                                       <Text style={styles.codeTextBlue}>{"};"}</Text>
                                     </View>
-                                    <View style={styles.lensPulseGreen} />
                                   </View>
                                   <TouchableOpacity 
                                     style={styles.stopScreenShareInsideBtn}
@@ -627,8 +652,8 @@ export default function Meetings() {
                                   <View style={[styles.largeAvatarHex, { backgroundColor: participant.color }]}>
                                     <Text style={styles.avatarHexText}>{participant.avatar}</Text>
                                   </View>
-                                  <Text style={styles.cameraOffTitle}>Camera Deactivated</Text>
-                                  <Text style={styles.cameraOffSubtitle}>Audio track remains active</Text>
+                                  <Text style={styles.cameraOffTitle}>Camera Off</Text>
+                                  <Text style={styles.cameraOffSubtitle}>Audio remains active</Text>
                                 </View>
                               ) : (
                                 <View style={styles.webcamViewWrapper}>
@@ -645,47 +670,28 @@ export default function Meetings() {
                                       muted
                                     />
                                   ) : (
-                                    <View style={styles.cameraSimulatorCanvas}>
-                                      <View style={styles.cameraFrameHeader}>
-                                        <View style={styles.cameraLensIndicatorGroup}>
-                                          <View style={styles.lensPulseGreen} />
-                                          <Text style={styles.cameraSpecText}>LENS: FRONT CAMERA HD</Text>
+                                    // Native: show clean avatar instead of broken camera feed
+                                    <View style={styles.cameraOffPlaceholder}>
+                                      <View style={[styles.largeAvatarHex, { backgroundColor: participant.color }]}>
+                                        <Text style={styles.avatarHexText}>{participant.avatar}</Text>
+                                      </View>
+                                      <Text style={styles.cameraOffTitle}>You (Host)</Text>
+                                      {!isMuted && (
+                                        <View style={styles.audioWaveRow}>
+                                          {audioDecibels.map((d, i) => (
+                                            <View key={i} style={[styles.audioWaveBarSmall, { height: Math.max(4, d * 0.3) }]} />
+                                          ))}
                                         </View>
-                                        <Text style={styles.cameraTimeBadge}>{formatDuration(callDuration)}</Text>
-                                      </View>
-                                      
-                                      <View style={styles.faceOutlineBox}>
-                                        <View style={[styles.avatarHexCore, { backgroundColor: participant.color }]}>
-                                          <Text style={styles.avatarHexTextLarge}>{participant.avatar}</Text>
-                                        </View>
-                                        <Text style={styles.outlineActiveText}>FEED: SYSTEM RE-ROUTE SECURE</Text>
-                                      </View>
-
-                                      <View style={styles.cameraFrameFooter}>
-                                        <Text style={styles.diagnosticLabelUnder}>HTTP Mode Fallback Enabled • 60 FPS</Text>
-                                      </View>
+                                      )}
                                     </View>
                                   )}
-                                  
-                                  {/* Audio Speech Transmitting Wave overlay inside card */}
-                                  <View style={styles.speechDecibelWavePanel}>
-                                    {audioDecibels.map((decibel, idx) => (
-                                      <View 
-                                        key={idx} 
-                                        style={[
-                                          styles.audioWaveBarSmall, 
-                                          { height: Math.max(3, decibel * 0.45) }
-                                        ]} 
-                                      />
-                                    ))}
-                                  </View>
                                 </View>
                               )}
 
-                              {/* Speaker Identity Plate */}
+                              {/* Speaker Identity Plate - bottom left, no overlap with wave */}
                               <View style={styles.speakerIdentityPlate}>
-                                <Shield size={12} color="#fff" />
-                                <Text style={styles.speakerPlateName}>{isSharing ? 'You (Screen Share)' : 'You (Host)'}</Text>
+                                <Shield size={10} color="#fff" />
+                                <Text style={styles.speakerPlateName}>{isSharing ? 'Screen Share' : 'You (Host)'}</Text>
                                 {isMuted && <MicOff size={10} color="#ef4444" />}
                               </View>
                             </View>
@@ -703,40 +709,30 @@ export default function Meetings() {
                                 isPeerSpeaking && styles.immersiveVideoCardSpeaking
                               ]}
                             >
-                              <View style={styles.webcamViewWrapper}>
-                                {/* Outer glow overlay scanner lines */}
-                                <View style={styles.peerVisualOverlayScanner}>
-                                  <View style={styles.lensPulseGreen} />
-                                  <Text style={styles.cameraSpecText}>REMOTE: {participant.name.toUpperCase()}</Text>
-                                  <Text style={styles.cameraFpsText}>{participant.resolution} • {participant.latency} LATENCY</Text>
-                                </View>
-
+                              {/* Clean avatar for remote peer */}
+                              <View style={styles.cameraOffPlaceholder}>
                                 <View style={[styles.largeAvatarHex, { backgroundColor: participant.color }]}>
                                   <Text style={styles.avatarHexText}>{participant.avatar}</Text>
-                                  
-                                  {/* Speech bounce indicator overlay for remote peer */}
-                                  {isPeerSpeaking && (
-                                    <View style={styles.speechDecibelWavePanelCenter}>
-                                      {[1, 2, 3, 4, 5].map((_, idx) => (
-                                        <View 
-                                          key={idx} 
-                                          style={[
-                                            styles.audioWaveBarSmall, 
-                                            { 
-                                              height: Math.max(3, (audioDecibels[idx] || 10) * 0.35 + (idx % 2 === 0 ? 5 : 2)),
-                                              backgroundColor: participant.color
-                                            }
-                                          ]} 
-                                        />
-                                      ))}
-                                    </View>
-                                  )}
                                 </View>
+                                <Text style={styles.cameraOffTitle}>{participant.name}</Text>
+                                {isPeerSpeaking && (
+                                  <View style={styles.audioWaveRow}>
+                                    {[1, 2, 3, 4, 5].map((_, idx) => (
+                                      <View 
+                                        key={idx} 
+                                        style={[
+                                          styles.audioWaveBarSmall, 
+                                          { height: Math.max(4, (audioDecibels[idx] || 10) * 0.3), backgroundColor: participant.color }
+                                        ]} 
+                                      />
+                                    ))}
+                                  </View>
+                                )}
                               </View>
 
                               {/* Peer Identity Plate */}
                               <View style={styles.speakerIdentityPlate}>
-                                <Lock size={12} color="#fff" />
+                                <Lock size={10} color="#fff" />
                                 <Text style={styles.speakerPlateName}>{participant.name}</Text>
                                 <Activity size={10} color="#10b981" />
                               </View>
@@ -1930,33 +1926,27 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   speechDecibelWavePanel: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    zIndex: 20,
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
     gap: 3,
-    height: 28,
+    marginTop: 8,
+    height: 24,
   },
   speechDecibelWavePanelCenter: {
-    position: 'absolute',
-    bottom: -16,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
     gap: 3,
-    height: 28,
+    marginTop: 8,
+    height: 24,
+  },
+  audioWaveRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 3,
+    marginTop: 8,
+    height: 24,
   },
   audioWaveBarSmall: {
     width: 2.5,
@@ -1965,18 +1955,50 @@ const styles = StyleSheet.create({
   },
   speakerIdentityPlate: {
     position: 'absolute',
-    bottom: 16,
-    left: 16,
+    bottom: 8,
+    left: 8,
+    right: 8,
     zIndex: 20,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
+    backgroundColor: 'rgba(9, 13, 22, 0.8)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  meetingInfoBanner: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.2)',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  meetingInfoItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  meetingInfoLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#64748b',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  meetingInfoValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#60a5fa',
+    flexShrink: 1,
   },
   speakerPlateName: {
     color: '#fff',
