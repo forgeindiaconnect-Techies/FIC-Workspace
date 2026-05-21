@@ -3,7 +3,7 @@ services:
     name: nexus-workspace-api
     runtime: node
     rootDir: backend-fastify
-    buildCommand: npm install && npm run build
+    buildCommand: npm install && npm run build:api
     startCommand: npm start
     healthCheckPath: /health
     envVars:
