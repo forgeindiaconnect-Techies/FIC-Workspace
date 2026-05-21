@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useNavigate } from '../lib/router';
 import { Mail, Lock, LogIn, Github, Chrome, Settings, Server } from 'lucide-react-native';
-import { api, setCustomServerUrl, getCustomServerUrl } from '../lib/api';
+import { api, setCustomServerUrl, getCustomServerUrl, useCloudServer, checkBackendHealth, PRODUCTION_API_URL } from '../lib/api';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -20,9 +20,21 @@ export default function Login() {
   const [error, setError] = React.useState<string | null>(null);
   const [showSettings, setShowSettings] = React.useState(false);
   const [customUrl, setCustomUrl] = React.useState('');
+  const [serverStatus, setServerStatus] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    setCustomUrl(getCustomServerUrl());
+    (async () => {
+      if (!isDev) {
+        await useCloudServer();
+      }
+      setCustomUrl(getCustomServerUrl());
+      const health = await checkBackendHealth();
+      if (!health.ok) {
+        setServerStatus(health.message || 'Server unavailable');
+      } else {
+        setServerStatus(null);
+      }
+    })();
   }, []);
 
   const handleSaveServer = async () => {
@@ -36,9 +48,11 @@ export default function Login() {
 
   const handleResetServer = async () => {
     try {
-      await setCustomServerUrl('');
+      await useCloudServer();
       setCustomUrl(getCustomServerUrl());
       setError(null);
+      const health = await checkBackendHealth();
+      setServerStatus(health.ok ? null : (health.message || 'Server unavailable'));
     } catch (err: any) {
       setError(err.message || 'Failed to reset server URL');
     }
@@ -64,9 +78,10 @@ export default function Login() {
     } catch (err: any) {
       setLoading(false);
       const message = err.message || 'Invalid credentials';
-      const hint =
-        message.toLowerCase().includes('invalid') || message.includes('401')
-          ? ' Check Server Settings and point the app to your PC IP (e.g. http://192.168.1.72:3001) with the backend running.'
+      const hint = message.includes('503') || message.toLowerCase().includes('database')
+        ? ' Fix MONGO_URI on Render — encode @ in password as %40.'
+        : message.toLowerCase().includes('invalid') || message.includes('401')
+          ? ` Use cloud server: ${PRODUCTION_API_URL}`
           : '';
       setError(message + hint);
     }
@@ -84,6 +99,8 @@ export default function Login() {
         </View>
 
         <View style={styles.form}>
+          <Text style={styles.serverUrlText}>Server: {getCustomServerUrl()}</Text>
+          {serverStatus && <Text style={styles.warnText}>{serverStatus}</Text>}
           {error && <Text style={styles.errorText}>{error}</Text>}
 
           <View style={styles.inputGroup}>
@@ -393,6 +410,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#3b82f6',
     fontWeight: '700',
+  },
+  serverUrlText: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  warnText: {
+    color: '#f59e0b',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    padding: 8,
+    borderRadius: 8,
   },
   errorText: {
     color: '#ef4444',

@@ -26,7 +26,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var import_fastify = __toESM(require("fastify"));
 var import_cors = __toESM(require("@fastify/cors"));
 var import_websocket = __toESM(require("@fastify/websocket"));
-var import_mongoose12 = __toESM(require("mongoose"));
 var import_dotenv2 = __toESM(require("dotenv"));
 var import_fs2 = __toESM(require("fs"));
 var import_path2 = __toESM(require("path"));
@@ -223,6 +222,49 @@ function verifyMfaToken(secret, token) {
   });
 }
 
+// backend-fastify/src/utils/mongo.ts
+var import_mongoose4 = __toESM(require("mongoose"));
+var lastConnectError = null;
+function validateMongoUri(uri) {
+  if (!uri || !uri.startsWith("mongodb")) {
+    return "MONGO_URI must start with mongodb:// or mongodb+srv://";
+  }
+  const withoutScheme = uri.replace(/^mongodb(\+srv)?:\/\//, "");
+  const atCount = (withoutScheme.match(/@/g) || []).length;
+  if (atCount > 1) {
+    return 'MONGO_URI looks malformed: password contains "@" \u2014 encode it as %40 (example: Dhanushcj@123 \u2192 Dhanushcj%40123)';
+  }
+  return null;
+}
+function getLastMongoError() {
+  return lastConnectError;
+}
+async function connectMongo(uri, log) {
+  const uriError = validateMongoUri(uri);
+  if (uriError) {
+    lastConnectError = uriError;
+    log.error(uriError);
+    throw new Error(uriError);
+  }
+  import_mongoose4.default.set("strictQuery", true);
+  try {
+    await import_mongoose4.default.connect(uri, {
+      serverSelectionTimeoutMS: 1e4,
+      connectTimeoutMS: 1e4
+    });
+    lastConnectError = null;
+    log.info("Mongoose successfully established MongoDB connection.");
+    return true;
+  } catch (err) {
+    lastConnectError = err.message;
+    log.error("Mongoose failed connecting to MongoDB: " + err.message);
+    throw err;
+  }
+}
+function isMongoConnected() {
+  return import_mongoose4.default.connection.readyState === 1;
+}
+
 // backend-fastify/src/routes/auth.ts
 var getJwtSecret2 = () => process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || "nexus-refresh-secret-key";
@@ -288,6 +330,11 @@ async function authRoutes(fastify2) {
   });
   fastify2.post("/login", async (request, reply) => {
     try {
+      if (!isMongoConnected()) {
+        return reply.code(503).send({
+          error: "Database is not connected. Set MONGO_URI on the server (encode @ in password as %40)."
+        });
+      }
       const { email, password } = request.body;
       if (!email || !password) {
         return reply.code(400).send({ error: "Email and password are required." });
@@ -468,42 +515,42 @@ async function authRoutes(fastify2) {
 
 // backend-fastify/src/routes/meetings.ts
 var import_bcrypt2 = __toESM(require("bcrypt"));
-var import_mongoose7 = require("mongoose");
+var import_mongoose8 = require("mongoose");
 
 // backend-fastify/src/models/Meeting.ts
-var import_mongoose4 = require("mongoose");
-var MeetingSchema = new import_mongoose4.Schema({
+var import_mongoose5 = require("mongoose");
+var MeetingSchema = new import_mongoose5.Schema({
   title: { type: String, required: true },
-  hostId: { type: import_mongoose4.Schema.Types.ObjectId, ref: "User", required: true },
+  hostId: { type: import_mongoose5.Schema.Types.ObjectId, ref: "User", required: true },
   joinCode: { type: String, required: true, unique: true, index: true },
   passcodeHash: { type: String },
   scheduledAt: { type: Date, default: Date.now },
   durationMinutes: { type: Number, default: 60 },
   status: { type: String, enum: ["scheduled", "live", "ended"], default: "scheduled" },
   recordingEnabled: { type: Boolean, default: false },
-  participantIds: [{ type: import_mongoose4.Schema.Types.ObjectId, ref: "User" }],
+  participantIds: [{ type: import_mongoose5.Schema.Types.ObjectId, ref: "User" }],
   aiSummary: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
-var Meeting = (0, import_mongoose4.model)("Meeting", MeetingSchema);
+var Meeting = (0, import_mongoose5.model)("Meeting", MeetingSchema);
 
 // backend-fastify/src/models/Participant.ts
-var import_mongoose5 = require("mongoose");
-var ParticipantSchema = new import_mongoose5.Schema({
-  meetingId: { type: import_mongoose5.Schema.Types.ObjectId, ref: "Meeting", required: true, index: true },
-  userId: { type: import_mongoose5.Schema.Types.ObjectId, ref: "User", required: true },
+var import_mongoose6 = require("mongoose");
+var ParticipantSchema = new import_mongoose6.Schema({
+  meetingId: { type: import_mongoose6.Schema.Types.ObjectId, ref: "Meeting", required: true, index: true },
+  userId: { type: import_mongoose6.Schema.Types.ObjectId, ref: "User", required: true },
   role: { type: String, enum: ["host", "co-host", "attendee"], default: "attendee" },
   joinedAt: { type: Date, default: Date.now },
   leftAt: { type: Date },
   audioMuted: { type: Boolean, default: false },
   videoMuted: { type: Boolean, default: false }
 });
-var Participant = (0, import_mongoose5.model)("Participant", ParticipantSchema);
+var Participant = (0, import_mongoose6.model)("Participant", ParticipantSchema);
 
 // backend-fastify/src/models/Recording.ts
-var import_mongoose6 = require("mongoose");
-var RecordingSchema = new import_mongoose6.Schema({
-  meetingId: { type: import_mongoose6.Schema.Types.ObjectId, ref: "Meeting", required: true, index: true },
+var import_mongoose7 = require("mongoose");
+var RecordingSchema = new import_mongoose7.Schema({
+  meetingId: { type: import_mongoose7.Schema.Types.ObjectId, ref: "Meeting", required: true, index: true },
   r2Key: { type: String, required: true },
   durationSeconds: { type: Number, default: 0 },
   sizeBytes: { type: Number, default: 0 },
@@ -511,7 +558,7 @@ var RecordingSchema = new import_mongoose6.Schema({
   transcriptUrl: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
-var Recording = (0, import_mongoose6.model)("Recording", RecordingSchema);
+var Recording = (0, import_mongoose7.model)("Recording", RecordingSchema);
 
 // backend-fastify/src/routes/meetings.ts
 async function meetingRoutes(fastify2) {
@@ -538,7 +585,7 @@ async function meetingRoutes(fastify2) {
   }
   async function resolveMeetingIdentifier(idOrCode) {
     const value = String(idOrCode || "").trim();
-    if (import_mongoose7.Types.ObjectId.isValid(value)) {
+    if (import_mongoose8.Types.ObjectId.isValid(value)) {
       return Meeting.findById(value);
     }
     return Meeting.findOne({ joinCode: normalizeJoinCode(value) });
@@ -556,18 +603,18 @@ async function meetingRoutes(fastify2) {
       }
       const meeting = await Meeting.create({
         title,
-        hostId: new import_mongoose7.Types.ObjectId(request.user.id),
+        hostId: new import_mongoose8.Types.ObjectId(request.user.id),
         joinCode,
         passcodeHash,
         scheduledAt: scheduledAt ? new Date(scheduledAt) : /* @__PURE__ */ new Date(),
         durationMinutes: durationMinutes || 60,
         recordingEnabled: !!recordingEnabled,
         status: "scheduled",
-        participantIds: [new import_mongoose7.Types.ObjectId(request.user.id)]
+        participantIds: [new import_mongoose8.Types.ObjectId(request.user.id)]
       });
       await Participant.create({
         meetingId: meeting._id,
-        userId: new import_mongoose7.Types.ObjectId(request.user.id),
+        userId: new import_mongoose8.Types.ObjectId(request.user.id),
         role: "host",
         joinedAt: /* @__PURE__ */ new Date(),
         audioMuted: false,
@@ -617,13 +664,13 @@ async function meetingRoutes(fastify2) {
       if (!meeting && persistentRoomTitles[cleanCode]) {
         meeting = await Meeting.create({
           title: persistentRoomTitles[cleanCode],
-          hostId: new import_mongoose7.Types.ObjectId(request.user.id),
+          hostId: new import_mongoose8.Types.ObjectId(request.user.id),
           joinCode: cleanCode,
           scheduledAt: /* @__PURE__ */ new Date(),
           durationMinutes: 9999,
           // Persistent room has unlimited duration
           status: "live",
-          participantIds: [new import_mongoose7.Types.ObjectId(request.user.id)]
+          participantIds: [new import_mongoose8.Types.ObjectId(request.user.id)]
         });
       }
       if (!meeting) {
@@ -641,7 +688,7 @@ async function meetingRoutes(fastify2) {
           return reply.code(401).send({ error: "Invalid meeting passcode." });
         }
       }
-      const userId = new import_mongoose7.Types.ObjectId(request.user.id);
+      const userId = new import_mongoose8.Types.ObjectId(request.user.id);
       const hostId = meeting.hostId._id?.toString?.() || meeting.hostId.toString();
       await Participant.findOneAndUpdate(
         { meetingId: meeting._id, userId },
@@ -689,7 +736,7 @@ async function meetingRoutes(fastify2) {
   fastify2.get("/:id", { preHandler: authenticate }, async (request, reply) => {
     try {
       const { id } = request.params;
-      if (!import_mongoose7.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose8.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid meeting ID format." });
       }
       const meeting = await Meeting.findById(id).populate("hostId", "name email avatarUrl");
@@ -712,7 +759,7 @@ async function meetingRoutes(fastify2) {
     try {
       const { id } = request.params;
       const { title, scheduledAt, durationMinutes, recordingEnabled } = request.body;
-      if (!import_mongoose7.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose8.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid meeting ID." });
       }
       const meeting = await Meeting.findById(id);
@@ -846,7 +893,7 @@ async function meetingRoutes(fastify2) {
       await Participant.findOneAndUpdate(
         {
           meetingId: meeting._id,
-          userId: new import_mongoose7.Types.ObjectId(request.user.id),
+          userId: new import_mongoose8.Types.ObjectId(request.user.id),
           leftAt: { $exists: false }
         },
         { leftAt: /* @__PURE__ */ new Date() },
@@ -869,7 +916,7 @@ async function meetingRoutes(fastify2) {
     try {
       const { page = 1, limit = 10 } = request.query;
       const skip = (parseInt(page) - 1) * parseInt(limit);
-      const userId = new import_mongoose7.Types.ObjectId(request.user.id);
+      const userId = new import_mongoose8.Types.ObjectId(request.user.id);
       const meetings = await Meeting.find({
         $or: [
           { hostId: userId },
@@ -928,7 +975,7 @@ async function meetingRoutes(fastify2) {
   fastify2.post("/:id/summarize", { preHandler: authenticate }, async (request, reply) => {
     try {
       const { id } = request.params;
-      if (!import_mongoose7.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose8.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid meeting ID format." });
       }
       const meeting = await Meeting.findById(id);
@@ -1007,8 +1054,8 @@ The team convened for the Q3 planning sync to finalize the product roadmap. The 
 }
 
 // backend-fastify/src/models/Mail.ts
-var import_mongoose8 = __toESM(require("mongoose"));
-var mailSchema = new import_mongoose8.default.Schema({
+var import_mongoose9 = __toESM(require("mongoose"));
+var mailSchema = new import_mongoose9.default.Schema({
   workspaceId: { type: String, required: true, default: "antigraviity-hq" },
   ownerEmail: { type: String, required: true },
   // The user who owns this specific copy of the email
@@ -1033,7 +1080,7 @@ mailSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var Mail = import_mongoose8.default.model("Mail", mailSchema);
+var Mail = import_mongoose9.default.model("Mail", mailSchema);
 
 // backend-fastify/src/services/mailSockets.ts
 var import_fs = __toESM(require("fs"));
@@ -1277,11 +1324,11 @@ Important: Provide ONLY the final generated email body text. Do not include intr
 }
 
 // backend-fastify/src/routes/kural.ts
-var import_mongoose11 = require("mongoose");
+var import_mongoose12 = require("mongoose");
 
 // backend-fastify/src/models/KuralConversation.ts
-var import_mongoose9 = require("mongoose");
-var KuralConversationSchema = new import_mongoose9.Schema({
+var import_mongoose10 = require("mongoose");
+var KuralConversationSchema = new import_mongoose10.Schema({
   workspaceId: { type: String, required: true, index: true },
   type: { type: String, enum: ["direct", "channel"], default: "direct" },
   name: { type: String },
@@ -1298,12 +1345,12 @@ KuralConversationSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var KuralConversation = (0, import_mongoose9.model)("KuralConversation", KuralConversationSchema);
+var KuralConversation = (0, import_mongoose10.model)("KuralConversation", KuralConversationSchema);
 
 // backend-fastify/src/models/KuralMessage.ts
-var import_mongoose10 = require("mongoose");
-var KuralMessageSchema = new import_mongoose10.Schema({
-  conversationId: { type: import_mongoose10.Schema.Types.ObjectId, ref: "KuralConversation", required: true, index: true },
+var import_mongoose11 = require("mongoose");
+var KuralMessageSchema = new import_mongoose11.Schema({
+  conversationId: { type: import_mongoose11.Schema.Types.ObjectId, ref: "KuralConversation", required: true, index: true },
   workspaceId: { type: String, required: true, index: true },
   senderEmail: { type: String, required: true, lowercase: true, trim: true },
   senderName: { type: String, required: true },
@@ -1311,7 +1358,7 @@ var KuralMessageSchema = new import_mongoose10.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 KuralMessageSchema.index({ conversationId: 1, createdAt: 1 });
-var KuralMessage = (0, import_mongoose10.model)("KuralMessage", KuralMessageSchema);
+var KuralMessage = (0, import_mongoose11.model)("KuralMessage", KuralMessageSchema);
 
 // backend-fastify/src/routes/kural.ts
 var defaultWorkspaceId = "antigraviity-hq";
@@ -1380,7 +1427,7 @@ async function kuralRoutes(fastify2) {
   fastify2.get("/:workspaceId/:channelId", async (request, reply) => {
     try {
       const { workspaceId, channelId } = request.params;
-      if (!import_mongoose11.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose12.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
@@ -1410,7 +1457,7 @@ async function kuralRoutes(fastify2) {
     try {
       const { workspaceId, channelId } = request.params;
       const content = String(request.body.content || "").trim();
-      if (!import_mongoose11.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose12.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       if (!content) {
@@ -1466,7 +1513,7 @@ async function kuralRoutes(fastify2) {
   fastify2.delete("/delete-conversation/:channelId", async (request, reply) => {
     try {
       const { channelId } = request.params;
-      if (!import_mongoose11.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose12.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
@@ -1870,22 +1917,22 @@ var server = (0, import_fastify.default)({
   }
 });
 async function connectDatabase() {
+  const uriCheck = validateMongoUri(MONGO_URI);
+  if (uriCheck) {
+    server.log.error(uriCheck);
+    if (isProduction) throw new Error(uriCheck);
+    return;
+  }
   try {
-    import_mongoose12.default.set("strictQuery", true);
-    await import_mongoose12.default.connect(MONGO_URI, {
-      serverSelectionTimeoutMS: 5e3
-      // Timeout fast (5s) instead of hanging indefinitely
-    });
-    server.log.info("Mongoose successfully established Atlas MongoDB connection.");
-    try {
-      await ensureDefaultUser();
-      server.log.info("Default admin account is ready.");
-    } catch (seedErr) {
-      server.log.warn("Could not ensure default admin account: " + seedErr.message);
-    }
+    await connectMongo(MONGO_URI, server.log);
+    await ensureDefaultUser();
+    server.log.info("Default admin account is ready.");
   } catch (err) {
-    server.log.error("Mongoose failed connecting to MongoDB: " + err.message);
-    server.log.warn("Continuing server execution in offline/fallback mode.");
+    if (isProduction) {
+      server.log.error("Cannot start in production without MongoDB. Fix MONGO_URI on Render.");
+      throw err;
+    }
+    server.log.warn("Continuing in dev mode without MongoDB.");
   }
 }
 async function bootstrap() {
@@ -1930,8 +1977,14 @@ async function bootstrap() {
     server.log.info("New secure Mail Socket connection initiated.");
     handleMailSocket(connection.socket, req);
   });
-  server.get("/health", async (request, reply) => {
-    return { status: "healthy", database: import_mongoose12.default.connection.readyState === 1 ? "connected" : "disconnected" };
+  server.get("/health", async () => {
+    const connected = isMongoConnected();
+    return {
+      status: connected ? "healthy" : "degraded",
+      database: connected ? "connected" : "disconnected",
+      mongoError: connected ? void 0 : getLastMongoError(),
+      hint: connected ? void 0 : "Set MONGO_URI on Render. Encode @ in password as %40."
+    };
   });
   await connectDatabase();
   try {

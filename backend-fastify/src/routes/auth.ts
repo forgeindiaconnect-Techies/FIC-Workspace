@@ -11,6 +11,7 @@ import {
   resetFailedAttempts 
 } from '../utils/redis';
 import { generateMfaSecret, verifyMfaToken } from '../utils/mfa';
+import { isMongoConnected } from '../utils/mongo';
 
 const getJwtSecret = () => process.env.JWT_SECRET || 'nexus-jwt-secret-key';
 const getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || 'nexus-refresh-secret-key';
@@ -95,6 +96,12 @@ export async function authRoutes(fastify: FastifyInstance) {
   // 2. LOGIN (Incorporating Lockout & MFA Challenges)
   fastify.post('/login', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      if (!isMongoConnected()) {
+        return reply.code(503).send({
+          error: 'Database is not connected. Set MONGO_URI on the server (encode @ in password as %40).',
+        });
+      }
+
       const { email, password } = request.body as any;
       if (!email || !password) {
         return reply.code(400).send({ error: 'Email and password are required.' });

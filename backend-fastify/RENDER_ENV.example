@@ -1,0 +1,7 @@
+# Paste these in Render → workspace-backend-r9f8 → Environment
+# IMPORTANT: encode @ in password as %40 (Dhanushcj@123 → Dhanushcj%40123)
+
+MONGO_URI=mongodb+srv://USERNAME:PASSWORD_ENCODED@pmt.kiqc6ip.mongodb.net/nexus-zoom?retryWrites=true&w=majority&appName=PMT
+JWT_SECRET=change-me-to-a-long-random-string
+JWT_REFRESH_SECRET=change-me-to-another-long-random-string
+NODE_ENV=production

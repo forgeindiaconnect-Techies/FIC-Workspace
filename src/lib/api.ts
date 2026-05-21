@@ -54,8 +54,19 @@ const LOCAL_API_URL = configuredApiUrl || `http://${BASE_IP}:${API_PORT}`;
 const LOCAL_SOCKET_URL = configuredSocketUrl || LOCAL_API_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
 
 // Cloud backend (Render)
-const PRODUCTION_API_URL = 'https://workspace-backend-r9f8.onrender.com';
-const PRODUCTION_SOCKET_URL = 'wss://workspace-backend-r9f8.onrender.com';
+export const PRODUCTION_API_URL = 'https://workspace-backend-r9f8.onrender.com';
+export const PRODUCTION_SOCKET_URL = 'wss://workspace-backend-r9f8.onrender.com';
+
+const STALE_API_HOST_FRAGMENTS = [
+  'workspace-dkwd.onrender.com',
+  '192.168.',
+  'localhost',
+  '127.0.0.1',
+  '10.0.2.2',
+];
+
+const isStaleCustomUrl = (url: string) =>
+  STALE_API_HOST_FRAGMENTS.some((fragment) => url.includes(fragment));
 
 const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
 const forceLocalBackend =
@@ -112,6 +123,64 @@ export const setCustomServerUrl = async (url: string) => {
 
 export const getCustomServerUrl = () => {
   return API_URL;
+};
+
+export const useCloudServer = async () => {
+  API_URL = PRODUCTION_API_URL;
+  SOCKET_URL = PRODUCTION_SOCKET_URL;
+  if (Platform.OS === 'web') {
+    try {
+      localStorage.removeItem('nexus_custom_api_url');
+    } catch (e) {}
+  } else {
+    try {
+      await AsyncStorage.removeItem('nexus_custom_api_url');
+    } catch (e) {}
+  }
+};
+
+export const checkBackendHealth = async (): Promise<{ ok: boolean; message?: string }> => {
+  try {
+    const res = await fetch(`${API_URL}/health`, { method: 'GET' });
+    const data = await res.json().catch(() => ({}));
+    if (data.database !== 'connected') {
+      return {
+        ok: false,
+        message: data.mongoError || data.hint || 'Server database is not connected.',
+      };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, message: `Cannot reach server at ${API_URL}` };
+  }
+};
+
+const applyStoredApiUrl = async () => {
+  let customUrl: string | null = null;
+  if (Platform.OS === 'web') {
+    try {
+      customUrl = localStorage.getItem('nexus_custom_api_url');
+    } catch (e) {}
+  } else {
+    try {
+      customUrl = await AsyncStorage.getItem('nexus_custom_api_url');
+    } catch (e) {}
+  }
+
+  if (customUrl) {
+    if (!isDev && isStaleCustomUrl(customUrl)) {
+      await useCloudServer();
+      return;
+    }
+    API_URL = stripTrailingSlash(customUrl);
+    SOCKET_URL = API_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+    return;
+  }
+
+  if (!isDev && !configuredApiUrl) {
+    API_URL = PRODUCTION_API_URL;
+    SOCKET_URL = PRODUCTION_SOCKET_URL;
+  }
 };
 
 // If you need a fully custom backend for release builds, replace PRODUCTION_API_URL with your hosted backend domain.
@@ -172,14 +241,10 @@ export const getSession = () => {
 };
 
 export const initializeSession = async () => {
+  await applyStoredApiUrl();
+
   if (Platform.OS === 'web') {
     try {
-      const customUrl = localStorage.getItem('nexus_custom_api_url');
-      if (customUrl) {
-        API_URL = customUrl;
-        SOCKET_URL = customUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
-      }
-
       const token = localStorage.getItem('nexus_token');
       const refreshToken = localStorage.getItem('nexus_refresh_token');
       const userStr = localStorage.getItem('nexus_user');
@@ -197,12 +262,6 @@ export const initializeSession = async () => {
     }
   } else {
     try {
-      const customUrl = await AsyncStorage.getItem('nexus_custom_api_url');
-      if (customUrl) {
-        API_URL = customUrl;
-        SOCKET_URL = customUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
-      }
-
       const token = await AsyncStorage.getItem('nexus_token');
       const refreshToken = await AsyncStorage.getItem('nexus_refresh_token');
       const userStr = await AsyncStorage.getItem('nexus_user');

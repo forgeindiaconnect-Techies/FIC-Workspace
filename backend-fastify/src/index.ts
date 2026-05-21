@@ -17,6 +17,7 @@ import { memberRoutes } from './routes/members';
 import { handleWebRtcSignalling } from './services/webrtc';
 import { handleMailSocket } from './services/mailSockets';
 import { ensureDefaultUser } from './utils/seedDefaultUser';
+import { connectMongo, getLastMongoError, isMongoConnected, validateMongoUri } from './utils/mongo';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/nexus-zoom';
@@ -41,21 +42,23 @@ const server = fastify({
 
 // 1. ESTABLISH MONGODB ATLAS CONNECTIVITY
 async function connectDatabase() {
+  const uriCheck = validateMongoUri(MONGO_URI);
+  if (uriCheck) {
+    server.log.error(uriCheck);
+    if (isProduction) throw new Error(uriCheck);
+    return;
+  }
+
   try {
-    mongoose.set('strictQuery', true);
-    await mongoose.connect(MONGO_URI, {
-      serverSelectionTimeoutMS: 5000 // Timeout fast (5s) instead of hanging indefinitely
-    });
-    server.log.info('Mongoose successfully established Atlas MongoDB connection.');
-    try {
-      await ensureDefaultUser();
-      server.log.info('Default admin account is ready.');
-    } catch (seedErr: any) {
-      server.log.warn('Could not ensure default admin account: ' + seedErr.message);
-    }
+    await connectMongo(MONGO_URI, server.log);
+    await ensureDefaultUser();
+    server.log.info('Default admin account is ready.');
   } catch (err: any) {
-    server.log.error('Mongoose failed connecting to MongoDB: ' + err.message);
-    server.log.warn('Continuing server execution in offline/fallback mode.');
+    if (isProduction) {
+      server.log.error('Cannot start in production without MongoDB. Fix MONGO_URI on Render.');
+      throw err;
+    }
+    server.log.warn('Continuing in dev mode without MongoDB.');
   }
 }
 
@@ -113,8 +116,16 @@ async function bootstrap() {
   });
 
   // Status check endpoint
-  server.get('/health', async (request: any, reply: any) => {
-    return { status: 'healthy', database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' };
+  server.get('/health', async () => {
+    const connected = isMongoConnected();
+    return {
+      status: connected ? 'healthy' : 'degraded',
+      database: connected ? 'connected' : 'disconnected',
+      mongoError: connected ? undefined : getLastMongoError(),
+      hint: connected
+        ? undefined
+        : 'Set MONGO_URI on Render. Encode @ in password as %40.',
+    };
   });
 
   // Connect Database and launch Server port list
