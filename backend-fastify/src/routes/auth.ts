@@ -64,26 +64,51 @@ export async function authRoutes(fastify: FastifyInstance) {
   // 1. SIGNUP
   fastify.post('/signup', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      if (!isMongoConnected()) {
+        return reply.code(503).send({
+          error: 'Database is not connected. Cannot create account right now.',
+        });
+      }
+
       const { name, email, password, avatarUrl } = request.body as any;
       if (!name || !email || !password) {
-        return reply.code(400).send({ error: 'Missing required signup fields.' });
+        return reply.code(400).send({ error: 'Name, email, and password are required.' });
+      }
+
+      if (password.length < 6) {
+        return reply.code(400).send({ error: 'Password must be at least 6 characters.' });
+      }
+
+      const normEmail = email.toLowerCase().trim();
+      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normEmail);
+      if (!emailValid) {
+        return reply.code(400).send({ error: 'Please enter a valid email address.' });
       }
 
       // Check if user already exists
-      const existing = await User.findOne({ email: email.toLowerCase() });
+      const existing = await User.findOne({ email: normEmail });
       if (existing) {
-        return reply.code(409).send({ error: 'User with this email is already registered.' });
+        return reply.code(409).send({ error: 'An account with this email already exists. Please sign in.' });
+      }
+
+      const tenantExists = await Tenant.findOne({ adminEmail: normEmail });
+      if (tenantExists) {
+        return reply.code(409).send({ error: 'An account with this email already exists. Please sign in.' });
       }
 
       // Hash password using 12 rounds
       const salt = await bcrypt.genSalt(12);
       const passwordHash = await bcrypt.hash(password, salt);
+      const workspaceId = `ws-${normEmail.split('@')[0].replace(/[^a-z0-9]/gi, '-')}`;
 
       const user = await User.create({
-        name,
-        email: email.toLowerCase(),
+        name: name.trim(),
+        email: normEmail,
         passwordHash,
-        avatarUrl: avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`
+        workspaceId,
+        role: 'Member',
+        avatarUrl: avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
+        mfaEnabled: false,
       });
 
       const tokenBundle = await issueTokens(user);

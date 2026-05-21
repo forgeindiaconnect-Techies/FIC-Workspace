@@ -8,15 +8,20 @@ import {
   ActivityIndicator 
 } from 'react-native';
 import { useNavigate } from '../lib/router';
-import { Mail, Lock, LogIn, Github, Chrome, Settings, Server } from 'lucide-react-native';
+import { Mail, Lock, LogIn, User, UserPlus, Github, Chrome, Settings, Server } from 'lucide-react-native';
 import { api, setCustomServerUrl, getCustomServerUrl, useCloudServer, checkBackendHealth, PRODUCTION_API_URL } from '../lib/api';
+
+type AuthMode = 'login' | 'signup';
 
 export default function Login() {
   const navigate = useNavigate();
+  const [mode, setMode] = React.useState<AuthMode>('login');
   const [loading, setLoading] = React.useState(false);
   const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
+  const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState(isDev ? 'admin@antigraviity.com' : '');
   const [password, setPassword] = React.useState(isDev ? 'password123' : '');
+  const [confirmPassword, setConfirmPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [showSettings, setShowSettings] = React.useState(false);
   const [customUrl, setCustomUrl] = React.useState('');
@@ -58,26 +63,51 @@ export default function Login() {
     }
   };
 
+  const switchMode = (next: AuthMode) => {
+    setMode(next);
+    setError(null);
+    setConfirmPassword('');
+  };
+
   const handleSubmit = async () => {
     if (!email || !password) {
       setError('Please enter your email and password');
       return;
     }
 
+    if (mode === 'signup') {
+      if (!name.trim()) {
+        setError('Please enter your full name');
+        return;
+      }
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match');
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const result = await api.auth.login(email, password);
-      if (result.mfaRequired) {
-        setLoading(false);
-        setError('MFA is required for this account. Complete MFA verification in the web app first.');
-        return;
+      if (mode === 'signup') {
+        await api.auth.signup(name.trim(), email.trim(), password);
+      } else {
+        const result = await api.auth.login(email, password);
+        if (result.mfaRequired) {
+          setLoading(false);
+          setError('MFA is required for this account. Complete MFA verification in the web app first.');
+          return;
+        }
       }
       setLoading(false);
       navigate('/home');
     } catch (err: any) {
       setLoading(false);
-      const message = err.message || 'Invalid credentials';
+      const message = err.message || (mode === 'signup' ? 'Sign up failed' : 'Invalid credentials');
       const hint = message.includes('503') || message.toLowerCase().includes('database')
         ? ' Fix MONGO_URI on Render — encode @ in password as %40.'
         : message.toLowerCase().includes('invalid') || message.includes('401')
@@ -94,14 +124,33 @@ export default function Login() {
           <View style={styles.logoBox}>
             <Text style={styles.logoText}>N</Text>
           </View>
-          <Text style={styles.title}>Welcome back</Text>
-          <Text style={styles.subtitle}>Sign in to your Nexus workspace</Text>
+          <Text style={styles.title}>{mode === 'login' ? 'Welcome back' : 'Create account'}</Text>
+          <Text style={styles.subtitle}>
+            {mode === 'login' ? 'Sign in to your Nexus workspace' : 'Sign up to save your account in the cloud'}
+          </Text>
         </View>
 
         <View style={styles.form}>
           <Text style={styles.serverUrlText}>Server: {getCustomServerUrl()}</Text>
           {serverStatus && <Text style={styles.warnText}>{serverStatus}</Text>}
           {error && <Text style={styles.errorText}>{error}</Text>}
+
+          {mode === 'signup' && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Full Name</Text>
+              <View style={styles.inputWrapper}>
+                <User size={18} color="#64748b" style={styles.inputIcon} />
+                <TextInput
+                  placeholder="Your name"
+                  placeholderTextColor="#475569"
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                />
+              </View>
+            </View>
+          )}
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Work Email</Text>
@@ -135,15 +184,35 @@ export default function Login() {
             </View>
           </View>
 
-          <View style={styles.formFooter}>
-            <TouchableOpacity style={styles.checkboxRow}>
-              <View style={styles.checkbox} />
-              <Text style={styles.checkboxLabel}>Remember me</Text>
-            </TouchableOpacity>
-            <TouchableOpacity>
-              <Text style={styles.forgotText}>Forgot password?</Text>
-            </TouchableOpacity>
-          </View>
+          {mode === 'signup' && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Confirm Password</Text>
+              <View style={styles.inputWrapper}>
+                <Lock size={18} color="#64748b" style={styles.inputIcon} />
+                <TextInput
+                  placeholder="••••••••"
+                  placeholderTextColor="#475569"
+                  style={styles.input}
+                  secureTextEntry
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  autoCapitalize="none"
+                />
+              </View>
+            </View>
+          )}
+
+          {mode === 'login' && (
+            <View style={styles.formFooter}>
+              <TouchableOpacity style={styles.checkboxRow}>
+                <View style={styles.checkbox} />
+                <Text style={styles.checkboxLabel}>Remember me</Text>
+              </TouchableOpacity>
+              <TouchableOpacity>
+                <Text style={styles.forgotText}>Forgot password?</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <TouchableOpacity 
             style={[styles.signInBtn, loading && styles.btnDisabled]} 
@@ -154,33 +223,43 @@ export default function Login() {
               <ActivityIndicator color="#fff" />
             ) : (
               <View style={styles.btnContent}>
-                <LogIn size={18} color="#fff" />
-                <Text style={styles.btnText}>Sign In</Text>
+                {mode === 'signup' ? (
+                  <UserPlus size={18} color="#fff" />
+                ) : (
+                  <LogIn size={18} color="#fff" />
+                )}
+                <Text style={styles.btnText}>{mode === 'signup' ? 'Sign Up' : 'Sign In'}</Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
 
-        <View style={styles.dividerRow}>
-          <View style={styles.line} />
-          <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
-          <View style={styles.line} />
-        </View>
+        {mode === 'login' && (
+          <>
+            <View style={styles.dividerRow}>
+              <View style={styles.line} />
+              <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
+              <View style={styles.line} />
+            </View>
 
-        <View style={styles.socialRow}>
-          <TouchableOpacity style={styles.socialBtn}>
-            <Chrome size={18} color="#fff" />
-            <Text style={styles.socialBtnText}>Google</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.socialBtn}>
-            <Github size={18} color="#fff" />
-            <Text style={styles.socialBtnText}>GitHub</Text>
-          </TouchableOpacity>
-        </View>
+            <View style={styles.socialRow}>
+              <TouchableOpacity style={styles.socialBtn}>
+                <Chrome size={18} color="#fff" />
+                <Text style={styles.socialBtnText}>Google</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.socialBtn}>
+                <Github size={18} color="#fff" />
+                <Text style={styles.socialBtnText}>GitHub</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
 
-        <TouchableOpacity style={styles.signUpRow}>
-          <Text style={styles.footerText}>Don't have an account? </Text>
-          <Text style={styles.signUpText}>Start free trial</Text>
+        <TouchableOpacity style={styles.signUpRow} onPress={() => switchMode(mode === 'login' ? 'signup' : 'login')}>
+          <Text style={styles.footerText}>
+            {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+          </Text>
+          <Text style={styles.signUpText}>{mode === 'login' ? 'Sign up' : 'Sign in'}</Text>
         </TouchableOpacity>
 
         {/* Server Settings Expandable Panel */}

@@ -306,21 +306,42 @@ async function authRoutes(fastify2) {
   }
   fastify2.post("/signup", async (request, reply) => {
     try {
+      if (!isMongoConnected()) {
+        return reply.code(503).send({
+          error: "Database is not connected. Cannot create account right now."
+        });
+      }
       const { name, email, password, avatarUrl } = request.body;
       if (!name || !email || !password) {
-        return reply.code(400).send({ error: "Missing required signup fields." });
+        return reply.code(400).send({ error: "Name, email, and password are required." });
       }
-      const existing = await User.findOne({ email: email.toLowerCase() });
+      if (password.length < 6) {
+        return reply.code(400).send({ error: "Password must be at least 6 characters." });
+      }
+      const normEmail = email.toLowerCase().trim();
+      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normEmail);
+      if (!emailValid) {
+        return reply.code(400).send({ error: "Please enter a valid email address." });
+      }
+      const existing = await User.findOne({ email: normEmail });
       if (existing) {
-        return reply.code(409).send({ error: "User with this email is already registered." });
+        return reply.code(409).send({ error: "An account with this email already exists. Please sign in." });
+      }
+      const tenantExists = await Tenant.findOne({ adminEmail: normEmail });
+      if (tenantExists) {
+        return reply.code(409).send({ error: "An account with this email already exists. Please sign in." });
       }
       const salt = await import_bcrypt.default.genSalt(12);
       const passwordHash = await import_bcrypt.default.hash(password, salt);
+      const workspaceId = `ws-${normEmail.split("@")[0].replace(/[^a-z0-9]/gi, "-")}`;
       const user = await User.create({
-        name,
-        email: email.toLowerCase(),
+        name: name.trim(),
+        email: normEmail,
         passwordHash,
-        avatarUrl: avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`
+        workspaceId,
+        role: "Member",
+        avatarUrl: avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
+        mfaEnabled: false
       });
       const tokenBundle = await issueTokens(user);
       return reply.code(201).send(tokenBundle);

@@ -435,9 +435,16 @@ export const api = {
         body: JSON.stringify({ name, email, password }),
       });
       const token = data.token || data.accessToken;
-      if (token) {
-        setSession(token, data.user, data.refreshToken);
+      if (!token) {
+        throw new Error('Sign up succeeded but no access token was returned.');
       }
+      const userObj = data.user && typeof data.user === 'object' ? data.user : {
+        name,
+        email,
+        role: data.role || 'Member',
+        workspaceId: data.workspaceId,
+      };
+      setSession(token, userObj, data.refreshToken);
       return data;
     },
     async registerTenant(tenantData: any) {
