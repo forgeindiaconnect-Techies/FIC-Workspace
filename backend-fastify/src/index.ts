@@ -6,7 +6,8 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 
-// Load environmental parameters
+// Load .env from backend-fastify folder (works when started via root server.js too)
+dotenv.config({ path: path.join(__dirname, '../.env') });
 dotenv.config();
 
 import { authRoutes } from './routes/auth';
@@ -23,7 +24,9 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/nexus-zoom';
 const ENABLE_SOCKET_FILE_LOGS = process.env.ENABLE_SOCKET_FILE_LOGS === 'true';
 
-const isProduction = process.env.NODE_ENV === 'production';
+const isRenderHost = !!(process.env.RENDER || process.env.RENDER_SERVICE_NAME);
+const isProduction = process.env.NODE_ENV === 'production' || isRenderHost;
+const isDefaultLocalUri = !process.env.MONGO_URI || MONGO_URI.includes('127.0.0.1');
 
 const server = fastify({
   logger: isProduction
@@ -42,24 +45,45 @@ const server = fastify({
 
 // 1. ESTABLISH MONGODB ATLAS CONNECTIVITY
 async function connectDatabase() {
+  if (isRenderHost && isDefaultLocalUri) {
+    const msg =
+      'MONGO_URI is not set on Render. Add your MongoDB Atlas connection string in Environment variables.';
+    server.log.error(msg);
+    throw new Error(msg);
+  }
+
   const uriCheck = validateMongoUri(MONGO_URI);
   if (uriCheck) {
     server.log.error(uriCheck);
-    if (isProduction) throw new Error(uriCheck);
-    return;
+    throw new Error(uriCheck);
   }
 
-  try {
-    await connectMongo(MONGO_URI, server.log);
-    await ensureDefaultUser();
-    server.log.info('Default admin account is ready.');
-  } catch (err: any) {
-    if (isProduction) {
-      server.log.error('Cannot start in production without MongoDB. Fix MONGO_URI on Render.');
-      throw err;
+  const maxAttempts = isProduction ? 5 : 1;
+  let lastErr: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await connectMongo(MONGO_URI, server.log);
+      await ensureDefaultUser();
+      server.log.info('Default admin account is ready.');
+      return;
+    } catch (err: any) {
+      lastErr = err;
+      server.log.warn(`MongoDB connect attempt ${attempt}/${maxAttempts} failed: ${err.message}`);
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 3000 * attempt));
+      }
     }
-    server.log.warn('Continuing in dev mode without MongoDB.');
   }
+
+  if (isProduction) {
+    server.log.error(
+      'Cannot start without MongoDB. Check Atlas: Network Access (0.0.0.0/0), user password, and MONGO_URI (@ → %40).'
+    );
+    throw lastErr || new Error('MongoDB connection failed');
+  }
+
+  server.log.warn('Continuing in local dev mode without MongoDB.');
 }
 
 // 2. REGISTER INJECTED COMPONENT PLUGINS
@@ -121,10 +145,13 @@ async function bootstrap() {
     return {
       status: connected ? 'healthy' : 'degraded',
       database: connected ? 'connected' : 'disconnected',
+      mongoConfigured: !isDefaultLocalUri,
       mongoError: connected ? undefined : getLastMongoError(),
       hint: connected
         ? undefined
-        : 'Set MONGO_URI on Render. Encode @ in password as %40.',
+        : isDefaultLocalUri
+          ? 'Add MONGO_URI in Render Environment (MongoDB Atlas connection string).'
+          : 'Atlas: allow 0.0.0.0/0 in Network Access; reset DB password; encode @ as %40 in MONGO_URI.',
     };
   });
 

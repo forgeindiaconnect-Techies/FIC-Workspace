@@ -144,9 +144,14 @@ export const checkBackendHealth = async (): Promise<{ ok: boolean; message?: str
     const res = await fetch(`${API_URL}/health`, { method: 'GET' });
     const data = await res.json().catch(() => ({}));
     if (data.database !== 'connected') {
+      const parts = [
+        data.mongoError,
+        data.hint,
+        data.mongoConfigured === false ? 'MONGO_URI is missing on the server.' : null,
+      ].filter(Boolean);
       return {
         ok: false,
-        message: data.mongoError || data.hint || 'Server database is not connected.',
+        message: parts.join(' ') || 'Server database is not connected.',
       };
     }
     return { ok: true };

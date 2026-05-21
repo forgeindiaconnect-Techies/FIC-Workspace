@@ -256,9 +256,13 @@ async function connectMongo(uri, log) {
     log.info("Mongoose successfully established MongoDB connection.");
     return true;
   } catch (err) {
-    lastConnectError = err.message;
-    log.error("Mongoose failed connecting to MongoDB: " + err.message);
-    throw err;
+    let message = err.message;
+    if (message.includes("bad auth")) {
+      message = "MongoDB authentication failed \u2014 wrong username/password in MONGO_URI. In Atlas: Database Access \u2192 edit user \u2192 reset password (avoid @ in password), then update Render MONGO_URI.";
+    }
+    lastConnectError = message;
+    log.error("Mongoose failed connecting to MongoDB: " + message);
+    throw new Error(message);
   }
 }
 function isMongoConnected() {
@@ -1920,11 +1924,14 @@ async function ensureDefaultUser() {
 }
 
 // backend-fastify/src/index.ts
+import_dotenv2.default.config({ path: import_path2.default.join(__dirname, "../.env") });
 import_dotenv2.default.config();
 var PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 var MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/nexus-zoom";
 var ENABLE_SOCKET_FILE_LOGS = process.env.ENABLE_SOCKET_FILE_LOGS === "true";
-var isProduction = process.env.NODE_ENV === "production";
+var isRenderHost = !!(process.env.RENDER || process.env.RENDER_SERVICE_NAME);
+var isProduction = process.env.NODE_ENV === "production" || isRenderHost;
+var isDefaultLocalUri = !process.env.MONGO_URI || MONGO_URI.includes("127.0.0.1");
 var server = (0, import_fastify.default)({
   logger: isProduction ? { level: "info" } : {
     level: "info",
@@ -1938,23 +1945,39 @@ var server = (0, import_fastify.default)({
   }
 });
 async function connectDatabase() {
+  if (isRenderHost && isDefaultLocalUri) {
+    const msg = "MONGO_URI is not set on Render. Add your MongoDB Atlas connection string in Environment variables.";
+    server.log.error(msg);
+    throw new Error(msg);
+  }
   const uriCheck = validateMongoUri(MONGO_URI);
   if (uriCheck) {
     server.log.error(uriCheck);
-    if (isProduction) throw new Error(uriCheck);
-    return;
+    throw new Error(uriCheck);
   }
-  try {
-    await connectMongo(MONGO_URI, server.log);
-    await ensureDefaultUser();
-    server.log.info("Default admin account is ready.");
-  } catch (err) {
-    if (isProduction) {
-      server.log.error("Cannot start in production without MongoDB. Fix MONGO_URI on Render.");
-      throw err;
+  const maxAttempts = isProduction ? 5 : 1;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await connectMongo(MONGO_URI, server.log);
+      await ensureDefaultUser();
+      server.log.info("Default admin account is ready.");
+      return;
+    } catch (err) {
+      lastErr = err;
+      server.log.warn(`MongoDB connect attempt ${attempt}/${maxAttempts} failed: ${err.message}`);
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 3e3 * attempt));
+      }
     }
-    server.log.warn("Continuing in dev mode without MongoDB.");
   }
+  if (isProduction) {
+    server.log.error(
+      "Cannot start without MongoDB. Check Atlas: Network Access (0.0.0.0/0), user password, and MONGO_URI (@ \u2192 %40)."
+    );
+    throw lastErr || new Error("MongoDB connection failed");
+  }
+  server.log.warn("Continuing in local dev mode without MongoDB.");
 }
 async function bootstrap() {
   await server.register(import_cors.default, {
@@ -2003,8 +2026,9 @@ async function bootstrap() {
     return {
       status: connected ? "healthy" : "degraded",
       database: connected ? "connected" : "disconnected",
+      mongoConfigured: !isDefaultLocalUri,
       mongoError: connected ? void 0 : getLastMongoError(),
-      hint: connected ? void 0 : "Set MONGO_URI on Render. Encode @ in password as %40."
+      hint: connected ? void 0 : isDefaultLocalUri ? "Add MONGO_URI in Render Environment (MongoDB Atlas connection string)." : "Atlas: allow 0.0.0.0/0 in Network Access; reset DB password; encode @ as %40 in MONGO_URI."
     };
   });
   await connectDatabase();

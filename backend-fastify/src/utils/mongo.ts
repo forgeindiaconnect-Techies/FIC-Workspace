@@ -40,9 +40,15 @@ export async function connectMongo(uri: string, log: { info: (m: string) => void
     log.info('Mongoose successfully established MongoDB connection.');
     return true;
   } catch (err: any) {
-    lastConnectError = err.message;
-    log.error('Mongoose failed connecting to MongoDB: ' + err.message);
-    throw err;
+    let message = err.message;
+    if (message.includes('bad auth')) {
+      message =
+        'MongoDB authentication failed — wrong username/password in MONGO_URI. ' +
+        'In Atlas: Database Access → edit user → reset password (avoid @ in password), then update Render MONGO_URI.';
+    }
+    lastConnectError = message;
+    log.error('Mongoose failed connecting to MongoDB: ' + message);
+    throw new Error(message);
   }
 }
 
