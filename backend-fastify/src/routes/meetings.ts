@@ -24,6 +24,24 @@ export async function meetingRoutes(fastify: FastifyInstance) {
     return Math.floor(100000000 + Math.random() * 900000000).toString();
   }
 
+  function normalizeJoinCode(code: string): string {
+    const trimmed = String(code || '').trim();
+    const digitsOnly = trimmed.replace(/\D/g, '');
+    if (digitsOnly.length === 9) {
+      return `${digitsOnly.slice(0, 3)}-${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`;
+    }
+    return trimmed;
+  }
+
+  async function resolveMeetingIdentifier(idOrCode: string) {
+    const value = String(idOrCode || '').trim();
+    if (Types.ObjectId.isValid(value)) {
+      return Meeting.findById(value);
+    }
+
+    return Meeting.findOne({ joinCode: normalizeJoinCode(value) });
+  }
+
   // 1. CREATE MEETING
   fastify.post('/', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -98,32 +116,92 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   fastify.get('/join/:code', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { code } = request.params as any;
+      const { passcode } = request.query as any;
       
-      // Allow formatted (123-456-789) or clean digits (123456789)
-      let normCode = code.trim();
-      if (!normCode.includes('-') && normCode.length === 9) {
-        normCode = `${normCode.slice(0, 3)}-${normCode.slice(3, 6)}-${normCode.slice(6)}`;
-      }
+      const cleanCode = String(code || '').trim();
+      let meeting = await resolveMeetingIdentifier(cleanCode);
 
-      const meeting = await Meeting.findOne({ joinCode: normCode })
-        .populate('hostId', 'name email avatarUrl');
+      const persistentRoomTitles: Record<string, string> = {
+        'NEXUS-BOARDROOM': '🌌 General Boardroom',
+        'NEXUS-ENG': '💻 Developer Sandbox',
+        'NEXUS-DESIGN': '🎨 UX Design Workshop'
+      };
+
+      if (!meeting && persistentRoomTitles[cleanCode]) {
+        // Automatically spin up the persistent meeting room document in MongoDB
+        meeting = await Meeting.create({
+          title: persistentRoomTitles[cleanCode],
+          hostId: new Types.ObjectId(request.user!.id),
+          joinCode: cleanCode,
+          scheduledAt: new Date(),
+          durationMinutes: 9999, // Persistent room has unlimited duration
+          status: 'live',
+          participantIds: [new Types.ObjectId(request.user!.id)]
+        });
+      }
 
       if (!meeting) {
         return reply.code(404).send({ error: 'Meeting not found for this join code.' });
+      }
+
+      if (!meeting.populated('hostId')) {
+        await meeting.populate('hostId', 'name email avatarUrl');
       }
 
       if (meeting.status === 'ended') {
         return reply.code(410).send({ error: 'This meeting has already ended.' });
       }
 
-      return reply.code(200).send({
+      if (meeting.passcodeHash) {
+        const isPasscodeValid = passcode && await bcrypt.compare(String(passcode), meeting.passcodeHash);
+        if (!isPasscodeValid) {
+          return reply.code(401).send({ error: 'Invalid meeting passcode.' });
+        }
+      }
+
+      const userId = new Types.ObjectId(request.user!.id);
+      const hostId = (meeting.hostId as any)._id?.toString?.() || meeting.hostId.toString();
+      await Participant.findOneAndUpdate(
+        { meetingId: meeting._id, userId },
+        {
+          $set: {
+            meetingId: meeting._id,
+            userId,
+            role: hostId === request.user!.id ? 'host' : 'attendee',
+            joinedAt: new Date()
+          },
+          $unset: { leftAt: '' }
+        },
+        { upsert: true, new: true }
+      );
+
+      await Meeting.updateOne(
+        { _id: meeting._id },
+        {
+          $addToSet: { participantIds: userId },
+          ...(meeting.status === 'scheduled' ? { $set: { status: 'live' } } : {})
+        }
+      );
+
+      const activeParticipantCount = await Participant.countDocuments({
         meetingId: meeting._id,
+        leftAt: { $exists: false }
+      });
+
+      return reply.code(200).send({
+        _id: meeting._id,
+        meetingId: meeting._id,
+        joinCode: meeting.joinCode,
+        roomId: meeting.joinCode,
         title: meeting.title,
         host: meeting.hostId,
         scheduledAt: meeting.scheduledAt,
         durationMinutes: meeting.durationMinutes,
-        status: meeting.status,
-        hasPasscode: !!meeting.passcodeHash
+        status: meeting.status === 'scheduled' ? 'live' : meeting.status,
+        hasPasscode: !!meeting.passcodeHash,
+        participantIds: meeting.participantIds,
+        activeParticipantCount,
+        isHost: hostId === request.user!.id
       });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Error resolving meeting join code.', details: err.message });
@@ -315,6 +393,40 @@ export async function meetingRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // 6b. LEAVE MEETING WITHOUT ENDING THE SHARED ROOM
+  fastify.post('/:id/leave', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as any;
+      const meeting = await resolveMeetingIdentifier(id);
+      if (!meeting) {
+        return reply.code(404).send({ error: 'Meeting room not found.' });
+      }
+
+      await Participant.findOneAndUpdate(
+        {
+          meetingId: meeting._id,
+          userId: new Types.ObjectId(request.user!.id),
+          leftAt: { $exists: false }
+        },
+        { leftAt: new Date() },
+        { new: true }
+      );
+
+      const activeParticipantCount = await Participant.countDocuments({
+        meetingId: meeting._id,
+        leftAt: { $exists: false }
+      });
+
+      return reply.code(200).send({
+        success: true,
+        meetingId: meeting._id,
+        activeParticipantCount
+      });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to leave meeting.', details: err.message });
+    }
+  });
+
   // 7. MEETING HISTORY (Paginated list of hosted or attended meetings)
   fastify.get('/history', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -361,19 +473,13 @@ export async function meetingRoutes(fastify: FastifyInstance) {
     try {
       const { id } = request.params as any;
       
-      let meetingIdStr = id;
-      // If it's a joinCode, resolve it to meeting ID first!
-      if (!Types.ObjectId.isValid(id)) {
-        const found = await Meeting.findOne({ joinCode: id });
-        if (found) {
-          meetingIdStr = found._id.toString();
-        } else {
-          return reply.code(404).send({ error: 'Meeting not found.' });
-        }
+      const meeting = await resolveMeetingIdentifier(id);
+      if (!meeting) {
+        return reply.code(404).send({ error: 'Meeting not found.' });
       }
 
       const participants = await Participant.find({
-        meetingId: new Types.ObjectId(meetingIdStr),
+        meetingId: meeting._id,
         leftAt: { $exists: false }
       }).populate('userId', 'name email avatarUrl');
 

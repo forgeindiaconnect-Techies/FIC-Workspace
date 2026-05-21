@@ -12,11 +12,14 @@ dotenv.config();
 import { authRoutes } from './routes/auth';
 import { meetingRoutes } from './routes/meetings';
 import { mailRoutes } from './routes/mail';
+import { channelRoutes, kuralRoutes } from './routes/kural';
+import { memberRoutes } from './routes/members';
 import { handleWebRtcSignalling } from './services/webrtc';
 import { handleMailSocket } from './services/mailSockets';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/nexus-zoom';
+const ENABLE_SOCKET_FILE_LOGS = process.env.ENABLE_SOCKET_FILE_LOGS === 'true';
 
 const server = fastify({
   logger: {
@@ -55,6 +58,7 @@ async function bootstrap() {
   });
 
   server.addHook('onRequest', async (request, reply) => {
+    if (!ENABLE_SOCKET_FILE_LOGS) return;
     try {
       const logFile = path.join(__dirname, '../../socket_debug.log');
       fs.appendFileSync(logFile, `[${new Date().toISOString()}] [onRequest Hook] URL: "${request.url}", Method: "${request.method}", IP: "${request.ip}", Headers: ${JSON.stringify(request.headers)}\n`);
@@ -65,6 +69,7 @@ async function bootstrap() {
 
   // Log responses so we can correlate request -> status for debugging 404s
   server.addHook('onResponse', async (request, reply) => {
+    if (!ENABLE_SOCKET_FILE_LOGS) return;
     try {
       const logFile = path.join(__dirname, '../../socket_debug.log');
       const entry = `[${new Date().toISOString()}] [onResponse Hook] URL: "${request.url}", Method: "${request.method}", Status: "${reply.statusCode}", ResponseTimeMs: "${reply.getResponseTime ? reply.getResponseTime() : 'n/a'}"\n`;
@@ -81,6 +86,9 @@ async function bootstrap() {
   await server.register(authRoutes, { prefix: '/api/auth' });
   await server.register(meetingRoutes, { prefix: '/api/meetings' });
   await server.register(mailRoutes, { prefix: '/api/mail' });
+  await server.register(channelRoutes, { prefix: '/api/channels' });
+  await server.register(kuralRoutes, { prefix: '/api/chat' });
+  await server.register(memberRoutes, { prefix: '/api/members' });
 
   // 4. ATTACH WEBRTC SIGNALLING & MAIL SOCKET CHANNELS
   server.get('/ws/webrtc', { websocket: true }, (connection: any, req: any) => {

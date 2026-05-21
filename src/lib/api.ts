@@ -1,29 +1,66 @@
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Dynamic host detection for seamless cross-platform & local execution
+const API_PORT = process.env.EXPO_PUBLIC_API_PORT || '3001';
+const FALLBACK_LAN_IP = '192.168.1.72';
+
+const stripTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+
+const normalizeHost = (host?: string | null) => {
+  if (!host) return null;
+
+  return host
+    .replace(/^https?:\/\//, '')
+    .replace(/^wss?:\/\//, '')
+    .split('/')[0]
+    .split(':')[0]
+    .trim();
+};
+
+const getMetroHost = () => {
+  const scriptURL = NativeModules.SourceCode?.scriptURL as string | undefined;
+  return normalizeHost(scriptURL);
+};
+
+// Dynamic host detection for seamless cross-platform, emulator, and Expo Go execution.
 const getHostIp = () => {
+  const configuredHost = normalizeHost(process.env.EXPO_PUBLIC_API_HOST);
+  if (configuredHost) {
+    return configuredHost;
+  }
+
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     return window.location.hostname;
   }
-  // Workstation active LAN IP address for physical mobile device routing
-  return '192.168.1.72';
+
+  const metroHost = getMetroHost();
+  if (metroHost) {
+    if (Platform.OS === 'android' && ['localhost', '127.0.0.1', '0.0.0.0'].includes(metroHost)) {
+      return '10.0.2.2';
+    }
+
+    return metroHost;
+  }
+
+  // Workstation active LAN IP address fallback for physical mobile device routing.
+  return FALLBACK_LAN_IP;
 };
 
 export const BASE_IP = getHostIp();
 
-const LOCAL_API_HOST = Platform.OS === 'android' && typeof __DEV__ !== 'undefined' && __DEV__ ? '10.0.2.2' : BASE_IP;
-const LOCAL_API_URL = `http://${LOCAL_API_HOST}:3001`;
-const LOCAL_SOCKET_URL = `ws://${LOCAL_API_HOST}:3001`;
+const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL ? stripTrailingSlash(process.env.EXPO_PUBLIC_API_URL) : '';
+const configuredSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL ? stripTrailingSlash(process.env.EXPO_PUBLIC_SOCKET_URL) : '';
+const LOCAL_API_URL = configuredApiUrl || `http://${BASE_IP}:${API_PORT}`;
+const LOCAL_SOCKET_URL = configuredSocketUrl || LOCAL_API_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
 
 // Use the publicly deployed backend for release APK builds.
 const PRODUCTION_API_URL = 'https://workspace-dkwd.onrender.com';
 const PRODUCTION_SOCKET_URL = 'wss://workspace-dkwd.onrender.com';
 
-const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : (process.env.NODE_ENV === 'development' || true); // Force dev mode for local testing
+const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
 
-export const API_URL = isDev ? LOCAL_API_URL : PRODUCTION_API_URL;
-export const SOCKET_URL = isDev ? LOCAL_SOCKET_URL : PRODUCTION_SOCKET_URL;
+export const API_URL = configuredApiUrl || (isDev ? LOCAL_API_URL : PRODUCTION_API_URL);
+export const SOCKET_URL = configuredSocketUrl || (isDev ? LOCAL_SOCKET_URL : PRODUCTION_SOCKET_URL);
 
 // If you need a fully custom backend for release builds, replace PRODUCTION_API_URL with your hosted backend domain.
 
@@ -326,13 +363,18 @@ export const api = {
       });
     },
     async validateMeeting(roomId: string, password?: string) {
-      return request(`/api/meetings/join/${roomId}`);
+      const encodedRoomId = encodeURIComponent(roomId.trim());
+      const query = password ? `?passcode=${encodeURIComponent(password)}` : '';
+      return request(`/api/meetings/join/${encodedRoomId}${query}`);
     },
     async startMeeting(id: string) {
       return request(`/api/meetings/${id}/start`, { method: 'POST' });
     },
     async endMeeting(id: string) {
       return request(`/api/meetings/${id}/end`, { method: 'POST' });
+    },
+    async leaveMeeting(id: string) {
+      return request(`/api/meetings/${id}/leave`, { method: 'POST' });
     },
     async getParticipants(meetingId: string) {
       return request(`/api/meetings/${meetingId}/participants`);
@@ -377,10 +419,16 @@ export const api = {
     async getMessages(workspaceId: string, channelId: string) {
       return request(`/api/chat/${workspaceId}/${channelId}`);
     },
-    async startDm(members: string[], createdBy: string) {
+    async sendMessage(workspaceId: string, channelId: string, content: string) {
+      return request(`/api/chat/${workspaceId}/${channelId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      });
+    },
+    async startDm(members: string[], createdBy: string, workspaceId?: string) {
       return request('/api/chat/start-dm', {
         method: 'POST',
-        body: JSON.stringify({ members, createdBy }),
+        body: JSON.stringify({ members, createdBy, workspaceId }),
       });
     },
     async deleteConversation(channelId: string) {

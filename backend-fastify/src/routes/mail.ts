@@ -3,6 +3,41 @@ import { Mail } from '../models/Mail';
 import { authenticate } from '../middlewares/auth';
 import { activeMailSockets } from '../services/mailSockets';
 
+async function fetchJsonWithTimeout(url: string, options: RequestInit, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    return await response.json() as any;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function buildLocalEmailDraft(prompt: string, subject?: string, context?: string) {
+  const cleanPrompt = String(prompt || '').trim();
+  const cleanSubject = String(subject || '').trim();
+  const cleanContext = String(context || '').trim();
+  const subjectLine = cleanSubject ? ` regarding "${cleanSubject}"` : '';
+  const contextLine = cleanContext
+    ? 'I have reviewed the previous context and will keep the response aligned with it.'
+    : 'I wanted to follow up with a clear update.';
+
+  return [
+    'Hi,',
+    '',
+    `${contextLine} ${cleanPrompt || `Please find my response${subjectLine} below.`}`,
+    '',
+    'Please let me know if you would like me to adjust the timeline or add any further details.',
+    '',
+    'Best regards,'
+  ].join('\n');
+}
+
 export async function mailRoutes(fastify: FastifyInstance) {
   // Apply token authentication middleware
   fastify.addHook('preValidation', authenticate);
@@ -158,11 +193,12 @@ User Prompt / Draft: ${prompt}
 Important: Provide ONLY the final generated email body text. Do not include introductory conversational text like "Here is the email:" or quotes.`;
 
       let generatedText = '';
+      let provider = 'local-fallback';
 
       try {
         if (groqKey) {
           console.log('Routing smart-reply query to Groq...');
-          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          const data = await fetchJsonWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -170,25 +206,25 @@ Important: Provide ONLY the final generated email body text. Do not include intr
               messages: [{ role: 'user', content: aiPrompt }]
             })
           });
-          const data = await response.json() as any;
           if (data.error) {
             console.error('Groq API Error Response:', JSON.stringify(data.error));
             throw new Error(data.error.message || 'Groq error');
           }
           generatedText = data.choices?.[0]?.message?.content || '';
+          provider = 'groq';
         } else if (geminiKey) {
           console.log('Routing smart-reply query to Gemini...');
-          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+          const data = await fetchJsonWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: aiPrompt }] }] })
           });
-          const data = await response.json() as any;
           if (data.error) {
             console.error('Gemini API Error Response:', JSON.stringify(data.error));
             throw new Error(data.error.message || 'Gemini error');
           }
           generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          provider = 'gemini';
         }
       } catch (aiErr: any) {
         console.warn('AI Provider connection failed. Detail:', aiErr.message);
@@ -196,10 +232,10 @@ Important: Provide ONLY the final generated email body text. Do not include intr
 
       if (!generatedText) {
         console.log('Defaulting to high-fidelity local email draft fallback...');
-        generatedText = `Dear team,\n\nI hope this email finds you well.\n\nBased on our current trajectory and the context provided, I fully agree with the proposed next steps. Let's schedule a brief synchronization call tomorrow to finalize the remaining details.\n\nBest regards,`;
+        generatedText = buildLocalEmailDraft(prompt, subject, context);
       }
 
-      return reply.code(200).send({ suggestion: generatedText.trim() });
+      return reply.code(200).send({ suggestion: generatedText.trim(), provider });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to generate suggestion', details: err.message });
     }

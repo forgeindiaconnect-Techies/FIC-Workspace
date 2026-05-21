@@ -34,6 +34,23 @@ const isMobile = width < 768;
 
 import { api, getSession, SOCKET_URL } from '../lib/api';
 
+const buildLocalSmartDraft = (prompt: string, subject: string, context: string) => {
+  const subjectLine = subject.trim() ? ` regarding "${subject.trim()}"` : '';
+  const contextLine = context.trim()
+    ? 'I have reviewed the earlier message and will keep the response aligned with it.'
+    : 'I wanted to share a clear update.';
+
+  return [
+    'Hi,',
+    '',
+    `${contextLine} ${prompt.trim() || `Please find my response${subjectLine} below.`}`,
+    '',
+    'Please let me know if you would like me to add more detail or adjust the timing.',
+    '',
+    'Best regards,'
+  ].join('\n');
+};
+
 export default function Mail() {
   const [activeFolder, setActiveFolder] = React.useState('inbox');
   const [mailList, setMailList] = React.useState<any[]>([]);
@@ -67,7 +84,8 @@ export default function Mail() {
       }
     } catch (err: any) {
       console.warn(err);
-      Alert.alert("Generation Failed", err.message || "Could not reach the AI provider.");
+      setComposeBody(buildLocalSmartDraft(composeBody, composeSubject, selectedEmail ? selectedEmail.body : ''));
+      Alert.alert("AI Provider Unreachable", "A local smart draft was created instead.");
     } finally {
       setAiGenerating(false);
     }

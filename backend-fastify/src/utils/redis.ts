@@ -14,7 +14,10 @@ if (process.env.REDIS_URL || process.env.REDIS_HOST) {
   try {
     redisClient = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379', {
       maxRetriesPerRequest: 1,
-      connectTimeout: 2000
+      connectTimeout: 2000,
+      enableOfflineQueue: false,
+      lazyConnect: true,
+      retryStrategy: () => null
     });
     
     redisClient.on('connect', () => {
@@ -24,6 +27,11 @@ if (process.env.REDIS_URL || process.env.REDIS_HOST) {
 
     redisClient.on('error', (err: any) => {
       console.warn('Redis error occurred, reverting to fallback memory store:', err.message);
+      isRedisAvailable = false;
+    });
+
+    redisClient.connect().catch((err: any) => {
+      console.warn('Redis unavailable, utilizing local memory cache:', err.message);
       isRedisAvailable = false;
     });
   } catch (e) {

@@ -75,6 +75,7 @@ export default function Meetings() {
 
   // Fallback Camera & screen sharing tracking
   const [screenStream, setScreenStream] = React.useState<any>(null);
+  const [screenShareError, setScreenShareError] = React.useState<string | null>(null);
   const [cameraPermissionStatus, setCameraPermissionStatus] = React.useState<'prompt' | 'granted' | 'denied'>('prompt');
 
   // Scheduling Modal States
@@ -117,6 +118,7 @@ export default function Meetings() {
   };
 
   const videoRef = React.useRef<any>(null);
+  const screenVideoRef = React.useRef<any>(null);
   const [mediaStream, setMediaStream] = React.useState<any>(null);
 
   React.useEffect(() => {
@@ -158,53 +160,57 @@ export default function Meetings() {
         mediaStream.getTracks().forEach((track: any) => track.stop());
       }
     };
-  }, [activeMeetingRoom, isVideoOff, isSharing]);
+  }, [activeMeetingRoom, isVideoOff]);
 
   // Native/Web screen sharing hook
   React.useEffect(() => {
-    if (activeMeetingRoom && isSharing) {
-      if (Platform.OS === 'web') {
-        navigator.mediaDevices.getDisplayMedia({
-          video: true
-        })
-        .then(stream => {
-          setScreenStream(stream);
-          setTimeout(() => {
-            if (videoRef.current) {
-              videoRef.current.srcObject = stream;
-              videoRef.current.play().catch(e => console.warn(e));
-            }
-          }, 300);
-          
-          // Stop share listener
-          stream.getVideoTracks()[0].onended = () => {
-            setIsSharing(false);
-          };
-        })
-        .catch(err => {
-          console.warn("Screen share request rejected/failed:", err);
-          setIsSharing(false);
-        });
-      }
-    } else {
-      if (screenStream) {
-        screenStream.getTracks().forEach((track: any) => track.stop());
-        setScreenStream(null);
-      }
-      // Revert to camera stream if camera is on
-      if (activeMeetingRoom && !isVideoOff && mediaStream) {
-        setTimeout(() => {
-          if (videoRef.current) {
-            videoRef.current.srcObject = mediaStream;
-            videoRef.current.play().catch(e => console.warn(e));
-          }
-        }, 300);
-      }
+    if (!activeMeetingRoom || !isSharing || Platform.OS !== 'web') {
+      return;
     }
+
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setScreenShareError('Screen sharing is not available in this browser.');
+      setIsSharing(false);
+      return;
+    }
+
+    let activeStream: any = null;
+    let cancelled = false;
+
+    navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+      .then(stream => {
+        if (cancelled) {
+          stream.getTracks().forEach((track: any) => track.stop());
+          return;
+        }
+
+        activeStream = stream;
+        setScreenShareError(null);
+        setScreenStream(stream);
+
+        setTimeout(() => {
+          if (screenVideoRef.current) {
+            screenVideoRef.current.srcObject = stream;
+            screenVideoRef.current.play().catch((e: any) => console.warn(e));
+          }
+        }, 100);
+
+        stream.getVideoTracks()[0].onended = () => {
+          setIsSharing(false);
+        };
+      })
+      .catch(err => {
+        console.warn("Screen share request rejected/failed:", err);
+        setScreenShareError('Screen sharing was cancelled or blocked.');
+        setIsSharing(false);
+      });
+
     return () => {
-      if (screenStream) {
-        screenStream.getTracks().forEach((track: any) => track.stop());
+      cancelled = true;
+      if (activeStream) {
+        activeStream.getTracks().forEach((track: any) => track.stop());
       }
+      setScreenStream(null);
     };
   }, [isSharing, activeMeetingRoom]);
 
@@ -262,6 +268,24 @@ export default function Meetings() {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleToggleScreenShare = () => {
+    if (isSharing) {
+      setIsSharing(false);
+      return;
+    }
+
+    if (Platform.OS !== 'web') {
+      Alert.alert(
+        'Screen sharing needs a browser or dev build',
+        'Expo Go does not expose native screen-capture APIs. Use the web meeting room or an Expo development build with a screen-capture native module.'
+      );
+      return;
+    }
+
+    setScreenShareError(null);
+    setIsSharing(true);
   };
 
   // Bouncing Decibel Wave Visualizer Timer
@@ -403,7 +427,8 @@ export default function Meetings() {
         time: 'Live Now',
         duration: '60m',
         attendees: 1,
-        color: '#10b981'
+        color: '#10b981',
+        isHost: true
       });
       
       // Refresh meetings list
@@ -420,19 +445,36 @@ export default function Meetings() {
         setUpcomingMeetings(mapped);
       }
     } catch (err) {
-      console.warn("Failed to start live meeting, using mock integration room:", err);
-      setCreateModalVisible(false);
-      const mockRoomCode = 'NEX-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    } finally {
+      setMeetingLoading(false);
+    }
+  };
+
+  const joinMeetingByIdOrCode = async (roomId: string, passcode?: string, customTitle?: string) => {
+    setMeetingLoading(true);
+    try {
+      const response = await api.meetings.validateMeeting(roomId.trim(), passcode);
+      const canonicalMeetingId = response._id || response.meetingId || response.id;
+      if (!canonicalMeetingId) {
+        throw new Error('The meeting server did not return a canonical meeting id.');
+      }
+
       setActiveMeetingRoom({
-        id: mockRoomCode,
-        title: meetingTitle,
-        roomId: mockRoomCode,
-        password: meetingPassword,
+        id: canonicalMeetingId,
+        title: response.title || customTitle || 'Joined Session',
+        roomId: response.joinCode || response.roomId || roomId.trim(),
+        password: passcode || '',
         time: 'Live Now',
-        duration: '60m',
-        attendees: 1,
-        color: '#10b981'
+        duration: 'Unlimited',
+        attendees: response.activeParticipantCount || response.participantIds?.length || 1,
+        color: '#2563eb',
+        isHost: !!response.isHost
       });
+      return true;
+    } catch (err: any) {
+      console.warn("Meeting join failed:", err);
+      Alert.alert("Could not join meeting", err.message || "This room ID was not found on the meeting server.");
+      return false;
     } finally {
       setMeetingLoading(false);
     }
@@ -443,36 +485,9 @@ export default function Meetings() {
       Alert.alert("Required", "Please enter a valid Meeting ID or Room Code!");
       return;
     }
-    setMeetingLoading(true);
-    try {
-      const response = await api.meetings.validateMeeting(joinRoomId.trim(), joinPasscode || undefined);
+    const success = await joinMeetingByIdOrCode(joinRoomId.trim(), joinPasscode || undefined);
+    if (success) {
       setJoinModalVisible(false);
-      setActiveMeetingRoom({
-        id: response._id || response.roomId || joinRoomId.trim(),
-        title: response.title || 'Joined Session',
-        roomId: response.joinCode || joinRoomId.trim(),
-        password: joinPasscode,
-        time: 'Live Now',
-        duration: 'Unlimited',
-        attendees: response.participantIds?.length || 2,
-        color: '#2563eb'
-      });
-    } catch (err: any) {
-      console.warn("REST validation failed, attempting offline room sync:", err);
-      setJoinModalVisible(false);
-      setActiveMeetingRoom({
-        id: joinRoomId.trim(),
-        title: `Room: ${joinRoomId.trim()}`,
-        roomId: joinRoomId.trim(),
-        password: joinPasscode,
-        time: 'Live Now',
-        duration: 'Unlimited',
-        attendees: Math.floor(Math.random() * 4) + 2,
-        color: '#2563eb'
-      });
-      Alert.alert("Secure Connection established", `Joined Room ${joinRoomId.trim()} successfully via offline backup!`);
-    } finally {
-      setMeetingLoading(false);
     }
   };
 
@@ -493,16 +508,17 @@ export default function Meetings() {
     const sessionData = getSession();
     const localUser = sessionData?.user;
     const localUserId = localUser?._id || localUser?.id || 'you';
+    const isHost = !!activeMeetingRoom.isHost;
 
     // Seed local user at the front of the call array
     const callParticipants: any[] = [
       { 
         id: 'you', 
         userId: localUserId,
-        name: `${localUser?.name || 'You'} (Host)`, 
+        name: `${localUser?.name || 'You'}${isHost ? ' (Host)' : ''}`, 
         avatar: (localUser?.name || 'YO').slice(0, 2).toUpperCase(), 
         color: '#3b82f6', 
-        isHost: true 
+        isHost: isHost 
       }
     ];
 
@@ -522,7 +538,7 @@ export default function Meetings() {
 
     const itemsPerPage = 4;
     const totalPages = Math.ceil(callParticipants.length / itemsPerPage);
-    
+
     // Group participants into page arrays for horizontal paging ScrollView
     const pagesArray = [];
     for (let i = 0; i < callParticipants.length; i += itemsPerPage) {
@@ -626,20 +642,34 @@ export default function Meetings() {
                               ]}
                             >
                               {isSharing ? (
-                                <View style={styles.simulatedScreenShareView}>
+                                <View style={styles.screenShareLiveView}>
                                   <View style={styles.screenShareHeader}>
                                     <Share size={16} color="#60a5fa" />
-                                    <Text style={styles.screenShareTitle}>You are sharing screen</Text>
+                                    <Text style={styles.screenShareTitle}>You are sharing your screen</Text>
                                   </View>
-                                  <View style={styles.screenShareVisualizerContainer}>
-                                    <View style={styles.screenShareCodeMock}>
-                                      <Text style={styles.codeTextBlue}>{"const startMeeting = async () => {"}</Text>
-                                      <Text style={styles.codeTextGreen}>{"  console.log(\"Active media stream secure...\");"}</Text>
-                                      <Text style={styles.codeTextSlate}>{"  const connection = await RTC.connect();"}</Text>
-                                      <Text style={styles.codeTextAmber}>{"  return connection.sessionToken;"}</Text>
-                                      <Text style={styles.codeTextBlue}>{"};"}</Text>
+                                  {Platform.OS === 'web' && screenStream ? (
+                                    <video
+                                      ref={screenVideoRef}
+                                      style={{
+                                        width: '100%',
+                                        flex: 1,
+                                        minHeight: 180,
+                                        objectFit: 'contain',
+                                        backgroundColor: '#020617',
+                                        borderRadius: 16
+                                      }}
+                                      autoPlay
+                                      playsInline
+                                      muted
+                                    />
+                                  ) : (
+                                    <View style={styles.screenShareWaitingPanel}>
+                                      <ActivityIndicator color="#60a5fa" />
+                                      <Text style={styles.screenShareWaitingText}>
+                                        {screenShareError || 'Choose a window or screen to share.'}
+                                      </Text>
                                     </View>
-                                  </View>
+                                  )}
                                   <TouchableOpacity 
                                     style={styles.stopScreenShareInsideBtn}
                                     onPress={() => setIsSharing(false)}
@@ -801,7 +831,7 @@ export default function Meetings() {
               {/* Screen Share Control Tile */}
               <TouchableOpacity 
                 style={[styles.immersiveControlTile, isSharing && styles.controlTileActiveBlue]}
-                onPress={() => setIsSharing(!isSharing)}
+                onPress={handleToggleScreenShare}
               >
                 <View style={styles.controlTileIconBox}>
                   <Share size={20} color={isSharing ? "#3b82f6" : "#94a3b8"} />
@@ -836,71 +866,6 @@ export default function Meetings() {
                     <View style={styles.buttonBadgeBox}>
                       <Text style={styles.buttonBadgeText}>1</Text>
                     </View>
-                  )}
-                </View>
-                <Text style={styles.controlTileLabel}>Chat</Text>
-              </TouchableOpacity>
-
-              {/* Info Drawer Control Tile */}
-              <TouchableOpacity 
-                style={[styles.immersiveControlTile, sidebarTab === 'info' && styles.controlTileActiveBlue]}
-                onPress={() => setSidebarTab(sidebarTab === 'info' ? null : 'info')}
-              >
-                <View style={styles.controlTileIconBox}>
-                  <Shield size={20} color={sidebarTab === 'info' ? "#3b82f6" : "#94a3b8"} />
-                </View>
-                <Text style={styles.controlTileLabel}>Metrics</Text>
-              </TouchableOpacity>
-
-              {/* Red Hangup Control Tile */}
-              <TouchableOpacity 
-                style={[styles.immersiveControlTile, styles.controlTileEndCall]}
-                onPress={async () => {
-                  try {
-                    if (activeMeetingRoom && activeMeetingRoom.id) {
-                      await api.meetings.endMeeting(activeMeetingRoom.id);
-                    }
-                  } catch (e) {
-                    console.warn("Failed to end meeting on server:", e);
-                  }
-                  if (mediaStream) {
-                    mediaStream.getTracks().forEach((track: any) => track.stop());
-                    setMediaStream(null);
-                  }
-                  setActiveMeetingRoom(null);
-                  try {
-                    const { user } = getSession();
-                    const workspaceId = user?.workspaceId || 'antigraviity-hq';
-                    const updated = await api.meetings.getMeetings(workspaceId);
-                    if (Array.isArray(updated)) {
-                      const mapped = updated.map((m: any) => ({
-                        id: m._id || m.joinCode || m.roomId,
-                        title: m.title,
-                        time: new Date(m.scheduledAt || m.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        duration: `${m.durationMinutes || m.duration || 60}m`,
-                        attendees: m.participantIds?.length || 1,
-                        color: m.status === 'live' || m.status === 'Live' ? '#10b981' : '#3b82f6'
-                      }));
-                      setUpcomingMeetings(mapped);
-                    }
-                  } catch (err) {}
-                }}
-              >
-                <View style={[styles.controlTileIconBox, { backgroundColor: '#ef4444' }]}>
-                  <PhoneOff size={20} color="#fff" />
-                </View>
-                <Text style={[styles.controlTileLabel, { color: '#ef4444' }]}>Leave</Text>
-              </TouchableOpacity>
-
-            </View>
-
-          </View>
-
-          {/* Interactive Right-side Sidebar Drawer */}
-          {sidebarTab !== null && (
-            <View style={styles.interactiveSidebarDrawer}>
-              
-              {/* Drawer Title Header */}
               <View style={styles.sidebarDrawerHeader}>
                 <Text style={styles.sidebarDrawerTitle}>
                   {sidebarTab === 'chat' ? '💬 Call Discussion' : 
@@ -1143,7 +1108,7 @@ export default function Meetings() {
               <TouchableOpacity 
                 key={meeting.id} 
                 style={styles.meetingCard}
-                onPress={() => setActiveMeetingRoom(meeting)}
+                onPress={() => joinMeetingByIdOrCode(meeting.id, undefined, meeting.title)}
               >
                 <View style={[styles.meetingIcon, { backgroundColor: meeting.color }]}>
                   <Play size={20} color="#fff" fill="#fff" />
@@ -1180,7 +1145,7 @@ export default function Meetings() {
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={styles.joinBtn}
-                    onPress={() => setActiveMeetingRoom(meeting)}
+                    onPress={() => joinMeetingByIdOrCode(meeting.id, undefined, meeting.title)}
                   >
                     <Text style={styles.joinText}>Join</Text>
                   </TouchableOpacity>
@@ -1467,8 +1432,7 @@ export default function Meetings() {
                 <X size={24} color="#64748b" />
               </TouchableOpacity>
             </View>
-
-            <Text style={styles.roomsSub}>Tap a persistent space to spin up or join the session instantly:</Text>
+              <Text style={styles.roomsSub}>Tap a persistent space to spin up or join the session instantly:</Text>
             
             <View style={styles.roomsList}>
               {persistentRooms.map((room) => (
@@ -1477,15 +1441,7 @@ export default function Meetings() {
                   style={styles.roomCardItem}
                   onPress={() => {
                     setRoomsModalVisible(false);
-                    setActiveMeetingRoom({
-                      id: room.id,
-                      title: room.title,
-                      roomId: room.id,
-                      time: 'Persistent Room',
-                      duration: 'Unlimited',
-                      attendees: room.activeMembers + 1,
-                      color: '#10b981'
-                    });
+                    joinMeetingByIdOrCode(room.id, undefined, room.title);
                   }}
                 >
                   <View style={styles.roomCardLeft}>
@@ -2510,6 +2466,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
   },
+  screenShareLiveView: {
+    flex: 1,
+    backgroundColor: '#020617',
+    borderRadius: 18,
+    padding: 14,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.35)',
+  },
   screenShareHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2520,6 +2485,25 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '900',
+  },
+  screenShareWaitingPanel: {
+    flex: 1,
+    minHeight: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0f172a',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    padding: 20,
+    gap: 12,
+  },
+  screenShareWaitingText: {
+    color: '#cbd5e1',
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 17,
   },
   screenShareVisualizerContainer: {
     width: '100%',

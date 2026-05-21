@@ -12,8 +12,8 @@ import {
 } from '../utils/redis';
 import { generateMfaSecret, verifyMfaToken } from '../utils/mfa';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'nexus-jwt-secret-key';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'nexus-refresh-secret-key';
+const getJwtSecret = () => process.env.JWT_SECRET || 'nexus-jwt-secret-key';
+const getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || 'nexus-refresh-secret-key';
 
 export async function authRoutes(fastify: FastifyInstance) {
   
@@ -25,13 +25,13 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     const accessToken = jwt.sign(
       { userId: user._id, email, name: user.name, role, workspaceId },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: '15m' }
     );
 
     const refreshTokenString = jwt.sign(
       { userId: user._id },
-      JWT_REFRESH_SECRET,
+      getJwtRefreshSecret(),
       { expiresIn: '30d' }
     );
 
@@ -161,7 +161,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         // Issue a short-lived ticket to complete MFA validation
         const mfaTicket = jwt.sign(
           { userId: user._id, type: 'mfa_pending' },
-          JWT_SECRET,
+          getJwtSecret(),
           { expiresIn: '3m' }
         );
         return reply.code(200).send({
@@ -186,7 +186,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.code(400).send({ error: 'MFA ticket and 6-digit passcode are required.' });
       }
 
-      const decoded = jwt.verify(mfaTicket, JWT_SECRET) as any;
+      const decoded = jwt.verify(mfaTicket, getJwtSecret()) as any;
       if (!decoded || decoded.type !== 'mfa_pending') {
         return reply.code(401).send({ error: 'Invalid or expired MFA ticket.' });
       }
@@ -217,7 +217,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.code(400).send({ error: 'Refresh token is required.' });
       }
 
-      const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as any;
+      const decoded = jwt.verify(refreshToken, getJwtRefreshSecret()) as any;
       if (!decoded || !decoded.userId) {
         return reply.code(401).send({ error: 'Invalid refresh token.' });
       }

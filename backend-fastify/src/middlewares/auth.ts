@@ -2,7 +2,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'nexus-jwt-secret-key';
+const getJwtSecret = () => process.env.JWT_SECRET || 'nexus-jwt-secret-key';
 
 // Extend FastifyRequest type interface to hold user model info
 declare module 'fastify' {
@@ -11,6 +11,8 @@ declare module 'fastify' {
       id: string;
       email: string;
       name: string;
+      role?: string;
+      workspaceId?: string;
     };
   }
 }
@@ -27,7 +29,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, getJwtSecret()) as any;
 
     if (!decoded || !decoded.userId) {
       return reply.code(401).send({ error: 'Unauthorized: Access token is invalid or expired.' });
@@ -37,7 +39,9 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     request.user = {
       id: decoded.userId,
       email: decoded.email,
-      name: decoded.name
+      name: decoded.name,
+      role: decoded.role,
+      workspaceId: decoded.workspaceId
     };
   } catch (err: any) {
     console.error('JWT Verification failed! Error:', err.message);
@@ -54,12 +58,14 @@ export async function optionalAuth(request: FastifyRequest, reply: FastifyReply)
     const authHeader = request.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const decoded = jwt.verify(token, getJwtSecret()) as any;
       if (decoded && decoded.userId) {
         request.user = {
           id: decoded.userId,
           email: decoded.email,
-          name: decoded.name
+          name: decoded.name,
+          role: decoded.role,
+          workspaceId: decoded.workspaceId
         };
       }
     }
