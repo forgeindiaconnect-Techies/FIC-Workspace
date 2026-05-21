@@ -1971,13 +1971,12 @@ async function connectDatabase() {
       }
     }
   }
-  if (isProduction) {
-    server.log.error(
-      "Cannot start without MongoDB. Check Atlas: Network Access (0.0.0.0/0), user password, and MONGO_URI (@ \u2192 %40)."
-    );
-    throw lastErr || new Error("MongoDB connection failed");
+  server.log.error(
+    "Server starting WITHOUT MongoDB. Login/sign-up disabled until MONGO_URI is fixed. Atlas: reset DB password (no @), allow 0.0.0.0/0, update Render MONGO_URI."
+  );
+  if (lastErr) {
+    server.log.error(lastErr.message);
   }
-  server.log.warn("Continuing in local dev mode without MongoDB.");
 }
 async function bootstrap() {
   await server.register(import_cors.default, {
