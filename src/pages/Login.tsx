@@ -8,15 +8,41 @@ import {
   ActivityIndicator 
 } from 'react-native';
 import { useNavigate } from '../lib/router';
-import { Mail, Lock, LogIn, Github, Chrome } from 'lucide-react-native';
-import { api } from '../lib/api';
+import { Mail, Lock, LogIn, Github, Chrome, Settings, Server } from 'lucide-react-native';
+import { api, setCustomServerUrl, getCustomServerUrl } from '../lib/api';
 
 export default function Login() {
   const navigate = useNavigate();
   const [loading, setLoading] = React.useState(false);
-  const [email, setEmail] = React.useState('admin@antigraviity.com');
-  const [password, setPassword] = React.useState('password123');
+  const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
+  const [email, setEmail] = React.useState(isDev ? 'admin@antigraviity.com' : '');
+  const [password, setPassword] = React.useState(isDev ? 'password123' : '');
   const [error, setError] = React.useState<string | null>(null);
+  const [showSettings, setShowSettings] = React.useState(false);
+  const [customUrl, setCustomUrl] = React.useState('');
+
+  React.useEffect(() => {
+    setCustomUrl(getCustomServerUrl());
+  }, []);
+
+  const handleSaveServer = async () => {
+    try {
+      await setCustomServerUrl(customUrl);
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to update server URL');
+    }
+  };
+
+  const handleResetServer = async () => {
+    try {
+      await setCustomServerUrl('');
+      setCustomUrl(getCustomServerUrl());
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to reset server URL');
+    }
+  };
 
   const handleSubmit = async () => {
     if (!email || !password) {
@@ -27,12 +53,22 @@ export default function Login() {
     setLoading(true);
     setError(null);
     try {
-      await api.auth.login(email, password);
+      const result = await api.auth.login(email, password);
+      if (result.mfaRequired) {
+        setLoading(false);
+        setError('MFA is required for this account. Complete MFA verification in the web app first.');
+        return;
+      }
       setLoading(false);
       navigate('/home');
     } catch (err: any) {
       setLoading(false);
-      setError(err.message || 'Invalid credentials');
+      const message = err.message || 'Invalid credentials';
+      const hint =
+        message.toLowerCase().includes('invalid') || message.includes('401')
+          ? ' Check Server Settings and point the app to your PC IP (e.g. http://192.168.1.72:3001) with the backend running.'
+          : '';
+      setError(message + hint);
     }
   };
 
@@ -129,6 +165,43 @@ export default function Login() {
           <Text style={styles.footerText}>Don't have an account? </Text>
           <Text style={styles.signUpText}>Start free trial</Text>
         </TouchableOpacity>
+
+        {/* Server Settings Expandable Panel */}
+        <View style={styles.settingsSection}>
+          <TouchableOpacity 
+            style={styles.settingsHeader} 
+            onPress={() => setShowSettings(!showSettings)}
+          >
+            <Settings size={16} color="#94a3b8" />
+            <Text style={styles.settingsTitle}>Server Settings</Text>
+          </TouchableOpacity>
+
+          {showSettings && (
+            <View style={styles.settingsContent}>
+              <Text style={styles.settingsLabel}>Backend API Endpoint</Text>
+              <View style={styles.settingsInputWrapper}>
+                <Server size={16} color="#64748b" style={styles.inputIcon} />
+                <TextInput 
+                  placeholder="http://YOUR_PC_IP:3001"
+                  placeholderTextColor="#475569"
+                  style={styles.settingsInput}
+                  value={customUrl}
+                  onChangeText={setCustomUrl}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+              <View style={styles.settingsActions}>
+                <TouchableOpacity style={styles.settingsResetBtn} onPress={handleResetServer}>
+                  <Text style={styles.settingsResetText}>Reset</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.settingsSaveBtn} onPress={handleSaveServer}>
+                  <Text style={styles.settingsSaveText}>Save Endpoint</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -330,6 +403,87 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     padding: 10,
     borderRadius: 8,
+  },
+  settingsSection: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+    paddingTop: 16,
+    marginTop: -8,
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  settingsTitle: {
+    fontSize: 13,
+    color: '#94a3b8',
+    fontWeight: '700',
+  },
+  settingsContent: {
+    marginTop: 16,
+    gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.03)',
+  },
+  settingsLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94a3b8',
+    marginLeft: 4,
+  },
+  settingsInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+  },
+  settingsInput: {
+    flex: 1,
+    height: 44,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  settingsActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  settingsSaveBtn: {
+    flex: 2,
+    backgroundColor: '#2563eb',
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsSaveText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  settingsResetBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsResetText: {
+    color: '#cbd5e1',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
 

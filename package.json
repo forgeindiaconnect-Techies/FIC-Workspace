@@ -11,7 +11,9 @@
     "web": "expo start --web",
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:api": "npm install --prefix backend-fastify && npm run build --prefix backend-fastify",
     "start": "node dist/server.cjs",
+    "start:api": "node server.js",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },

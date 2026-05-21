@@ -25,7 +25,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   }
 
   function normalizeJoinCode(code: string): string {
-    const trimmed = String(code || '').trim();
+    const trimmed = String(code || '').trim().toUpperCase();
     const digitsOnly = trimmed.replace(/\D/g, '');
     if (digitsOnly.length === 9) {
       return `${digitsOnly.slice(0, 3)}-${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`;
@@ -118,7 +118,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       const { code } = request.params as any;
       const { passcode } = request.query as any;
       
-      const cleanCode = String(code || '').trim();
+      const cleanCode = normalizeJoinCode(String(code || ''));
       let meeting = await resolveMeetingIdentifier(cleanCode);
 
       const persistentRoomTitles: Record<string, string> = {

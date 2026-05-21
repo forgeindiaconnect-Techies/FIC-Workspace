@@ -9,13 +9,13 @@ import Mail from "./pages/Mail";
 import Chat from "./pages/Chat";
 import Tasks from "./pages/Tasks";
 import Files from "./pages/Files";
-import { initializeSession } from "./lib/api";
+import { waitForSession } from "./lib/api";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    initializeSession().finally(() => {
+    waitForSession().finally(() => {
       setLoading(false);
     });
   }, []);

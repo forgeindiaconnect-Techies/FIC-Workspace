@@ -16,22 +16,27 @@ import { channelRoutes, kuralRoutes } from './routes/kural';
 import { memberRoutes } from './routes/members';
 import { handleWebRtcSignalling } from './services/webrtc';
 import { handleMailSocket } from './services/mailSockets';
+import { ensureDefaultUser } from './utils/seedDefaultUser';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/nexus-zoom';
 const ENABLE_SOCKET_FILE_LOGS = process.env.ENABLE_SOCKET_FILE_LOGS === 'true';
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 const server = fastify({
-  logger: {
-    level: 'info',
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        colorize: true,
-        translateTime: 'HH:MM:ss Z'
-      }
-    }
-  }
+  logger: isProduction
+    ? { level: 'info' }
+    : {
+        level: 'info',
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: 'HH:MM:ss Z',
+          },
+        },
+      },
 });
 
 // 1. ESTABLISH MONGODB ATLAS CONNECTIVITY
@@ -42,6 +47,12 @@ async function connectDatabase() {
       serverSelectionTimeoutMS: 5000 // Timeout fast (5s) instead of hanging indefinitely
     });
     server.log.info('Mongoose successfully established Atlas MongoDB connection.');
+    try {
+      await ensureDefaultUser();
+      server.log.info('Default admin account is ready.');
+    } catch (seedErr: any) {
+      server.log.warn('Could not ensure default admin account: ' + seedErr.message);
+    }
   } catch (err: any) {
     server.log.error('Mongoose failed connecting to MongoDB: ' + err.message);
     server.log.warn('Continuing server execution in offline/fallback mode.');

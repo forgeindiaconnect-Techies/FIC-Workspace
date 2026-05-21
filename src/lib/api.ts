@@ -53,14 +53,63 @@ const configuredSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL ? stripTrailingSl
 const LOCAL_API_URL = configuredApiUrl || `http://${BASE_IP}:${API_PORT}`;
 const LOCAL_SOCKET_URL = configuredSocketUrl || LOCAL_API_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
 
-// Use the publicly deployed backend for release APK builds.
+// Optional cloud backend — set EXPO_PUBLIC_API_URL at build time to use it.
 const PRODUCTION_API_URL = 'https://workspace-dkwd.onrender.com';
 const PRODUCTION_SOCKET_URL = 'wss://workspace-dkwd.onrender.com';
 
-const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+const useProductionBackend =
+  process.env.EXPO_PUBLIC_USE_PRODUCTION === 'true' ||
+  process.env.EXPO_PUBLIC_USE_PRODUCTION === '1';
 
-export const API_URL = configuredApiUrl || (isDev ? LOCAL_API_URL : PRODUCTION_API_URL);
-export const SOCKET_URL = configuredSocketUrl || (isDev ? LOCAL_SOCKET_URL : PRODUCTION_SOCKET_URL);
+const defaultApiUrl = useProductionBackend ? PRODUCTION_API_URL : LOCAL_API_URL;
+const defaultSocketUrl = useProductionBackend ? PRODUCTION_SOCKET_URL : LOCAL_SOCKET_URL;
+
+export let API_URL = configuredApiUrl || defaultApiUrl;
+export let SOCKET_URL = configuredSocketUrl || defaultSocketUrl;
+
+let sessionInitPromise: Promise<void> | null = null;
+
+export const waitForSession = () => {
+  if (!sessionInitPromise) {
+    sessionInitPromise = initializeSession();
+  }
+  return sessionInitPromise;
+};
+
+export const setCustomServerUrl = async (url: string) => {
+  const cleanUrl = stripTrailingSlash(url.trim());
+  if (!cleanUrl) {
+    API_URL = configuredApiUrl || defaultApiUrl;
+    SOCKET_URL = configuredSocketUrl || defaultSocketUrl;
+    if (Platform.OS === 'web') {
+      try {
+        localStorage.removeItem('nexus_custom_api_url');
+      } catch (e) {}
+    } else {
+      try {
+        await AsyncStorage.removeItem('nexus_custom_api_url');
+      } catch (e) {}
+    }
+    return;
+  }
+
+  API_URL = cleanUrl;
+  SOCKET_URL = cleanUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+
+  if (Platform.OS === 'web') {
+    try {
+      localStorage.setItem('nexus_custom_api_url', cleanUrl);
+    } catch (e) {}
+  } else {
+    try {
+      await AsyncStorage.setItem('nexus_custom_api_url', cleanUrl);
+    } catch (e) {}
+  }
+};
+
+export const getCustomServerUrl = () => {
+  return API_URL;
+};
 
 // If you need a fully custom backend for release builds, replace PRODUCTION_API_URL with your hosted backend domain.
 
@@ -122,6 +171,12 @@ export const getSession = () => {
 export const initializeSession = async () => {
   if (Platform.OS === 'web') {
     try {
+      const customUrl = localStorage.getItem('nexus_custom_api_url');
+      if (customUrl) {
+        API_URL = customUrl;
+        SOCKET_URL = customUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+      }
+
       const token = localStorage.getItem('nexus_token');
       const refreshToken = localStorage.getItem('nexus_refresh_token');
       const userStr = localStorage.getItem('nexus_user');
@@ -139,6 +194,12 @@ export const initializeSession = async () => {
     }
   } else {
     try {
+      const customUrl = await AsyncStorage.getItem('nexus_custom_api_url');
+      if (customUrl) {
+        API_URL = customUrl;
+        SOCKET_URL = customUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+      }
+
       const token = await AsyncStorage.getItem('nexus_token');
       const refreshToken = await AsyncStorage.getItem('nexus_refresh_token');
       const userStr = await AsyncStorage.getItem('nexus_user');
@@ -182,8 +243,25 @@ export const clearSession = () => {
 
 let isRefreshing = false;
 
+const parseApiError = (payload: any, status: number) => {
+  if (typeof payload === 'string' && payload.trim()) {
+    return payload;
+  }
+  if (payload?.error) return payload.error;
+  if (payload?.message) return payload.message;
+  if (payload?.details) return payload.details;
+  return `HTTP Error ${status}: Request failed`;
+};
+
+const isAuthPath = (path: string) =>
+  path.startsWith('/api/auth/login') ||
+  path.startsWith('/api/auth/signup') ||
+  path.startsWith('/api/auth/register-tenant') ||
+  path.startsWith('/api/auth/refresh');
+
 // Generic safe fetch handler
 async function request(path: string, options: RequestInit = {}): Promise<any> {
+  await waitForSession();
   const { token } = getSession();
   const headers = new Headers(options.headers || {});
   headers.set('Content-Type', 'application/json');
@@ -248,10 +326,10 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    const errorMessage = errorData.error || `HTTP Error ${response.status}: Request failed`;
+    const errorMessage = parseApiError(errorData, response.status);
     
-    // Auto-logout UI redirect on persistent 401s to break infinite loops
-    if (response.status === 401) {
+    // Auto-logout on expired sessions (not during login/signup attempts)
+    if (response.status === 401 && !isAuthPath(path)) {
       clearSession();
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.location.href = '/login';
@@ -273,16 +351,30 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
+      if (data.mfaRequired) {
+        return data;
+      }
+      const token = data.token || data.accessToken;
+      if (!token) {
+        throw new Error('Login succeeded but no access token was returned.');
+      }
+      const userObj = data.user && typeof data.user === 'object' ? data.user : {
+        name: data.user,
+        role: data.role,
+        workspaceId: data.workspaceId,
+        email: data.email || email
+      };
+      setSession(token, userObj, data.refreshToken);
+      return data;
+    },
+    async signup(name: string, email: string, password: string) {
+      const data = await request('/api/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify({ name, email, password }),
+      });
       const token = data.token || data.accessToken;
       if (token) {
-        const userObj = data.user && typeof data.user === 'object' ? data.user : {
-          name: data.user,
-          role: data.role,
-          workspaceId: data.workspaceId,
-          email: data.email || email
-        };
-        // Securely bind the active session including the refresh token
-        setSession(token, userObj, data.refreshToken);
+        setSession(token, data.user, data.refreshToken);
       }
       return data;
     },
