@@ -182,7 +182,7 @@ export default function Login() {
               <View style={styles.settingsInputWrapper}>
                 <Server size={16} color="#64748b" style={styles.inputIcon} />
                 <TextInput 
-                  placeholder="http://YOUR_PC_IP:3001"
+                  placeholder="https://workspace-backend-r9f8.onrender.com"
                   placeholderTextColor="#475569"
                   style={styles.settingsInput}
                   value={customUrl}

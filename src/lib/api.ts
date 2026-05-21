@@ -53,16 +53,19 @@ const configuredSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL ? stripTrailingSl
 const LOCAL_API_URL = configuredApiUrl || `http://${BASE_IP}:${API_PORT}`;
 const LOCAL_SOCKET_URL = configuredSocketUrl || LOCAL_API_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
 
-// Optional cloud backend — set EXPO_PUBLIC_API_URL at build time to use it.
-const PRODUCTION_API_URL = 'https://workspace-dkwd.onrender.com';
-const PRODUCTION_SOCKET_URL = 'wss://workspace-dkwd.onrender.com';
+// Cloud backend (Render)
+const PRODUCTION_API_URL = 'https://workspace-backend-r9f8.onrender.com';
+const PRODUCTION_SOCKET_URL = 'wss://workspace-backend-r9f8.onrender.com';
 
-const useProductionBackend =
-  process.env.EXPO_PUBLIC_USE_PRODUCTION === 'true' ||
-  process.env.EXPO_PUBLIC_USE_PRODUCTION === '1';
+const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+const forceLocalBackend =
+  process.env.EXPO_PUBLIC_USE_LOCAL === 'true' ||
+  process.env.EXPO_PUBLIC_USE_LOCAL === '1';
 
-const defaultApiUrl = useProductionBackend ? PRODUCTION_API_URL : LOCAL_API_URL;
-const defaultSocketUrl = useProductionBackend ? PRODUCTION_SOCKET_URL : LOCAL_SOCKET_URL;
+const defaultApiUrl =
+  configuredApiUrl || (forceLocalBackend || isDev ? LOCAL_API_URL : PRODUCTION_API_URL);
+const defaultSocketUrl =
+  configuredSocketUrl || (forceLocalBackend || isDev ? LOCAL_SOCKET_URL : PRODUCTION_SOCKET_URL);
 
 export let API_URL = configuredApiUrl || defaultApiUrl;
 export let SOCKET_URL = configuredSocketUrl || defaultSocketUrl;
