@@ -12,11 +12,21 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const backendEntry = path.join(rootDir, 'backend-fastify', 'dist', 'index.js');
 
 if (!fs.existsSync(backendEntry)) {
-  console.error(
-    '[server.js] Backend not built. Run: npm run build:api\n' +
-      `Missing file: ${backendEntry}`
-  );
-  process.exit(1);
+  console.log('[server.js] dist missing — running build:api...');
+  const { execSync } = await import('node:child_process');
+  try {
+    execSync('npm run build:api', { cwd: rootDir, stdio: 'inherit' });
+  } catch (err) {
+    console.error(
+      '[server.js] Backend build failed. Run locally: npm run build:api\n' +
+        `Missing file: ${backendEntry}`
+    );
+    process.exit(1);
+  }
+  if (!fs.existsSync(backendEntry)) {
+    console.error(`[server.js] Build finished but file still missing: ${backendEntry}`);
+    process.exit(1);
+  }
 }
 
 require(backendEntry);
