@@ -30,7 +30,6 @@
     "dotenv": "^17.2.3",
     "esbuild": "^0.25.0",
     "expo": "~54.0.0",
-    "expo-dev-client": "^56.0.14",
     "expo-status-bar": "~3.0.9",
     "express": "^4.21.2",
     "firebase": "^12.13.0",
@@ -44,7 +43,6 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
-    "react-native-webrtc": "^124.0.7",
     "react-router-dom": "^7.15.1",
     "tailwind-merge": "^3.6.0",
     "vite": "^6.2.3"
