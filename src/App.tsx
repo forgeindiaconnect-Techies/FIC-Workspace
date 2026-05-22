@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { View, ActivityIndicator } from "react-native";
 import { BrowserRouter, Routes, Route, Navigate } from "./lib/router";
 import AppLayout from "./components/AppLayout";
@@ -9,12 +9,25 @@ import Mail from "./pages/Mail";
 import Chat from "./pages/Chat";
 import Tasks from "./pages/Tasks";
 import Files from "./pages/Files";
-import { waitForSession } from "./lib/api";
+import { waitForSession, getSession } from "./lib/api";
+
+/**
+ * ProtectedRoute — redirects to /login if no valid session token exists.
+ * This ensures the mobile app enforces authentication on all inner routes,
+ * consistent with the web application's auth guard behaviour.
+ */
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { token } = getSession();
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+}
 
 export default function App() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = React.useState(true);
 
-  useEffect(() => {
+  React.useEffect(() => {
     waitForSession().finally(() => {
       setLoading(false);
     });
@@ -22,7 +35,14 @@ export default function App() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#020617' }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#020617",
+        }}
+      >
         <ActivityIndicator size="large" color="#2563eb" />
       </View>
     );
@@ -31,9 +51,18 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public route */}
         <Route path="/login" element={<Login />} />
-        
-        <Route path="/" element={<AppLayout />}>
+
+        {/* Protected layout shell — all inner pages require authentication */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
           <Route index element={<Navigate to="/home" replace />} />
           <Route path="home" element={<Home />} />
           <Route path="meetings" element={<Meetings />} />
@@ -43,10 +72,9 @@ export default function App() {
           <Route path="files" element={<Files />} />
         </Route>
 
+        {/* Catch-all — redirect unknown paths to home */}
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
     </BrowserRouter>
   );
 }
-
-

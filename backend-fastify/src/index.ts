@@ -15,6 +15,8 @@ import { meetingRoutes } from './routes/meetings';
 import { mailRoutes } from './routes/mail';
 import { channelRoutes, kuralRoutes } from './routes/kural';
 import { memberRoutes } from './routes/members';
+import { taskRoutes } from './routes/tasks';
+import { docsRoutes } from './routes/docs';
 import { handleWebRtcSignalling } from './services/webrtc';
 import { handleMailSocket } from './services/mailSockets';
 import { ensureDefaultUser } from './utils/seedDefaultUser';
@@ -126,6 +128,8 @@ async function bootstrap() {
   await server.register(channelRoutes, { prefix: '/api/channels' });
   await server.register(kuralRoutes, { prefix: '/api/chat' });
   await server.register(memberRoutes, { prefix: '/api/members' });
+  await server.register(taskRoutes, { prefix: '/api/tasks' });
+  await server.register(docsRoutes, { prefix: '/api/docs' });
 
   // 4. ATTACH WEBRTC SIGNALLING & MAIL SOCKET CHANNELS
   server.get('/ws/webrtc', { websocket: true }, (connection: any, req: any) => {

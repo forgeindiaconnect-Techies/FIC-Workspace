@@ -19,7 +19,7 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     if (!to.startsWith('/')) {
       normalized = '/' + to;
     }
-    
+
     setPathname(normalized);
     if (options?.replace) {
       setHistory(prev => [...prev.slice(0, -1), normalized]);
@@ -61,35 +61,57 @@ interface RouteProps {
 export function Routes({ children }: { children: React.ReactNode }) {
   const context = useContext(NavigationContext);
   if (!context) throw new Error('Routes must be used within NavigationProvider');
-  
+
   const { pathname, navigate, setOutlet } = context;
 
   const routesArray = React.Children.toArray(children) as React.ReactElement<RouteProps>[];
-  
+
   let matchedElement: React.ReactNode | null = null;
   let activeOutlet: React.ReactNode | null = null;
 
   const loginRoute = routesArray.find(r => r.props.path === '/login');
   const mainLayoutRoute = routesArray.find(r => r.props.path === '/');
+  const wildcardRoute = routesArray.find(r => r.props.path === '*');
 
   if (pathname === '/login') {
     matchedElement = loginRoute ? loginRoute.props.element : null;
-  } else {
-    matchedElement = mainLayoutRoute ? mainLayoutRoute.props.element : null;
-    
-    if (mainLayoutRoute && mainLayoutRoute.props.children) {
-      const subRoutes = React.Children.toArray(mainLayoutRoute.props.children) as React.ReactElement<RouteProps>[];
-      const currentSubPath = pathname.substring(1); // e.g. "home" from "/home"
-      const matchedSub = subRoutes.find(r => r.props.path === currentSubPath || (r.props.index && currentSubPath === ''));
-      
-      if (matchedSub) {
-        activeOutlet = matchedSub.props.element;
-      } else {
-        const fallbackRoute = routesArray.find(r => r.props.path === '*');
-        if (fallbackRoute && fallbackRoute.props.element) {
-          activeOutlet = fallbackRoute.props.element;
+  } else if (pathname === '/' || pathname.startsWith('/')) {
+    // Try to match a top-level route first (non-layout routes)
+    const topLevelMatch = routesArray.find(r =>
+      r.props.path && r.props.path !== '/' && r.props.path !== '*' && r.props.path !== '/login' &&
+      pathname === r.props.path
+    );
+
+    if (topLevelMatch) {
+      matchedElement = topLevelMatch.props.element;
+    } else if (mainLayoutRoute) {
+      matchedElement = mainLayoutRoute.props.element;
+
+      if (mainLayoutRoute.props.children) {
+        const subRoutes = React.Children.toArray(mainLayoutRoute.props.children) as React.ReactElement<RouteProps>[];
+        // Strip leading slash for sub-path matching
+        const currentSubPath = pathname.replace(/^\//, ''); // e.g. "home" from "/home"
+
+        const matchedSub = subRoutes.find(r =>
+          r.props.path === currentSubPath ||
+          (r.props.index && (currentSubPath === '' || pathname === '/'))
+        );
+
+        if (matchedSub) {
+          activeOutlet = matchedSub.props.element;
+        } else {
+          // Check for wildcard in sub-routes
+          const subWildcard = subRoutes.find(r => r.props.path === '*');
+          if (subWildcard) {
+            activeOutlet = subWildcard.props.element;
+          } else if (wildcardRoute) {
+            // Top-level wildcard fallback
+            matchedElement = wildcardRoute.props.element;
+          }
         }
       }
+    } else if (wildcardRoute) {
+      matchedElement = wildcardRoute.props.element;
     }
   }
 
@@ -114,6 +136,6 @@ export function Navigate({ to, replace }: { to: string; replace?: boolean }) {
   const navigate = useNavigate();
   useEffect(() => {
     navigate(to, { replace });
-  }, [to, replace]);
+  }, [to, replace, navigate]);
   return null;
 }

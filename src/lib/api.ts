@@ -568,7 +568,10 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(updateData),
       });
-    }
+    },
+    async deleteDoc(id: string) {
+      return request(`/api/docs/${id}`, { method: 'DELETE' });
+    },
   },
 
   // Chat Module (Kural)
@@ -615,5 +618,28 @@ export const api = {
         body: JSON.stringify(memberData),
       });
     }
-  }
+  },
+
+  // Tasks Module
+  tasks: {
+    async getTasks(workspaceId: string, status?: string) {
+      const query = status ? `?status=${encodeURIComponent(status)}` : '';
+      return request(`/api/tasks/${workspaceId}${query}`);
+    },
+    async createTask(taskData: any) {
+      return request('/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify(taskData),
+      });
+    },
+    async updateTask(id: string, updateData: any) {
+      return request(`/api/tasks/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updateData),
+      });
+    },
+    async deleteTask(id: string) {
+      return request(`/api/tasks/${id}`, { method: 'DELETE' });
+    },
+  },
 };

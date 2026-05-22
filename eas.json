@@ -5,7 +5,10 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_USE_LOCAL": "true"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -13,10 +16,21 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://workspace-backend-r9f8.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://workspace-backend-r9f8.onrender.com",
+        "EXPO_PUBLIC_SOCKET_URL": "wss://workspace-backend-r9f8.onrender.com",
+        "EXPO_PUBLIC_USE_LOCAL": "false"
       }
     },
-    "production": {}
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://workspace-backend-r9f8.onrender.com",
+        "EXPO_PUBLIC_SOCKET_URL": "wss://workspace-backend-r9f8.onrender.com",
+        "EXPO_PUBLIC_USE_LOCAL": "false"
+      }
+    }
   },
   "submit": {
     "production": {}

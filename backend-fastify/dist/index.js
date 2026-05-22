@@ -1617,6 +1617,210 @@ async function memberRoutes(fastify2) {
   });
 }
 
+// backend-fastify/src/models/Task.ts
+var import_mongoose13 = require("mongoose");
+var TaskSchema = new import_mongoose13.Schema({
+  workspaceId: { type: String, required: true, index: true },
+  title: { type: String, required: true },
+  description: { type: String },
+  status: {
+    type: String,
+    enum: ["todo", "in-progress", "done"],
+    default: "todo"
+  },
+  priority: {
+    type: String,
+    enum: ["low", "medium", "high"],
+    default: "medium"
+  },
+  assigneeEmail: { type: String, lowercase: true, trim: true },
+  assigneeName: { type: String },
+  createdByEmail: { type: String, required: true, lowercase: true, trim: true },
+  dueDate: { type: Date },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+TaskSchema.index({ workspaceId: 1, status: 1 });
+TaskSchema.index({ workspaceId: 1, createdAt: -1 });
+TaskSchema.pre("save", function(next) {
+  this.updatedAt = /* @__PURE__ */ new Date();
+  next();
+});
+var Task = (0, import_mongoose13.model)("Task", TaskSchema);
+
+// backend-fastify/src/routes/tasks.ts
+var defaultWorkspaceId3 = "antigraviity-hq";
+async function taskRoutes(fastify2) {
+  fastify2.addHook("preValidation", authenticate);
+  fastify2.get("/:workspaceId", async (request, reply) => {
+    try {
+      const { workspaceId } = request.params;
+      const { status } = request.query;
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId3;
+      const filter = { workspaceId: activeWorkspaceId };
+      if (status) filter.status = status;
+      const tasks = await Task.find(filter).sort({ createdAt: -1 });
+      return reply.code(200).send(tasks);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to fetch tasks.", details: err.message });
+    }
+  });
+  fastify2.post("/", async (request, reply) => {
+    try {
+      const body = request.body;
+      const title = String(body.title || "").trim();
+      if (!title) {
+        return reply.code(400).send({ error: "Task title is required." });
+      }
+      const workspaceId = String(
+        body.workspaceId || request.user?.workspaceId || defaultWorkspaceId3
+      ).trim();
+      const task = await Task.create({
+        workspaceId,
+        title,
+        description: body.description || "",
+        status: body.status || "todo",
+        priority: body.priority || "medium",
+        assigneeEmail: body.assigneeEmail || "",
+        assigneeName: body.assigneeName || "",
+        createdByEmail: request.user?.email || "",
+        dueDate: body.dueDate ? new Date(body.dueDate) : void 0
+      });
+      return reply.code(201).send(task);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to create task.", details: err.message });
+    }
+  });
+  fastify2.patch("/:id", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const body = request.body;
+      const allowedFields = ["title", "description", "status", "priority", "assigneeEmail", "assigneeName", "dueDate"];
+      const update = { updatedAt: /* @__PURE__ */ new Date() };
+      for (const field of allowedFields) {
+        if (body[field] !== void 0) {
+          update[field] = field === "dueDate" ? new Date(body[field]) : body[field];
+        }
+      }
+      const task = await Task.findByIdAndUpdate(id, update, { new: true });
+      if (!task) {
+        return reply.code(404).send({ error: "Task not found." });
+      }
+      return reply.code(200).send(task);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to update task.", details: err.message });
+    }
+  });
+  fastify2.delete("/:id", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const task = await Task.findByIdAndDelete(id);
+      if (!task) {
+        return reply.code(404).send({ error: "Task not found." });
+      }
+      return reply.code(200).send({ message: "Task deleted successfully." });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to delete task.", details: err.message });
+    }
+  });
+}
+
+// backend-fastify/src/models/Document.ts
+var import_mongoose14 = require("mongoose");
+var DocumentSchema = new import_mongoose14.Schema({
+  workspaceId: { type: String, required: true, index: true },
+  title: { type: String, required: true },
+  type: {
+    type: String,
+    enum: ["doc", "sheet", "pdf", "folder", "other"],
+    default: "doc"
+  },
+  ownerEmail: { type: String, required: true, lowercase: true, trim: true },
+  ownerName: { type: String },
+  sizeBytes: { type: Number, default: 0 },
+  url: { type: String },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+DocumentSchema.index({ workspaceId: 1, createdAt: -1 });
+DocumentSchema.pre("save", function(next) {
+  this.updatedAt = /* @__PURE__ */ new Date();
+  next();
+});
+var WorkspaceDocument = (0, import_mongoose14.model)("WorkspaceDocument", DocumentSchema);
+
+// backend-fastify/src/routes/docs.ts
+var defaultWorkspaceId4 = "antigraviity-hq";
+async function docsRoutes(fastify2) {
+  fastify2.addHook("preValidation", authenticate);
+  fastify2.get("/:workspaceId", async (request, reply) => {
+    try {
+      const { workspaceId } = request.params;
+      const { type } = request.query;
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId4;
+      const filter = { workspaceId: activeWorkspaceId };
+      if (type) filter.type = type;
+      const docs = await WorkspaceDocument.find(filter).sort({ createdAt: -1 });
+      return reply.code(200).send(docs);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to fetch documents.", details: err.message });
+    }
+  });
+  fastify2.post("/create", async (request, reply) => {
+    try {
+      const body = request.body;
+      const title = String(body.title || "").trim();
+      if (!title) {
+        return reply.code(400).send({ error: "Document title is required." });
+      }
+      const workspaceId = String(
+        body.workspaceId || request.user?.workspaceId || defaultWorkspaceId4
+      ).trim();
+      const doc = await WorkspaceDocument.create({
+        workspaceId,
+        title,
+        type: body.type || "doc",
+        ownerEmail: request.user?.email || "",
+        ownerName: request.user?.name || "",
+        sizeBytes: body.sizeBytes || 0,
+        url: body.url || ""
+      });
+      return reply.code(201).send(doc);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to create document.", details: err.message });
+    }
+  });
+  fastify2.patch("/:id", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const body = request.body;
+      const doc = await WorkspaceDocument.findByIdAndUpdate(
+        id,
+        { ...body, updatedAt: /* @__PURE__ */ new Date() },
+        { new: true }
+      );
+      if (!doc) {
+        return reply.code(404).send({ error: "Document not found." });
+      }
+      return reply.code(200).send(doc);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to update document.", details: err.message });
+    }
+  });
+  fastify2.delete("/:id", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const doc = await WorkspaceDocument.findByIdAndDelete(id);
+      if (!doc) {
+        return reply.code(404).send({ error: "Document not found." });
+      }
+      return reply.code(200).send({ message: "Document deleted." });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to delete document.", details: err.message });
+    }
+  });
+}
+
 // backend-fastify/src/services/webrtc.ts
 var import_ws = require("ws");
 var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
@@ -2012,6 +2216,8 @@ async function bootstrap() {
   await server.register(channelRoutes, { prefix: "/api/channels" });
   await server.register(kuralRoutes, { prefix: "/api/chat" });
   await server.register(memberRoutes, { prefix: "/api/members" });
+  await server.register(taskRoutes, { prefix: "/api/tasks" });
+  await server.register(docsRoutes, { prefix: "/api/docs" });
   server.get("/ws/webrtc", { websocket: true }, (connection, req) => {
     server.log.info("New secure WebRTC client socket handshake initiated.");
     handleWebRtcSignalling(connection.socket);
