@@ -378,7 +378,7 @@ export default function Tasks() {
                               onPress={() => handleStatusChange(task, c.id as Status)}
                             >
                               <Text style={[styles.moveBtnText, { color: c.color }]}>
-                                → {c.title}
+                                 {c.title}
                               </Text>
                             </TouchableOpacity>
                           ))}

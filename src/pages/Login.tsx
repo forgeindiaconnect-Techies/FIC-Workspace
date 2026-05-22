@@ -17,10 +17,9 @@ export default function Login() {
   const navigate = useNavigate();
   const [mode, setMode] = React.useState<AuthMode>('login');
   const [loading, setLoading] = React.useState(false);
-  const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
   const [name, setName] = React.useState('');
-  const [email, setEmail] = React.useState(isDev ? 'admin@antigraviity.com' : '');
-  const [password, setPassword] = React.useState(isDev ? 'password123' : '');
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [showSettings, setShowSettings] = React.useState(false);
@@ -29,9 +28,9 @@ export default function Login() {
 
   React.useEffect(() => {
     (async () => {
-      if (!isDev) {
-        await useCloudServer();
-      }
+      // Always use cloud server unless explicitly set to local via env var
+      // This ensures Expo Go on physical devices connects to production, not LAN
+      await useCloudServer();
       setCustomUrl(getCustomServerUrl());
       const health = await checkBackendHealth();
       if (!health.ok) {
@@ -109,7 +108,7 @@ export default function Login() {
       setLoading(false);
       const message = err.message || (mode === 'signup' ? 'Sign up failed' : 'Invalid credentials');
       const hint = message.includes('503') || message.toLowerCase().includes('database')
-        ? ' Fix MONGO_URI on Render — encode @ in password as %40.'
+        ? ' Fix MONGO_URI on Render  encode @ in password as %40.'
         : message.toLowerCase().includes('invalid') || message.includes('401')
           ? ` Use cloud server: ${PRODUCTION_API_URL}`
           : '';
@@ -173,7 +172,7 @@ export default function Login() {
             <View style={styles.inputWrapper}>
               <Lock size={18} color="#64748b" style={styles.inputIcon} />
               <TextInput 
-                placeholder="••••••••"
+                placeholder=""
                 placeholderTextColor="#475569"
                 style={styles.input}
                 secureTextEntry
@@ -190,7 +189,7 @@ export default function Login() {
               <View style={styles.inputWrapper}>
                 <Lock size={18} color="#64748b" style={styles.inputIcon} />
                 <TextInput
-                  placeholder="••••••••"
+                  placeholder=""
                   placeholderTextColor="#475569"
                   style={styles.input}
                   secureTextEntry

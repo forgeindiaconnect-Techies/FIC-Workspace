@@ -73,10 +73,22 @@ const forceLocalBackend =
   process.env.EXPO_PUBLIC_USE_LOCAL === 'true' ||
   process.env.EXPO_PUBLIC_USE_LOCAL === '1';
 
+// On a physical device running Expo Go, the Metro host is the dev machine LAN IP.
+// We should NOT use that as the API server - use production instead.
+// Only use local backend if explicitly forced via EXPO_PUBLIC_USE_LOCAL=true.
+const isPhysicalDevice =
+  Platform.OS !== 'web' &&
+  typeof NativeModules.SourceCode?.scriptURL === 'string' &&
+  (NativeModules.SourceCode.scriptURL.includes('192.168.') ||
+   NativeModules.SourceCode.scriptURL.includes('10.0.') ||
+   NativeModules.SourceCode.scriptURL.includes('172.'));
+
+const useLocal = forceLocalBackend && !isPhysicalDevice;
+
 const defaultApiUrl =
-  configuredApiUrl || (forceLocalBackend || isDev ? LOCAL_API_URL : PRODUCTION_API_URL);
+  configuredApiUrl || (useLocal ? LOCAL_API_URL : PRODUCTION_API_URL);
 const defaultSocketUrl =
-  configuredSocketUrl || (forceLocalBackend || isDev ? LOCAL_SOCKET_URL : PRODUCTION_SOCKET_URL);
+  configuredSocketUrl || (useLocal ? LOCAL_SOCKET_URL : PRODUCTION_SOCKET_URL);
 
 export let API_URL = configuredApiUrl || defaultApiUrl;
 export let SOCKET_URL = configuredSocketUrl || defaultSocketUrl;
@@ -173,7 +185,8 @@ const applyStoredApiUrl = async () => {
   }
 
   if (customUrl) {
-    if (!isDev && isStaleCustomUrl(customUrl)) {
+    // Always clear stale LAN/localhost URLs - they only work on the same machine
+    if (isStaleCustomUrl(customUrl)) {
       await useCloudServer();
       return;
     }
@@ -182,7 +195,8 @@ const applyStoredApiUrl = async () => {
     return;
   }
 
-  if (!isDev && !configuredApiUrl) {
+  // Default: always use production unless explicitly forced to local
+  if (!useLocal) {
     API_URL = PRODUCTION_API_URL;
     SOCKET_URL = PRODUCTION_SOCKET_URL;
   }

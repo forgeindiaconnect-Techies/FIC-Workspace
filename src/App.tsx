@@ -12,7 +12,7 @@ import Files from "./pages/Files";
 import { waitForSession, getSession } from "./lib/api";
 
 /**
- * ProtectedRoute — redirects to /login if no valid session token exists.
+ * ProtectedRoute  redirects to /login if no valid session token exists.
  * This ensures the mobile app enforces authentication on all inner routes,
  * consistent with the web application's auth guard behaviour.
  */
@@ -54,7 +54,7 @@ export default function App() {
         {/* Public route */}
         <Route path="/login" element={<Login />} />
 
-        {/* Protected layout shell — all inner pages require authentication */}
+        {/* Protected layout shell  all inner pages require authentication */}
         <Route
           path="/"
           element={
@@ -72,7 +72,7 @@ export default function App() {
           <Route path="files" element={<Files />} />
         </Route>
 
-        {/* Catch-all — redirect unknown paths to home */}
+        {/* Catch-all  redirect unknown paths to home */}
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
     </BrowserRouter>

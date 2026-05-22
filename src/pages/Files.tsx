@@ -89,7 +89,7 @@ export default function Files() {
         }));
         setFilesList(mapped);
       } else {
-        // No docs yet — keep mock data as placeholder
+        // No docs yet  keep mock data as placeholder
         setFilesList(MOCK_FILES);
       }
     } catch (err) {

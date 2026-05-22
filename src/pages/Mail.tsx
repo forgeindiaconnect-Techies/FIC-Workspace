@@ -115,7 +115,7 @@ export default function Mail() {
 
     let ws: WebSocket | null = null;
     try {
-      // Derive WebSocket base: replace https:// → wss:// and http:// → ws://
+      // Derive WebSocket base: replace https://  wss:// and http://  ws://
       const wsBase = SOCKET_URL.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
       const wsUrl = `${wsBase}/ws/mail?email=${encodeURIComponent(user.email)}`;
       ws = new WebSocket(wsUrl);
@@ -462,7 +462,7 @@ export default function Mail() {
                   onPress={handleAiSuggest}
                   disabled={aiGenerating}
                 >
-                  {aiGenerating ? <ActivityIndicator size="small" color="#8b5cf6" /> : <Text style={styles.aiBtnText}>✨ AI Suggest</Text>}
+                  {aiGenerating ? <ActivityIndicator size="small" color="#8b5cf6" /> : <Text style={styles.aiBtnText}> AI Suggest</Text>}
                 </TouchableOpacity>
 
                 <TouchableOpacity 
