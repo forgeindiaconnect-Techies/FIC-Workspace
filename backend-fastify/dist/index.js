@@ -2152,11 +2152,21 @@ async function bootstrap() {
   await server.register(docsRoutes, { prefix: "/api/docs" });
   server.get("/ws/webrtc", { websocket: true }, (connection, req) => {
     server.log.info("New secure WebRTC client socket handshake initiated.");
-    handleWebRtcSignalling(connection.socket);
+    const socket = connection?.socket || connection;
+    if (!socket?.on) {
+      server.log.error("WebRTC websocket upgrade did not provide a valid socket.");
+      return;
+    }
+    handleWebRtcSignalling(socket);
   });
   server.get("/ws/mail", { websocket: true }, (connection, req) => {
     server.log.info("New secure Mail Socket connection initiated.");
-    handleMailSocket(connection.socket, req);
+    const socket = connection?.socket || connection;
+    if (!socket?.on) {
+      server.log.error("Mail websocket upgrade did not provide a valid socket.");
+      return;
+    }
+    handleMailSocket(socket, req);
   });
   server.get("/health", async () => {
     const connected = isMongoConnected();

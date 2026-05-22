@@ -134,12 +134,22 @@ async function bootstrap() {
   // 4. ATTACH WEBRTC SIGNALLING & MAIL SOCKET CHANNELS
   server.get('/ws/webrtc', { websocket: true }, (connection: any, req: any) => {
     server.log.info('New secure WebRTC client socket handshake initiated.');
-    handleWebRtcSignalling(connection.socket);
+    const socket = connection?.socket || connection;
+    if (!socket?.on) {
+      server.log.error('WebRTC websocket upgrade did not provide a valid socket.');
+      return;
+    }
+    handleWebRtcSignalling(socket);
   });
 
   server.get('/ws/mail', { websocket: true }, (connection: any, req: any) => {
     server.log.info('New secure Mail Socket connection initiated.');
-    handleMailSocket(connection.socket, req);
+    const socket = connection?.socket || connection;
+    if (!socket?.on) {
+      server.log.error('Mail websocket upgrade did not provide a valid socket.');
+      return;
+    }
+    handleMailSocket(socket, req);
   });
 
   // Status check endpoint
