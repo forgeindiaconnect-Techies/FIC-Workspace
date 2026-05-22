@@ -135,29 +135,55 @@ export default function Meetings() {
   }, []);
 
   // Connect signaling WebSocket for peer presence
-  const connectSignaling = (roomId: string, token: string) => {
+  const connectSignaling = (signalingRoomId: string, token: string) => {
     try {
-      const wsUrl = SOCKET_URL.replace(/^http/, 'ws') + '/ws/webrtc';
+      // Build correct WebSocket URL from SOCKET_URL
+      // SOCKET_URL may be wss:// or https://  normalize to wss://
+      const wsBase = SOCKET_URL
+        .replace(/^https:\/\//, 'wss://')
+        .replace(/^http:\/\//, 'ws://')
+        .replace(/\/+$/, '');
+      const wsUrl = `${wsBase}/ws/webrtc`;
+      console.log('[Signaling] Connecting to:', wsUrl, 'room:', signalingRoomId);
+
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
-      ws.onopen = () => ws.send(JSON.stringify({ type: 'join', data: { token, roomId } }));
+
+      ws.onopen = () => {
+        console.log('[Signaling] Connected, joining room:', signalingRoomId);
+        ws.send(JSON.stringify({ type: 'join', data: { token, roomId: signalingRoomId } }));
+      };
+
       ws.onmessage = (e: any) => {
         try {
           const msg = JSON.parse(e.data);
+          console.log('[Signaling] Received:', msg.type);
           if (msg.type === 'joined') {
-            setRemotePeers((msg.existingPeers || []).map((p: any) => ({ id: p.peerId, name: p.name })));
+            const peers = (msg.existingPeers || []).map((p: any) => ({ id: p.peerId, name: p.name }));
+            setRemotePeers(peers);
+            console.log('[Signaling] Joined room. Existing peers:', peers.length);
           }
           if (msg.type === 'peer-joined') {
             setRemotePeers(prev => [...prev.filter(p => p.id !== msg.peerId), { id: msg.peerId, name: msg.name }]);
+            console.log('[Signaling] Peer joined:', msg.name);
           }
           if (msg.type === 'peer-left') {
             setRemotePeers(prev => prev.filter(p => p.id !== msg.peerId));
+            console.log('[Signaling] Peer left:', msg.peerId);
           }
-        } catch {}
+          if (msg.type === 'error') {
+            console.warn('[Signaling] Server error:', msg.message);
+          }
+        } catch (err) {
+          console.warn('[Signaling] Parse error:', err);
+        }
       };
-      ws.onerror = () => {};
-      ws.onclose = () => {};
-    } catch {}
+
+      ws.onerror = (e: any) => console.warn('[Signaling] WS error:', e?.message || e);
+      ws.onclose = (e: any) => console.log('[Signaling] WS closed. Code:', e?.code);
+    } catch (err) {
+      console.warn('[Signaling] Failed to connect:', err);
+    }
   };
 
   // Request permissions and enter room
@@ -194,9 +220,14 @@ export default function Meetings() {
       setIsSharing(false);
       setFacing('front');
 
-      // Connect signaling for peer presence tracking
+      // Connect signaling using the canonical _id as room key
+      // This ensures all users with the same meeting join the same signaling room
       const { token } = getSession();
-      if (token) connectSignaling(room.id, token);
+      if (token && room.signalingId) {
+        connectSignaling(room.signalingId, token);
+      } else if (token && room.id && !String(room.id).startsWith('local-')) {
+        connectSignaling(room.id, token);
+      }
 
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Could not start meeting.');
@@ -242,14 +273,20 @@ export default function Meetings() {
       const res = await api.meetings.registerLiveMeeting({ title: meetTitle, password: meetPass || undefined });
       if (res?._id) await api.meetings.startMeeting(res._id).catch(() => {});
       setCreateModal(false);
-      const room = { id: res._id, title: res.title, roomId: res.joinCode, password: meetPass };
+      // Use _id as the signaling room key  joiners will also resolve to this same _id
+      const room = {
+        id: res._id,
+        title: res.title,
+        roomId: res.joinCode,
+        password: meetPass,
+        signalingId: res._id,
+      };
       setMeetTitle(''); setMeetPass('');
       await enterRoom(room);
-    } catch {
+    } catch (err: any) {
       setCreateModal(false);
-      const room = { id: 'local-' + Date.now(), title: meetTitle, roomId: 'NEX-' + Math.random().toString(36).slice(2, 8).toUpperCase(), password: meetPass };
-      setMeetTitle(''); setMeetPass('');
-      await enterRoom(room);
+      Alert.alert('Error', err?.message || 'Could not create meeting. Check your connection.');
+      setLoading(false);
     }
   };
 
@@ -260,14 +297,26 @@ export default function Meetings() {
     try {
       const res = await api.meetings.validateMeeting(code, joinPass || undefined);
       setJoinModal(false);
-      const room = { id: res._id || code, title: res.title || `Room ${code}`, roomId: res.joinCode || code, password: joinPass };
+      // CRITICAL: always use res._id as the signaling room key so all users
+      // join the same WebSocket room regardless of how they entered the code
+      const signalingRoomId = res._id || res.meetingId || res.roomId || code;
+      const room = {
+        id: signalingRoomId,
+        title: res.title || `Room ${code}`,
+        roomId: res.joinCode || code,
+        password: joinPass,
+        signalingId: signalingRoomId,
+      };
       setJoinCode(''); setJoinPass('');
       await enterRoom(room);
-    } catch {
+    } catch (err: any) {
       setJoinModal(false);
-      const room = { id: code, title: `Room ${code}`, roomId: code, password: joinPass };
-      setJoinCode(''); setJoinPass('');
-      await enterRoom(room);
+      Alert.alert(
+        'Could not join',
+        `Meeting "${code}" not found or invalid passcode.\n\n${err?.message || 'Check the meeting ID and try again.'}`,
+        [{ text: 'OK' }]
+      );
+      setLoading(false);
     }
   };
 
