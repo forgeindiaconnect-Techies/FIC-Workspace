@@ -136,7 +136,7 @@ export default function Meetings() {
   }, []);
 
   // Connect signaling WebSocket for peer presence
-  const connectSignaling = (signalingRoomId: string, token: string) => {
+  const connectSignaling = (signalingRoomId: string, token: string, publicRoomId?: string) => {
     try {
       // Build correct WebSocket URL from SOCKET_URL
       // SOCKET_URL may be wss:// or https://  normalize to wss://
@@ -158,7 +158,15 @@ export default function Meetings() {
 
       ws.onopen = () => {
         console.log('[Signaling] Connected, joining room:', signalingRoomId);
-        ws.send(JSON.stringify({ type: 'join', data: { token, meetingId: signalingRoomId } }));
+        ws.send(JSON.stringify({
+          type: 'join',
+          data: {
+            token,
+            meetingId: signalingRoomId,
+            roomId: publicRoomId || signalingRoomId,
+            joinCode: publicRoomId || undefined,
+          }
+        }));
       };
 
       ws.onmessage = (e: any) => {
@@ -240,7 +248,7 @@ export default function Meetings() {
       const finalSignalingId = room.signalingId || (room.id && !String(room.id).startsWith('local-') ? room.id : null);
       
       if (token && finalSignalingId) {
-        connectSignaling(finalSignalingId, token);
+        connectSignaling(finalSignalingId, token, room.roomId || room.joinCode);
       }
 
     } catch (err: any) {
@@ -674,8 +682,19 @@ export default function Meetings() {
             setLoading(true);
             try {
               const res = await api.meetings.validateMeeting(String(m.id), undefined);
-              await enterRoom({ id: res._id || m.id, title: res.title || m.title, roomId: res.joinCode || m.id });
-            } catch { await enterRoom(m); }
+              const signalingRoomId = res._id || res.meetingId;
+              if (!signalingRoomId) {
+                throw new Error('Meeting resolved but no valid meeting ID was returned.');
+              }
+              await enterRoom({
+                id: signalingRoomId,
+                title: res.title || m.title,
+                roomId: res.joinCode || m.id,
+                signalingId: signalingRoomId,
+              });
+            } catch (err: any) {
+              Alert.alert('Could not join', err?.message || 'This meeting could not be resolved on the server.');
+            }
             finally { setLoading(false); }
           }}>
             <View style={[s.meetColorBar, { backgroundColor: m.color }]} />

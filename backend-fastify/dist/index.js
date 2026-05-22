@@ -1840,8 +1840,27 @@ async function resolveCanonicalMeetingId(idOrCode) {
     const meeting2 = await Meeting.findById(value).select("_id").lean();
     if (meeting2?._id) return meeting2._id.toString();
   }
-  const meeting = await Meeting.findOne({ joinCode: normalizeJoinCode(value) }).select("_id").lean();
+  const meeting = await Meeting.findOne({ joinCode: normalizeJoinCode(value) }).sort({ createdAt: 1, _id: 1 }).select("_id").lean();
   return meeting?._id?.toString() || null;
+}
+async function resolveCanonicalMeetingRoom(idOrCode, publicCode) {
+  const normalizedPublicCode = publicCode ? normalizeJoinCode(publicCode) : "";
+  if (normalizedPublicCode) {
+    const meeting = await Meeting.findOne({ joinCode: normalizedPublicCode }).sort({ createdAt: 1, _id: 1 }).select("_id").lean();
+    if (meeting?._id) return meeting._id.toString();
+  }
+  const value = String(idOrCode || "").trim();
+  if (!value) return null;
+  if (import_mongoose15.Types.ObjectId.isValid(value)) {
+    const meeting = await Meeting.findById(value).select("_id joinCode").lean();
+    if (!meeting?._id) return null;
+    if (meeting.joinCode) {
+      const canonicalByCode = await resolveCanonicalMeetingId(meeting.joinCode);
+      if (canonicalByCode) return canonicalByCode;
+    }
+    return meeting._id.toString();
+  }
+  return resolveCanonicalMeetingId(value);
 }
 function send(ws, payload) {
   if (ws.readyState === import_ws.WebSocket.OPEN) {
@@ -1882,8 +1901,8 @@ function handleWebRtcSignalling(ws) {
     }
     const { type, data = {} } = msg;
     if (type === "join") {
-      const { token, meetingId: mid, roomId } = data;
-      const resolvedMeetingId = mid || roomId;
+      const { token, meetingId: mid, roomId, joinCode } = data;
+      const resolvedMeetingId = mid || roomId || joinCode;
       if (!token || !resolvedMeetingId) {
         return send(ws, { type: "error", message: "token and meetingId required" });
       }
@@ -1895,7 +1914,7 @@ function handleWebRtcSignalling(ws) {
       }
       const user = await User.findById(decoded.userId).catch(() => null);
       if (!user) return send(ws, { type: "error", message: "User not found" });
-      const canonicalMeetingId = await resolveCanonicalMeetingId(resolvedMeetingId);
+      const canonicalMeetingId = await resolveCanonicalMeetingRoom(resolvedMeetingId, joinCode || roomId);
       if (!canonicalMeetingId) {
         return send(ws, { type: "error", message: "Meeting not found" });
       }
