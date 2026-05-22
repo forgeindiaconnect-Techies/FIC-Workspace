@@ -1,15 +1,24 @@
 import React from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Platform, Modal, TextInput, ActivityIndicator, Alert,
+  Dimensions, Platform, Modal, TextInput, ActivityIndicator,
+  Alert, PermissionsAndroid,
 } from 'react-native';
 import {
   Video, Plus, Calendar, Clock, Users, Play, Bell, BellRing,
-  Mic, MicOff, VideoOff, PhoneOff, Share, Copy, Lock, Shield,
-  X, Send, MessageSquare, Activity, LogIn, ChevronRight,
-  Wifi, ScreenShare,
+  Mic, MicOff, VideoOff, PhoneOff, Copy, Lock, Shield,
+  X, Send, MessageSquare, LogIn, ChevronRight, Wifi, ScreenShare,
 } from 'lucide-react-native';
-import { api, getSession } from '../lib/api';
+import { api, getSession, SOCKET_URL } from '../lib/api';
+
+// react-native-webrtc -- native camera/audio on Android & iOS
+import {
+  RTCPeerConnection,
+  RTCIceCandidate,
+  RTCSessionDescription,
+  mediaDevices,
+  RTCView,
+} from 'react-native-webrtc';
 
 const { width } = Dimensions.get('window');
 const isMobile = width < 768;
@@ -24,9 +33,15 @@ const MOCK_HISTORY = [
   { id: 'h2', title: 'Sprint Retrospective', time: 'Mon', duration: '45m', attendees: 6, color: '#64748b', status: 'ended' },
 ];
 const ROOMS = [
-  { id: 'NEXUS-BOARDROOM', title: 'General Boardroom', emoji: '', members: 4, color: '#2563eb' },
-  { id: 'NEXUS-ENG', title: 'Developer Sandbox', emoji: '', members: 2, color: '#0f766e' },
-  { id: 'NEXUS-DESIGN', title: 'UX Design Workshop', emoji: '', members: 0, color: '#7c3aed' },
+  { id: 'NEXUS-BOARDROOM', title: 'General Boardroom', emoji: 'BR', members: 4, color: '#2563eb' },
+  { id: 'NEXUS-ENG', title: 'Developer Sandbox', emoji: 'DS', members: 2, color: '#0f766e' },
+  { id: 'NEXUS-DESIGN', title: 'UX Design Workshop', emoji: 'UX', members: 0, color: '#7c3aed' },
+];
+
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
 ];
 
 const fmtDur = (s: number) =>
@@ -35,6 +50,23 @@ const fmtDur = (s: number) =>
 const avatarFor = (name: string) =>
   String(name || 'U').trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'U';
 
+// Request Android permissions for camera and microphone
+async function requestPermissions(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  try {
+    const granted = await PermissionsAndroid.requestMultiple([
+      PermissionsAndroid.PERMISSIONS.CAMERA,
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+    ]);
+    return (
+      granted[PermissionsAndroid.PERMISSIONS.CAMERA] === PermissionsAndroid.RESULTS.GRANTED &&
+      granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED
+    );
+  } catch {
+    return false;
+  }
+}
+
 export default function Meetings() {
   const [meetings, setMeetings] = React.useState<any[]>(MOCK_MEETINGS);
   const [history] = React.useState<any[]>(MOCK_HISTORY);
@@ -42,7 +74,7 @@ export default function Meetings() {
   const [activeRoom, setActiveRoom] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
 
-  /* modals */
+  // Modals
   const [createModal, setCreateModal] = React.useState(false);
   const [joinModal, setJoinModal] = React.useState(false);
   const [scheduleModal, setScheduleModal] = React.useState(false);
@@ -51,7 +83,7 @@ export default function Meetings() {
   const [summaryText, setSummaryText] = React.useState('');
   const [summaryLoading, setSummaryLoading] = React.useState(false);
 
-  /* form state */
+  // Form state
   const [meetTitle, setMeetTitle] = React.useState('');
   const [meetPass, setMeetPass] = React.useState('');
   const [joinCode, setJoinCode] = React.useState('');
@@ -61,24 +93,33 @@ export default function Meetings() {
   const [schedTime, setSchedTime] = React.useState('10:00 AM');
   const [schedDur, setSchedDur] = React.useState('45');
 
-  /* in-call state */
+  // In-call state
   const [isMuted, setIsMuted] = React.useState(false);
   const [isVideoOff, setIsVideoOff] = React.useState(false);
-  const [isSharing, setIsSharing] = React.useState(false);
   const [callDur, setCallDur] = React.useState(0);
-  const [sidePanel, setSidePanel] = React.useState<'chat'|'people'|null>(null);
-  const [chatMsgs, setChatMsgs] = React.useState([{ id: '1', sender: 'Sarah', text: 'Ready to start!', time: '10:04 AM' }]);
+  const [sidePanel, setSidePanel] = React.useState<'chat' | 'people' | null>(null);
+  const [chatMsgs, setChatMsgs] = React.useState([
+    { id: '1', sender: 'System', text: 'Meeting started. Say hello!', time: '' },
+  ]);
   const [chatInput, setChatInput] = React.useState('');
-  const [audioLevels, setAudioLevels] = React.useState([8, 8, 8, 8, 8]);
-  const [realPeers, setRealPeers] = React.useState<any[]>([]);
-  const videoRef = React.useRef<any>(null);
-  const [mediaStream, setMediaStream] = React.useState<any>(null);
-  const [camOk, setCamOk] = React.useState(false);
+  const [audioLevels, setAudioLevels] = React.useState([4, 4, 4, 4, 4]);
+
+  // WebRTC state
+  const [localStream, setLocalStream] = React.useState<any>(null);
+  const [remoteStreams, setRemoteStreams] = React.useState<Map<string, any>>(new Map());
+  const [remotePeers, setRemotePeers] = React.useState<Map<string, { name: string; avatarUrl?: string }>>(new Map());
+  const [camPermission, setCamPermission] = React.useState<'unknown' | 'granted' | 'denied'>('unknown');
+
+  // Refs
+  const wsRef = React.useRef<WebSocket | null>(null);
+  const peerConnsRef = React.useRef<Map<string, RTCPeerConnection>>(new Map());
+  const localStreamRef = React.useRef<any>(null);
+  const myPeerIdRef = React.useRef<string | null>(null);
 
   const { user } = getSession();
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
 
-  /* -- timers -- */
+  // Call timer
   React.useEffect(() => {
     let t: any;
     if (activeRoom) { t = setInterval(() => setCallDur(p => p + 1), 1000); }
@@ -86,6 +127,7 @@ export default function Meetings() {
     return () => clearInterval(t);
   }, [activeRoom]);
 
+  // Audio level animation
   React.useEffect(() => {
     let t: any;
     if (activeRoom && !isMuted) {
@@ -95,37 +137,18 @@ export default function Meetings() {
         Math.floor(Math.random() * 65) + 10,
         Math.floor(Math.random() * 85) + 15,
         Math.floor(Math.random() * 45) + 10,
-      ]), 130);
+      ]), 150);
     } else { setAudioLevels([4, 4, 4, 4, 4]); }
     return () => clearInterval(t);
   }, [activeRoom, isMuted]);
 
-  /* -- camera -- */
-  React.useEffect(() => {
-    if (activeRoom && !isVideoOff && Platform.OS === 'web') {
-      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then(stream => {
-          setMediaStream(stream); setCamOk(true);
-          setTimeout(() => { if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play().catch(() => {}); } }, 300);
-        })
-        .catch(() => setCamOk(false));
-    } else {
-      if (mediaStream) { mediaStream.getTracks().forEach((t: any) => t.stop()); setMediaStream(null); }
-    }
-    return () => { if (mediaStream) mediaStream.getTracks().forEach((t: any) => t.stop()); };
-  }, [activeRoom, isVideoOff]);
-
-  React.useEffect(() => {
-    if (mediaStream) mediaStream.getAudioTracks().forEach((t: any) => { t.enabled = !isMuted; });
-  }, [isMuted, mediaStream]);
-
-  /* -- fullscreen flag -- */
+  // Fullscreen flag
   React.useEffect(() => {
     (global as any).isFullScreenMeetingActive = !!activeRoom;
     return () => { (global as any).isFullScreenMeetingActive = false; };
   }, [activeRoom]);
 
-  /* -- fetch meetings -- */
+  // Fetch meetings list
   React.useEffect(() => {
     api.meetings.getMeetings(workspaceId).then((data: any[]) => {
       if (Array.isArray(data) && data.length > 0) {
@@ -141,20 +164,271 @@ export default function Meetings() {
     }).catch(() => {});
   }, []);
 
-  /* -- peers poll -- */
-  React.useEffect(() => {
-    if (!activeRoom) { setRealPeers([]); return; }
-    const fetch = () => api.meetings.getParticipants(activeRoom.id).then((p: any[]) => { if (Array.isArray(p)) setRealPeers(p); }).catch(() => {});
-    fetch();
-    const t = setInterval(fetch, 4000);
-    return () => clearInterval(t);
-  }, [activeRoom]);
+  //  WebRTC helpers 
 
-  /* -- actions -- */
+  const createPeerConnection = (targetPeerId: string): RTCPeerConnection => {
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+    // Add local tracks to this connection
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track: any) => {
+        pc.addTrack(track, localStreamRef.current);
+      });
+    }
+
+    const pcAny = pc as any;
+
+    // When we receive a remote track, store it
+    pcAny.addEventListener('track', (event: any) => {
+      const stream = event.streams?.[0];
+      if (stream) {
+        setRemoteStreams(prev => {
+          const next = new Map(prev);
+          next.set(targetPeerId, stream);
+          return next;
+        });
+      }
+    });
+
+    // Relay ICE candidates through signaling server
+    pcAny.addEventListener('icecandidate', (event: any) => {
+      if (event.candidate && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'ice-candidate',
+          data: { targetPeerId, candidate: event.candidate },
+        }));
+      }
+    });
+
+    pcAny.addEventListener('connectionstatechange', () => {
+      const state = pcAny.connectionState;
+      if (state === 'failed' || state === 'disconnected') {
+        setRemoteStreams(prev => { const n = new Map(prev); n.delete(targetPeerId); return n; });
+      }
+    });
+
+    peerConnsRef.current.set(targetPeerId, pc);
+    return pc;
+  };
+
+  const connectSignaling = (roomId: string, token: string) => {
+    const wsUrl = SOCKET_URL.replace(/^http/, 'ws') + '/ws/webrtc';
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'join', data: { token, roomId } }));
+    };
+
+    ws.onmessage = async (e: any) => {
+      let msg: any;
+      try { msg = JSON.parse(e.data); } catch { return; }
+
+      const { type: msgType } = msg;
+
+      if (msgType === 'joined') {
+        myPeerIdRef.current = msg.peerId;
+        // Initiate offers to all existing peers
+        for (const ep of (msg.existingPeers || [])) {
+          setRemotePeers(prev => { const n = new Map(prev); n.set(ep.peerId, { name: ep.name, avatarUrl: ep.avatarUrl }); return n; });
+          const pc = createPeerConnection(ep.peerId);
+          const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+          await pc.setLocalDescription(offer);
+          ws.send(JSON.stringify({ type: 'offer', data: { targetPeerId: ep.peerId, sdp: offer } }));
+        }
+      }
+
+      if (msgType === 'peer-joined') {
+        setRemotePeers(prev => { const n = new Map(prev); n.set(msg.peerId, { name: msg.name, avatarUrl: msg.avatarUrl }); return n; });
+        // New peer will send us an offer, just register them
+      }
+
+      if (msgType === 'offer') {
+        const pc = createPeerConnection(msg.fromPeerId);
+        await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({ type: 'answer', data: { targetPeerId: msg.fromPeerId, sdp: answer } }));
+      }
+
+      if (msgType === 'answer') {
+        const pc = peerConnsRef.current.get(msg.fromPeerId);
+        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+      }
+
+      if (msgType === 'ice-candidate') {
+        const pc = peerConnsRef.current.get(msg.fromPeerId);
+        if (pc && msg.candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {});
+        }
+      }
+
+      if (msgType === 'peer-media-state') {
+        // Update remote peer media state if needed
+      }
+
+      if (msgType === 'peer-left') {
+        const pc = peerConnsRef.current.get(msg.peerId);
+        if (pc) { pc.close(); peerConnsRef.current.delete(msg.peerId); }
+        setRemoteStreams(prev => { const n = new Map(prev); n.delete(msg.peerId); return n; });
+        setRemotePeers(prev => { const n = new Map(prev); n.delete(msg.peerId); return n; });
+      }
+    };
+
+    ws.onerror = () => {
+      console.warn('[WebRTC] Signaling WS error');
+    };
+  };
+
+  //  Start local media and join room 
+
+  const startLocalMedia = async (): Promise<any | null> => {
+    const ok = await requestPermissions();
+    if (!ok) {
+      setCamPermission('denied');
+      Alert.alert(
+        'Permissions Required',
+        'Camera and microphone permissions are needed for video meetings. Please enable them in Settings.',
+        [{ text: 'OK' }]
+      );
+      return null;
+    }
+    setCamPermission('granted');
+    try {
+      const stream = await mediaDevices.getUserMedia({
+        audio: true,
+        video: {
+          facingMode: 'user',
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 30 },
+        },
+      });
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+      return stream;
+    } catch (err: any) {
+      console.warn('[WebRTC] getUserMedia failed:', err.message);
+      // Try audio-only fallback
+      try {
+        const audioStream = await mediaDevices.getUserMedia({ audio: true, video: false });
+        localStreamRef.current = audioStream;
+        setLocalStream(audioStream);
+        setCamPermission('denied');
+        Alert.alert('Camera Unavailable', 'Joining with audio only. Camera could not be accessed.');
+        return audioStream;
+      } catch {
+        Alert.alert('Media Error', 'Could not access camera or microphone.');
+        return null;
+      }
+    }
+  };
+
+  const enterRoom = async (room: any) => {
+    setLoading(true);
+    try {
+      const stream = await startLocalMedia();
+      if (!stream) { setLoading(false); return; }
+
+      setActiveRoom(room);
+
+      // Connect WebRTC signaling
+      const { token } = getSession();
+      if (token) {
+        connectSignaling(room.id, token);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not start meeting.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const endCall = async () => {
+    // Close all peer connections
+    for (const pc of peerConnsRef.current.values()) {
+      pc.close();
+    }
+    peerConnsRef.current.clear();
+
+    // Stop local media tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t: any) => t.stop());
+      localStreamRef.current = null;
+    }
+    setLocalStream(null);
+    setRemoteStreams(new Map());
+    setRemotePeers(new Map());
+
+    // Close signaling WS
+    if (wsRef.current) {
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'leave', data: {} }));
+      }
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    // End meeting on server
+    try {
+      if (activeRoom?.id && !String(activeRoom.id).startsWith('local-')) {
+        await api.meetings.endMeeting(activeRoom.id);
+      }
+    } catch {}
+
+    setActiveRoom(null);
+    setSidePanel(null);
+    setIsMuted(false);
+    setIsVideoOff(false);
+    setCamPermission('unknown');
+  };
+
+  // Toggle mute
+  const toggleMute = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach((t: any) => {
+        t.enabled = isMuted; // flip: if currently muted, enable
+      });
+      // Broadcast state change
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'media-state',
+          data: { audioEnabled: isMuted, videoEnabled: !isVideoOff },
+        }));
+      }
+    }
+    setIsMuted(p => !p);
+  };
+
+  // Toggle camera
+  const toggleCamera = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach((t: any) => {
+        t.enabled = isVideoOff; // flip
+      });
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'media-state',
+          data: { audioEnabled: !isMuted, videoEnabled: isVideoOff },
+        }));
+      }
+    }
+    setIsVideoOff(p => !p);
+  };
+
+  // Switch camera front/back
+  const switchCamera = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach((t: any) => {
+        if (t._switchCamera) t._switchCamera();
+      });
+    }
+  };
+
   const normalizeCode = (c: string) => {
     const t = c.trim().toUpperCase();
     const d = t.replace(/\D/g, '');
-    return d.length === 9 ? `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6)}` : t;
+    return d.length === 9 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : t;
   };
 
   const startMeeting = async () => {
@@ -164,12 +438,15 @@ export default function Meetings() {
       const res = await api.meetings.registerLiveMeeting({ title: meetTitle, password: meetPass || undefined });
       if (res?._id) await api.meetings.startMeeting(res._id).catch(() => {});
       setCreateModal(false);
-      setActiveRoom({ id: res._id, title: res.title, roomId: res.joinCode, password: meetPass, attendees: 1 });
+      const room = { id: res._id, title: res.title, roomId: res.joinCode, password: meetPass };
       setMeetTitle(''); setMeetPass('');
+      await enterRoom(room);
     } catch {
       setCreateModal(false);
-      setActiveRoom({ id: 'local-' + Date.now(), title: meetTitle, roomId: 'NEX-' + Math.random().toString(36).slice(2,8).toUpperCase(), password: meetPass, attendees: 1 });
-    } finally { setLoading(false); }
+      const room = { id: 'local-' + Date.now(), title: meetTitle, roomId: 'NEX-' + Math.random().toString(36).slice(2, 8).toUpperCase(), password: meetPass };
+      setMeetTitle(''); setMeetPass('');
+      await enterRoom(room);
+    }
   };
 
   const joinMeeting = async () => {
@@ -179,22 +456,23 @@ export default function Meetings() {
     try {
       const res = await api.meetings.validateMeeting(code, joinPass || undefined);
       setJoinModal(false);
-      setActiveRoom({ id: res._id || code, title: res.title || `Room ${code}`, roomId: res.joinCode || code, password: joinPass, attendees: res.participantIds?.length || 2 });
+      const room = { id: res._id || code, title: res.title || `Room ${code}`, roomId: res.joinCode || code, password: joinPass };
+      setJoinCode(''); setJoinPass('');
+      await enterRoom(room);
     } catch {
       setJoinModal(false);
-      setActiveRoom({ id: code, title: `Room ${code}`, roomId: code, password: joinPass, attendees: 2 });
-    } finally { setLoading(false); setJoinCode(''); setJoinPass(''); }
-  };
-
-  const endCall = async () => {
-    try { if (activeRoom?.id && !String(activeRoom.id).startsWith('local-')) await api.meetings.endMeeting(activeRoom.id); } catch {}
-    if (mediaStream) { mediaStream.getTracks().forEach((t: any) => t.stop()); setMediaStream(null); }
-    setActiveRoom(null); setSidePanel(null); setIsSharing(false); setIsVideoOff(false); setIsMuted(false);
+      const room = { id: code, title: `Room ${code}`, roomId: code, password: joinPass };
+      setJoinCode(''); setJoinPass('');
+      await enterRoom(room);
+    }
   };
 
   const sendChatMsg = () => {
     if (!chatInput.trim()) return;
-    setChatMsgs(p => [...p, { id: String(Date.now()), sender: 'You', text: chatInput.trim(), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+    setChatMsgs(p => [...p, {
+      id: String(Date.now()), sender: 'You', text: chatInput.trim(),
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }]);
     setChatInput('');
   };
 
@@ -203,24 +481,18 @@ export default function Meetings() {
     try {
       const res = await api.meetings.summarizeMeeting(id);
       setSummaryText(res?.summary || 'No summary available.');
-    } catch { setSummaryText('Could not generate summary. Check API keys.'); }
+    } catch { setSummaryText('Could not generate summary.'); }
     finally { setSummaryLoading(false); }
   };
 
-  /* ------------------------------------------------------------
-     ACTIVE MEETING ROOM  completely rebuilt, no overlaps
-  ------------------------------------------------------------ */
+  //  ACTIVE MEETING ROOM 
   if (activeRoom) {
     const localUser = user;
-    const localId = localUser?.id || localUser?._id || 'you';
-    const allPeers = [
-      { id: 'you', name: localUser?.name || 'You', avatar: avatarFor(localUser?.name || 'You'), color: '#2563eb', isHost: true },
-      ...realPeers.filter(p => p.userId !== localId).map(p => ({ id: p.id, name: p.name, avatar: p.avatar || avatarFor(p.name), color: '#7c3aed', isHost: false })),
-    ];
+    const remotePeerList = Array.from(remotePeers.entries());
 
     return (
       <View style={s.roomRoot}>
-        {/* -- TOP BAR -- */}
+        {/* TOP BAR */}
         <View style={s.roomTopBar}>
           <View style={s.roomTopLeft}>
             <View style={s.liveDot} />
@@ -237,7 +509,7 @@ export default function Meetings() {
           </View>
         </View>
 
-        {/* -- ROOM ID STRIP -- */}
+        {/* ROOM ID STRIP */}
         <View style={s.roomIdStrip}>
           <Copy size={12} color="#64748b" />
           <Text style={s.roomIdLabel}>ID:</Text>
@@ -251,83 +523,131 @@ export default function Meetings() {
           ) : null}
         </View>
 
-        {/* -- MAIN CONTENT -- */}
+        {/* MAIN BODY */}
         <View style={s.roomBody}>
-          {/* Video grid */}
+          {/* VIDEO GRID */}
           <View style={s.videoGrid}>
-            {allPeers.slice(0, 4).map((peer, idx) => (
-              <View key={peer.id} style={[
-                s.videoTile,
-                allPeers.length === 1 && s.videoTileFull,
-                allPeers.length === 2 && s.videoTileHalf,
-                allPeers.length >= 3 && s.videoTileQuarter,
-              ]}>
-                {/* Camera / avatar */}
-                {peer.id === 'you' && !isVideoOff && Platform.OS === 'web' && camOk && mediaStream ? (
-                  <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} autoPlay playsInline muted />
-                ) : (
-                  <View style={[s.videoAvatar, { backgroundColor: peer.color }]}>
-                    <Text style={s.videoAvatarText}>{peer.avatar}</Text>
-                    {/* audio wave */}
-                    {peer.id === 'you' && !isMuted && (
-                      <View style={s.waveRow}>
-                        {audioLevels.map((h, i) => (
-                          <View key={i} style={[s.waveBar, { height: Math.max(3, h * 0.25) }]} />
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                )}
-                {/* Name plate */}
-                <View style={s.namePlate}>
-                  {peer.isHost && <Shield size={9} color="#fff" />}
-                  <Text style={s.namePlateText} numberOfLines={1}>{peer.id === 'you' ? 'You (Host)' : peer.name}</Text>
-                  {peer.id === 'you' && isMuted && <MicOff size={9} color="#ef4444" />}
+            {/* Local tile */}
+            <View style={[
+              s.videoTile,
+              remotePeerList.length === 0 ? s.videoTileFull : s.videoTileHalf,
+            ]}>
+              {localStream && !isVideoOff ? (
+                <RTCView
+                  streamURL={localStream.toURL()}
+                  style={s.rtcView}
+                  objectFit="cover"
+                  mirror={true}
+                  zOrder={0}
+                />
+              ) : (
+                <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
+                  <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
+                  {!isMuted && (
+                    <View style={s.waveRow}>
+                      {audioLevels.map((h, i) => (
+                        <View key={i} style={[s.waveBar, { height: Math.max(3, h * 0.25) }]} />
+                      ))}
+                    </View>
+                  )}
                 </View>
+              )}
+              <View style={s.namePlate}>
+                <Shield size={9} color="#fff" />
+                <Text style={s.namePlateText} numberOfLines={1}>
+                  {localUser?.name || 'You'} (You)
+                </Text>
+                {isMuted && <MicOff size={9} color="#ef4444" />}
+                {isVideoOff && <VideoOff size={9} color="#ef4444" />}
               </View>
-            ))}
-            {allPeers.length === 0 && (
-              <View style={s.waitingPane}>
-                <Users size={40} color="rgba(255,255,255,0.3)" />
-                <Text style={s.waitingText}>Waiting for others to join</Text>
+            </View>
+
+            {/* Remote tiles */}
+            {remotePeerList.slice(0, 3).map(([pid, peerInfo]) => {
+              const remoteStream = remoteStreams.get(pid);
+              return (
+                <View key={pid} style={[s.videoTile, s.videoTileHalf]}>
+                  {remoteStream ? (
+                    <RTCView
+                      streamURL={remoteStream.toURL()}
+                      style={s.rtcView}
+                      objectFit="cover"
+                      zOrder={0}
+                    />
+                  ) : (
+                    <View style={[s.videoAvatar, { backgroundColor: '#7c3aed' }]}>
+                      <Text style={s.videoAvatarText}>{avatarFor(peerInfo.name)}</Text>
+                      <Text style={s.connectingText}>Connecting...</Text>
+                    </View>
+                  )}
+                  <View style={s.namePlate}>
+                    <Text style={s.namePlateText} numberOfLines={1}>{peerInfo.name}</Text>
+                  </View>
+                </View>
+              );
+            })}
+
+            {/* Waiting state */}
+            {remotePeerList.length === 0 && (
+              <View style={s.waitingBanner}>
+                <Users size={18} color="#64748b" />
+                <Text style={s.waitingText}>Share the room ID to invite others</Text>
               </View>
             )}
           </View>
 
-          {/* Side panel */}
+          {/* SIDE PANEL */}
           {sidePanel && (
             <View style={s.sidePanel}>
               <View style={s.sidePanelHeader}>
-                <Text style={s.sidePanelTitle}>{sidePanel === 'chat' ? ' Chat' : ' People'}</Text>
-                <TouchableOpacity onPress={() => setSidePanel(null)}><X size={18} color="#94a3b8" /></TouchableOpacity>
+                <Text style={s.sidePanelTitle}>{sidePanel === 'chat' ? 'Chat' : 'People'}</Text>
+                <TouchableOpacity onPress={() => setSidePanel(null)}>
+                  <X size={18} color="#94a3b8" />
+                </TouchableOpacity>
               </View>
 
               {sidePanel === 'chat' ? (
                 <View style={s.sidePanelBody}>
-                  <ScrollView style={s.sideChatScroll} contentContainerStyle={{ gap: 10 }}>
+                  <ScrollView style={s.sideChatScroll} contentContainerStyle={{ gap: 8, padding: 12 }}>
                     {chatMsgs.map(m => (
                       <View key={m.id} style={[s.sideChatBubble, m.sender === 'You' && s.sideChatBubbleSelf]}>
                         <Text style={s.sideChatSender}>{m.sender}</Text>
                         <Text style={s.sideChatText}>{m.text}</Text>
-                        <Text style={s.sideChatTime}>{m.time}</Text>
                       </View>
                     ))}
                   </ScrollView>
                   <View style={s.sideChatInput}>
-                    <TextInput style={s.sideChatField} value={chatInput} onChangeText={setChatInput} placeholder="Message" placeholderTextColor="#64748b" onSubmitEditing={sendChatMsg} />
-                    <TouchableOpacity style={s.sideChatSend} onPress={sendChatMsg}><Send size={15} color="#fff" /></TouchableOpacity>
+                    <TextInput style={s.sideChatField} value={chatInput} onChangeText={setChatInput}
+                      placeholder="Message..." placeholderTextColor="#64748b" onSubmitEditing={sendChatMsg} />
+                    <TouchableOpacity style={s.sideChatSend} onPress={sendChatMsg}>
+                      <Send size={15} color="#fff" />
+                    </TouchableOpacity>
                   </View>
                 </View>
               ) : (
                 <ScrollView style={s.sidePanelBody}>
-                  {allPeers.map(p => (
-                    <View key={p.id} style={s.peerRow}>
-                      <View style={[s.peerAvatar, { backgroundColor: p.color }]}><Text style={s.peerAvatarText}>{p.avatar}</Text></View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.peerName}>{p.id === 'you' ? 'You (Host)' : p.name}</Text>
-                        <Text style={s.peerRole}>{p.isHost ? 'Host' : 'Attendee'}</Text>
+                  {/* Local user */}
+                  <View style={s.peerRow}>
+                    <View style={[s.peerAvatar, { backgroundColor: '#2563eb' }]}>
+                      <Text style={s.peerAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.peerName}>{localUser?.name || 'You'} (You)</Text>
+                      <Text style={s.peerRole}>Host</Text>
+                    </View>
+                    <Wifi size={14} color="#10b981" />
+                  </View>
+                  {/* Remote peers */}
+                  {remotePeerList.map(([pid, peerInfo]) => (
+                    <View key={pid} style={s.peerRow}>
+                      <View style={[s.peerAvatar, { backgroundColor: '#7c3aed' }]}>
+                        <Text style={s.peerAvatarText}>{avatarFor(peerInfo.name)}</Text>
                       </View>
-                      <Wifi size={14} color="#10b981" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.peerName}>{peerInfo.name}</Text>
+                        <Text style={s.peerRole}>Attendee</Text>
+                      </View>
+                      <Wifi size={14} color={remoteStreams.has(pid) ? '#10b981' : '#f59e0b'} />
                     </View>
                   ))}
                 </ScrollView>
@@ -336,29 +656,33 @@ export default function Meetings() {
           )}
         </View>
 
-        {/* -- CONTROL DOCK -- */}
+        {/* CONTROL DOCK */}
         <View style={s.controlDock}>
-          <TouchableOpacity style={[s.ctrlBtn, isMuted && s.ctrlBtnRed]} onPress={() => setIsMuted(p => !p)}>
+          <TouchableOpacity style={[s.ctrlBtn, isMuted && s.ctrlBtnRed]} onPress={toggleMute}>
             {isMuted ? <MicOff size={20} color="#ef4444" /> : <Mic size={20} color="#fff" />}
             <Text style={[s.ctrlLabel, isMuted && { color: '#ef4444' }]}>{isMuted ? 'Unmute' : 'Mute'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[s.ctrlBtn, isVideoOff && s.ctrlBtnRed]} onPress={() => setIsVideoOff(p => !p)}>
+          <TouchableOpacity style={[s.ctrlBtn, isVideoOff && s.ctrlBtnRed]} onPress={toggleCamera}>
             {isVideoOff ? <VideoOff size={20} color="#ef4444" /> : <Video size={20} color="#fff" />}
             <Text style={[s.ctrlLabel, isVideoOff && { color: '#ef4444' }]}>{isVideoOff ? 'Start Cam' : 'Stop Cam'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[s.ctrlBtn, isSharing && s.ctrlBtnBlue]} onPress={() => setIsSharing(p => !p)}>
-            <ScreenShare size={20} color={isSharing ? '#3b82f6' : '#fff'} />
-            <Text style={[s.ctrlLabel, isSharing && { color: '#3b82f6' }]}>{isSharing ? 'Sharing' : 'Share'}</Text>
+          <TouchableOpacity style={s.ctrlBtn} onPress={switchCamera}>
+            <ScreenShare size={20} color="#fff" />
+            <Text style={s.ctrlLabel}>Flip</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[s.ctrlBtn, sidePanel === 'people' && s.ctrlBtnBlue]} onPress={() => setSidePanel(p => p === 'people' ? null : 'people')}>
+          <TouchableOpacity style={[s.ctrlBtn, sidePanel === 'people' && s.ctrlBtnBlue]}
+            onPress={() => setSidePanel(p => p === 'people' ? null : 'people')}>
             <Users size={20} color={sidePanel === 'people' ? '#3b82f6' : '#fff'} />
-            <Text style={[s.ctrlLabel, sidePanel === 'people' && { color: '#3b82f6' }]}>People</Text>
+            <Text style={[s.ctrlLabel, sidePanel === 'people' && { color: '#3b82f6' }]}>
+              People {remotePeerList.length > 0 ? `(${remotePeerList.length + 1})` : ''}
+            </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[s.ctrlBtn, sidePanel === 'chat' && s.ctrlBtnBlue]} onPress={() => setSidePanel(p => p === 'chat' ? null : 'chat')}>
+          <TouchableOpacity style={[s.ctrlBtn, sidePanel === 'chat' && s.ctrlBtnBlue]}
+            onPress={() => setSidePanel(p => p === 'chat' ? null : 'chat')}>
             <MessageSquare size={20} color={sidePanel === 'chat' ? '#3b82f6' : '#fff'} />
             <Text style={[s.ctrlLabel, sidePanel === 'chat' && { color: '#3b82f6' }]}>Chat</Text>
           </TouchableOpacity>
@@ -372,32 +696,26 @@ export default function Meetings() {
     );
   }
 
-  /* ------------------------------------------------------------
-     MEETINGS HOME SCREEN
-  ------------------------------------------------------------ */
+  //  MEETINGS HOME SCREEN 
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
 
-      {/* -- Quick action cards -- */}
       <View style={s.quickGrid}>
         <TouchableOpacity style={[s.quickCard, { backgroundColor: '#2563eb' }]} onPress={() => setCreateModal(true)}>
           <View style={s.quickIcon}><Plus size={22} color="#fff" /></View>
           <Text style={s.quickTitle}>New Meeting</Text>
           <Text style={s.quickSub}>Start instantly</Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={[s.quickCard, { backgroundColor: '#4f46e5' }]} onPress={() => setJoinModal(true)}>
           <View style={s.quickIcon}><LogIn size={22} color="#fff" /></View>
           <Text style={s.quickTitle}>Join</Text>
           <Text style={s.quickSub}>Enter room code</Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={[s.quickCard, s.quickCardLight]} onPress={() => setScheduleModal(true)}>
           <View style={[s.quickIcon, { backgroundColor: '#f1f5f9' }]}><Calendar size={22} color="#475569" /></View>
           <Text style={[s.quickTitle, { color: '#0f172a' }]}>Schedule</Text>
           <Text style={[s.quickSub, { color: '#64748b' }]}>Plan ahead</Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={[s.quickCard, s.quickCardLight]} onPress={() => setRoomsModal(true)}>
           <View style={[s.quickIcon, { backgroundColor: '#f1f5f9' }]}><Users size={22} color="#475569" /></View>
           <Text style={[s.quickTitle, { color: '#0f172a' }]}>Rooms</Text>
@@ -405,7 +723,6 @@ export default function Meetings() {
         </TouchableOpacity>
       </View>
 
-      {/* -- Persistent Rooms -- */}
       <View style={s.section}>
         <Text style={s.sectionTitle}>Persistent Rooms</Text>
         <View style={s.roomsGrid}>
@@ -414,13 +731,13 @@ export default function Meetings() {
               setLoading(true);
               try {
                 const res = await api.meetings.validateMeeting(room.id, undefined);
-                setActiveRoom({ id: res._id || room.id, title: res.title || room.title, roomId: res.joinCode || room.id, attendees: res.participantIds?.length || room.members + 1 });
+                await enterRoom({ id: res._id || room.id, title: res.title || room.title, roomId: res.joinCode || room.id });
               } catch {
-                setActiveRoom({ id: room.id, title: room.title, roomId: room.id, attendees: room.members + 1 });
+                await enterRoom({ id: room.id, title: room.title, roomId: room.id });
               } finally { setLoading(false); }
             }}>
               <View style={[s.roomCardIcon, { backgroundColor: room.color + '20' }]}>
-                <Text style={s.roomCardEmoji}>{room.emoji}</Text>
+                <Text style={[s.roomCardEmoji, { color: room.color }]}>{room.emoji}</Text>
               </View>
               <View style={s.roomCardInfo}>
                 <Text style={s.roomCardTitle}>{room.title}</Text>
@@ -438,7 +755,6 @@ export default function Meetings() {
         </View>
       </View>
 
-      {/* -- Today's Agenda -- */}
       <View style={s.section}>
         <Text style={s.sectionTitle}>Today's Agenda</Text>
         {meetings.map(m => (
@@ -446,8 +762,8 @@ export default function Meetings() {
             setLoading(true);
             try {
               const res = await api.meetings.validateMeeting(String(m.id), undefined);
-              setActiveRoom({ id: res._id || m.id, title: res.title || m.title, roomId: res.joinCode || m.id, attendees: res.participantIds?.length || m.attendees });
-            } catch { setActiveRoom(m); }
+              await enterRoom({ id: res._id || m.id, title: res.title || m.title, roomId: res.joinCode || m.id });
+            } catch { await enterRoom(m); }
             finally { setLoading(false); }
           }}>
             <View style={[s.meetColorBar, { backgroundColor: m.color }]} />
@@ -477,7 +793,6 @@ export default function Meetings() {
         ))}
       </View>
 
-      {/* -- Meeting History -- */}
       <View style={s.section}>
         <Text style={s.sectionTitle}>Recent Meetings</Text>
         {history.map(m => (
@@ -491,23 +806,20 @@ export default function Meetings() {
               </View>
             </View>
             <TouchableOpacity style={s.summaryBtn} onPress={() => generateSummary(m.id)}>
-              <Text style={s.summaryBtnText}> Summary</Text>
+              <Text style={s.summaryBtnText}>AI Summary</Text>
             </TouchableOpacity>
           </View>
         ))}
       </View>
 
-      {/* -- Loading overlay -- */}
       {loading && (
         <View style={s.loadingOverlay}>
           <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={s.loadingText}>Connecting</Text>
+          <Text style={s.loadingText}>Starting media...</Text>
         </View>
       )}
 
-      {/* ---- MODALS ---- */}
-
-      {/* Create */}
+      {/* CREATE MODAL */}
       <Modal visible={createModal} animationType="slide" transparent onRequestClose={() => setCreateModal(false)}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
@@ -524,12 +836,12 @@ export default function Meetings() {
         </View>
       </Modal>
 
-      {/* Join */}
+      {/* JOIN MODAL */}
       <Modal visible={joinModal} animationType="slide" transparent onRequestClose={() => setJoinModal(false)}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
             <View style={s.modalTopRow}><Text style={s.modalTitle}>Join Meeting</Text><TouchableOpacity onPress={() => setJoinModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
-            <View style={s.formGroup}><Text style={s.fieldLabel}>Meeting ID or Room Code</Text><TextInput style={s.modalInput} value={joinCode} onChangeText={setJoinCode} placeholder="e.g. 123-456-789" placeholderTextColor="#94a3b8" autoCapitalize="characters" /></View>
+            <View style={s.formGroup}><Text style={s.fieldLabel}>Meeting ID</Text><TextInput style={s.modalInput} value={joinCode} onChangeText={setJoinCode} placeholder="e.g. 123-456-789" placeholderTextColor="#94a3b8" autoCapitalize="characters" /></View>
             <View style={s.formGroup}><Text style={s.fieldLabel}>Passcode (if required)</Text><TextInput style={s.modalInput} value={joinPass} onChangeText={setJoinPass} placeholder="Leave blank if none" placeholderTextColor="#94a3b8" secureTextEntry /></View>
             <View style={s.modalBtnRow}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setJoinModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
@@ -541,7 +853,7 @@ export default function Meetings() {
         </View>
       </Modal>
 
-      {/* Schedule */}
+      {/* SCHEDULE MODAL */}
       <Modal visible={scheduleModal} animationType="slide" transparent onRequestClose={() => setScheduleModal(false)}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
@@ -557,20 +869,15 @@ export default function Meetings() {
             <View style={s.modalBtnRow}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setScheduleModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
               <TouchableOpacity style={s.primaryBtn} onPress={async () => {
-                try {
-                  await api.meetings.registerLiveMeeting({ title: schedTitle, startTime: new Date(`${schedDate}T12:00:00`), duration: parseInt(schedDur) || 45 });
-                  Alert.alert('Scheduled', `"${schedTitle}" scheduled for ${schedDate}`);
-                } catch { Alert.alert('Scheduled (offline)', `"${schedTitle}" saved locally.`); }
+                try { await api.meetings.registerLiveMeeting({ title: schedTitle, startTime: new Date(`${schedDate}T12:00:00`), duration: parseInt(schedDur) || 45 }); Alert.alert('Scheduled', `"${schedTitle}" scheduled.`); } catch { Alert.alert('Saved', `"${schedTitle}" saved locally.`); }
                 setScheduleModal(false);
-              }}>
-                <Text style={s.primaryBtnText}>Confirm</Text>
-              </TouchableOpacity>
+              }}><Text style={s.primaryBtnText}>Confirm</Text></TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Rooms */}
+      {/* ROOMS MODAL */}
       <Modal visible={roomsModal} animationType="slide" transparent onRequestClose={() => setRoomsModal(false)}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
@@ -578,13 +885,11 @@ export default function Meetings() {
             {ROOMS.map(room => (
               <TouchableOpacity key={room.id} style={s.roomModalItem} onPress={async () => {
                 setRoomsModal(false); setLoading(true);
-                try {
-                  const res = await api.meetings.validateMeeting(room.id, undefined);
-                  setActiveRoom({ id: res._id || room.id, title: res.title || room.title, roomId: res.joinCode || room.id, attendees: res.participantIds?.length || room.members + 1 });
-                } catch { setActiveRoom({ id: room.id, title: room.title, roomId: room.id, attendees: room.members + 1 }); }
+                try { const res = await api.meetings.validateMeeting(room.id, undefined); await enterRoom({ id: res._id || room.id, title: res.title || room.title, roomId: res.joinCode || room.id }); }
+                catch { await enterRoom({ id: room.id, title: room.title, roomId: room.id }); }
                 finally { setLoading(false); }
               }}>
-                <Text style={s.roomModalEmoji}>{room.emoji}</Text>
+                <Text style={[s.roomModalEmoji, { color: room.color }]}>{room.emoji}</Text>
                 <View style={{ flex: 1 }}><Text style={s.roomModalTitle}>{room.title}</Text><Text style={s.roomModalId}>{room.id}</Text></View>
                 <View style={[s.roomMemberBadge, { backgroundColor: room.members > 0 ? '#dcfce7' : '#f1f5f9' }]}>
                   <Text style={[s.roomMemberText, { color: room.members > 0 ? '#15803d' : '#64748b' }]}>{room.members} online</Text>
@@ -596,20 +901,18 @@ export default function Meetings() {
         </View>
       </Modal>
 
-      {/* Summary */}
+      {/* SUMMARY MODAL */}
       <Modal visible={summaryModal} animationType="slide" transparent onRequestClose={() => setSummaryModal(false)}>
         <View style={s.modalOverlay}>
           <View style={[s.modalCard, { maxHeight: '80%' }]}>
-            <View style={s.modalTopRow}><Text style={s.modalTitle}> AI Summary</Text><TouchableOpacity onPress={() => setSummaryModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
+            <View style={s.modalTopRow}><Text style={s.modalTitle}>AI Summary</Text><TouchableOpacity onPress={() => setSummaryModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
             <ScrollView style={{ flex: 1 }}>
               {summaryLoading ? (
                 <View style={{ alignItems: 'center', padding: 32, gap: 12 }}>
                   <ActivityIndicator size="large" color="#7c3aed" />
-                  <Text style={{ color: '#64748b', fontSize: 14 }}>Generating summary</Text>
+                  <Text style={{ color: '#64748b', fontSize: 14 }}>Generating summary...</Text>
                 </View>
-              ) : (
-                <Text style={s.summaryBody}>{summaryText}</Text>
-              )}
+              ) : <Text style={s.summaryBody}>{summaryText}</Text>}
             </ScrollView>
             <TouchableOpacity style={s.primaryBtn} onPress={() => setSummaryModal(false)}><Text style={s.primaryBtnText}>Close</Text></TouchableOpacity>
           </View>
@@ -620,31 +923,21 @@ export default function Meetings() {
   );
 }
 
-/* ------------------------------------------------------------
-   STYLES
------------------------------------------------------------- */
 const s = StyleSheet.create({
-  /* home */
   container: { flex: 1 },
   content: { paddingBottom: 40, gap: 28 },
-
-  /* quick grid */
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   quickCard: { flex: 1, minWidth: isMobile ? (width - 40 - 12) / 2 : 180, borderRadius: 24, padding: 20, gap: 10 },
   quickCardLight: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0' },
   quickIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   quickTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
   quickSub: { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
-
-  /* section */
   section: { gap: 14 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
-
-  /* rooms grid */
   roomsGrid: { gap: 10 },
   roomCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 18, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', gap: 12 },
   roomCardIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  roomCardEmoji: { fontSize: 22 },
+  roomCardEmoji: { fontSize: 16, fontWeight: '900' },
   roomCardInfo: { flex: 1 },
   roomCardTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
   roomCardId: { fontSize: 11, color: '#94a3b8', fontWeight: '600', marginTop: 2 },
@@ -652,8 +945,6 @@ const s = StyleSheet.create({
   roomMemberBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   roomMemberDot: { width: 7, height: 7, borderRadius: 4 },
   roomMemberText: { fontSize: 11, fontWeight: '700' },
-
-  /* meeting card */
   meetCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 18, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', gap: 12, overflow: 'hidden' },
   meetColorBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
   meetIconBox: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
@@ -670,19 +961,13 @@ const s = StyleSheet.create({
   bellBtnActive: { backgroundColor: '#2563eb' },
   joinPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 12 },
   joinPillText: { fontSize: 12, fontWeight: '900', color: '#fff' },
-
-  /* history card */
   histCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 18, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', gap: 12 },
   histIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   summaryBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12, borderWidth: 1, borderColor: '#7c3aed', backgroundColor: '#faf5ff' },
   summaryBtnText: { fontSize: 11, fontWeight: '800', color: '#7c3aed' },
   summaryBody: { fontSize: 14, color: '#334155', lineHeight: 22, padding: 4 },
-
-  /* loading overlay */
-  loadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.85)', alignItems: 'center', justifyContent: 'center', gap: 12, zIndex: 99 },
+  loadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center', gap: 12, zIndex: 99 },
   loadingText: { fontSize: 14, color: '#64748b', fontWeight: '700' },
-
-  /* modals */
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   modalCard: { width: '100%', maxWidth: 440, backgroundColor: '#fff', borderRadius: 24, padding: 24, gap: 14 },
   modalTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -696,14 +981,11 @@ const s = StyleSheet.create({
   primaryBtn: { flex: 1, height: 46, borderRadius: 12, backgroundColor: '#2563eb', alignItems: 'center', justifyContent: 'center' },
   primaryBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
   roomModalItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, backgroundColor: '#f8fafc', gap: 12, marginBottom: 8 },
-  roomModalEmoji: { fontSize: 24 },
+  roomModalEmoji: { fontSize: 18, fontWeight: '900' },
   roomModalTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
   roomModalId: { fontSize: 11, color: '#94a3b8', fontWeight: '600' },
-
-  /* -- MEETING ROOM -- */
-  roomRoot: { flex: 1, backgroundColor: '#0a0f1e', flexDirection: 'column' },
-
-  /* top bar */
+  // Room
+  roomRoot: { flex: 1, backgroundColor: '#0a0f1e' },
   roomTopBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
   roomTopLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' },
@@ -714,41 +996,33 @@ const s = StyleSheet.create({
   e2eeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(16,185,129,0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   e2eeText: { fontSize: 10, fontWeight: '900', color: '#10b981' },
   roomTimer: { fontSize: 14, fontWeight: '900', color: '#10b981', fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace' },
-
-  /* room ID strip */
   roomIdStrip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: 'rgba(255,255,255,0.03)', gap: 6 },
   roomIdLabel: { fontSize: 10, fontWeight: '800', color: '#64748b', textTransform: 'uppercase' },
   roomIdValue: { fontSize: 12, fontWeight: '700', color: '#60a5fa' },
-
-  /* room body */
-  roomBody: { flex: 1, flexDirection: isMobile ? 'column' : 'row' },
-
-  /* video grid */
-  videoGrid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', padding: 8, gap: 6 },
+  roomBody: { flex: 1, flexDirection: 'row' },
+  videoGrid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', padding: 6, gap: 6 },
   videoTile: { backgroundColor: '#111827', borderRadius: 16, overflow: 'hidden', position: 'relative' },
-  videoTileFull: { width: '100%', aspectRatio: 16 / 9 },
+  videoTileFull: { width: '100%', aspectRatio: 4 / 3 },
   videoTileHalf: { width: '48%', aspectRatio: 1 },
-  videoTileQuarter: { width: '48%', aspectRatio: 1 },
-  videoAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 120 },
+  rtcView: { flex: 1, width: '100%', height: '100%' },
+  videoAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 140 },
   videoAvatarText: { fontSize: 28, fontWeight: '900', color: '#fff' },
+  connectingText: { fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
   waveRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 20 },
   waveBar: { width: 3, backgroundColor: '#10b981', borderRadius: 2, minHeight: 3 },
-  namePlate: { position: 'absolute', bottom: 8, left: 8, right: 8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  namePlate: { position: 'absolute', bottom: 8, left: 8, right: 8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   namePlateText: { flex: 1, fontSize: 11, fontWeight: '800', color: '#fff' },
-  waitingPane: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, minHeight: 200, width: '100%' },
-  waitingText: { fontSize: 14, color: 'rgba(255,255,255,0.4)', fontWeight: '600' },
-
-  /* side panel */
-  sidePanel: { width: isMobile ? '100%' : 300, backgroundColor: 'rgba(15,23,42,0.95)', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.06)' },
+  waitingBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, margin: 8, width: '100%' },
+  waitingText: { fontSize: 13, color: '#64748b', fontWeight: '600' },
+  sidePanel: { width: 280, backgroundColor: 'rgba(15,23,42,0.97)', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.06)' },
   sidePanelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
   sidePanelTitle: { fontSize: 14, fontWeight: '900', color: '#fff' },
   sidePanelBody: { flex: 1 },
-  sideChatScroll: { flex: 1, padding: 12 },
+  sideChatScroll: { flex: 1 },
   sideChatBubble: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, padding: 10, gap: 3, alignSelf: 'flex-start', maxWidth: '85%' },
   sideChatBubbleSelf: { backgroundColor: '#2563eb', alignSelf: 'flex-end' },
   sideChatSender: { fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' },
   sideChatText: { fontSize: 13, color: '#fff', lineHeight: 18 },
-  sideChatTime: { fontSize: 9, color: 'rgba(255,255,255,0.35)', alignSelf: 'flex-end' },
   sideChatInput: { flexDirection: 'row', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
   sideChatField: { flex: 1, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: '#fff' },
   sideChatSend: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#2563eb', alignItems: 'center', justifyContent: 'center' },
@@ -757,12 +1031,10 @@ const s = StyleSheet.create({
   peerAvatarText: { fontSize: 12, fontWeight: '900', color: '#fff' },
   peerName: { fontSize: 13, fontWeight: '800', color: '#fff' },
   peerRole: { fontSize: 11, color: '#64748b', fontWeight: '600' },
-
-  /* control dock */
-  controlDock: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 12, paddingVertical: 14, backgroundColor: 'rgba(15,23,42,0.95)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
-  ctrlBtn: { alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, minWidth: 52 },
-  ctrlBtnRed: { backgroundColor: 'rgba(239,68,68,0.12)' },
-  ctrlBtnBlue: { backgroundColor: 'rgba(59,130,246,0.12)' },
+  controlDock: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 8, paddingVertical: 14, backgroundColor: 'rgba(15,23,42,0.97)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
+  ctrlBtn: { alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 8, borderRadius: 14, minWidth: 48 },
+  ctrlBtnRed: { backgroundColor: 'rgba(239,68,68,0.15)' },
+  ctrlBtnBlue: { backgroundColor: 'rgba(59,130,246,0.15)' },
   ctrlLabel: { fontSize: 9, fontWeight: '800', color: '#94a3b8', textAlign: 'center' },
-  endCallBtn: { alignItems: 'center', gap: 5, backgroundColor: '#ef4444', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 16 },
+  endCallBtn: { alignItems: 'center', gap: 5, backgroundColor: '#ef4444', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 },
 });
