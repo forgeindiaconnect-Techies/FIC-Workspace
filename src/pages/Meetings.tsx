@@ -89,6 +89,8 @@ export default function Meetings() {
 
   const { user } = getSession();
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
+  const localUserId = String(user?.id || user?._id || '');
+  const peerKeyFor = (peer: any) => peer?.userId ? `user-${peer.userId}` : String(peer?.peerId || peer?.id || Date.now());
 
   // Call timer
   React.useEffect(() => {
@@ -118,6 +120,41 @@ export default function Meetings() {
     (global as any).isFullScreenMeetingActive = !!activeRoom;
     return () => { (global as any).isFullScreenMeetingActive = false; };
   }, [activeRoom]);
+
+  const mergeRemotePeers = React.useCallback((peers: { id: string; name: string }[]) => {
+    setRemotePeers(prev => {
+      const merged = new Map<string, { id: string; name: string }>();
+      prev.forEach(peer => merged.set(peer.id, peer));
+      peers.forEach(peer => merged.set(peer.id, peer));
+      return Array.from(merged.values());
+    });
+  }, []);
+
+  const syncRoomParticipants = React.useCallback(async (room: any) => {
+    const meetingId = room?.signalingId || room?.id || room?.roomId;
+    if (!meetingId) return;
+
+    try {
+      const participants = await api.meetings.getParticipants(String(meetingId));
+      const peers = (Array.isArray(participants) ? participants : [])
+        .filter((p: any) => String(p.userId || '') !== localUserId)
+        .map((p: any) => ({
+          id: `user-${p.userId || p.id}`,
+          name: p.name || p.email || 'Participant',
+        }));
+      mergeRemotePeers(peers);
+    } catch (err) {
+      console.warn('[Meetings] Participant sync failed:', err);
+    }
+  }, [mergeRemotePeers, user?.id, user?._id]);
+
+  React.useEffect(() => {
+    if (!activeRoom) return;
+
+    syncRoomParticipants(activeRoom);
+    const t = setInterval(() => syncRoomParticipants(activeRoom), 3000);
+    return () => clearInterval(t);
+  }, [activeRoom, syncRoomParticipants]);
 
   // Fetch meetings
   React.useEffect(() => {
@@ -175,22 +212,28 @@ export default function Meetings() {
           console.log('[Signaling] Received:', msg.type);
           if (msg.type === 'joined') {
             peerIdRef.current = msg.peerId;
-            const peers = (msg.existingPeers || []).map((p: any) => ({ id: p.peerId, name: p.name }));
-            setRemotePeers(peers);
+            const peers = (msg.existingPeers || [])
+              .filter((p: any) => String(p.userId || '') !== localUserId)
+              .map((p: any) => ({ id: peerKeyFor(p), name: p.name }));
+            mergeRemotePeers(peers);
             console.log('[Signaling] Joined room. Existing peers:', peers.length);
           }
           if (msg.type === 'room-peers') {
             const peers = (msg.peers || [])
-              .filter((p: any) => p.peerId !== peerIdRef.current)
-              .map((p: any) => ({ id: p.peerId, name: p.name }));
-            setRemotePeers(peers);
+              .filter((p: any) => p.peerId !== peerIdRef.current && String(p.userId || '') !== localUserId)
+              .map((p: any) => ({ id: peerKeyFor(p), name: p.name }));
+            mergeRemotePeers(peers);
           }
           if (msg.type === 'peer-joined') {
-            setRemotePeers(prev => [...prev.filter(p => p.id !== msg.peerId), { id: msg.peerId, name: msg.name }]);
+            const id = peerKeyFor(msg);
+            if (String(msg.userId || '') !== localUserId) {
+              setRemotePeers(prev => [...prev.filter(p => p.id !== id), { id, name: msg.name }]);
+            }
             console.log('[Signaling] Peer joined:', msg.name);
           }
           if (msg.type === 'peer-left') {
-            setRemotePeers(prev => prev.filter(p => p.id !== msg.peerId));
+            const id = peerKeyFor(msg);
+            setRemotePeers(prev => prev.filter(p => p.id !== id && p.id !== msg.peerId));
             console.log('[Signaling] Peer left:', msg.peerId);
           }
           if (msg.type === 'error') {

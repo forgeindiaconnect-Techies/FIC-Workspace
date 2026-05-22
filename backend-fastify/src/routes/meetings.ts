@@ -36,7 +36,12 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   async function resolveMeetingIdentifier(idOrCode: string) {
     const value = String(idOrCode || '').trim();
     if (Types.ObjectId.isValid(value)) {
-      return Meeting.findById(value);
+      const meeting = await Meeting.findById(value);
+      if (meeting?.joinCode) {
+        const canonical = await Meeting.findOne({ joinCode: normalizeJoinCode(meeting.joinCode) }).sort({ createdAt: 1, _id: 1 });
+        return canonical || meeting;
+      }
+      return meeting;
     }
 
     return Meeting.findOne({ joinCode: normalizeJoinCode(value) }).sort({ createdAt: 1, _id: 1 });

@@ -93,6 +93,7 @@ function broadcastRoomPeers(meetingId: string) {
   if (!room) return;
   const peerList = Array.from(room.entries()).map(([pid, p]) => ({
     peerId: pid,
+    userId: p.userId,
     name: p.name,
     avatarUrl: p.avatarUrl,
   }));
@@ -174,14 +175,15 @@ export function handleWebRtcSignalling(ws: WebSocket) {
       // Tell the new peer who is already in the room
       const existingPeers = Array.from(room.entries())
         .filter(([pid]) => pid !== peerId)
-        .map(([pid, p]) => ({ peerId: pid, name: p.name, avatarUrl: p.avatarUrl }));
+        .map(([pid, p]) => ({ peerId: pid, userId: p.userId, name: p.name, avatarUrl: p.avatarUrl }));
 
-      send(ws, { type: 'joined', peerId, existingPeers });
+      send(ws, { type: 'joined', peerId, userId, existingPeers });
 
       // Tell everyone else a new peer joined
       broadcastToRoom(meetingId, peerId, {
         type: 'peer-joined',
         peerId,
+        userId,
         name: user.name,
         avatarUrl: user.avatarUrl,
       });
@@ -270,7 +272,7 @@ async function cleanupPeer(roomId: string, pid: string) {
   room.delete(pid);
   if (room.size === 0) rooms.delete(roomId);
 
-  broadcastToRoom(roomId, pid, { type: 'peer-left', peerId: pid });
+  broadcastToRoom(roomId, pid, { type: 'peer-left', peerId: pid, userId: peer?.userId });
   broadcastRoomPeers(roomId);
 
   try {

@@ -602,7 +602,12 @@ async function meetingRoutes(fastify2) {
   async function resolveMeetingIdentifier(idOrCode) {
     const value = String(idOrCode || "").trim();
     if (import_mongoose8.Types.ObjectId.isValid(value)) {
-      return Meeting.findById(value);
+      const meeting = await Meeting.findById(value);
+      if (meeting?.joinCode) {
+        const canonical = await Meeting.findOne({ joinCode: normalizeJoinCode2(meeting.joinCode) }).sort({ createdAt: 1, _id: 1 });
+        return canonical || meeting;
+      }
+      return meeting;
     }
     return Meeting.findOne({ joinCode: normalizeJoinCode2(value) }).sort({ createdAt: 1, _id: 1 });
   }
@@ -1882,6 +1887,7 @@ function broadcastRoomPeers(meetingId) {
   if (!room) return;
   const peerList = Array.from(room.entries()).map(([pid, p]) => ({
     peerId: pid,
+    userId: p.userId,
     name: p.name,
     avatarUrl: p.avatarUrl
   }));
@@ -1939,11 +1945,12 @@ function handleWebRtcSignalling(ws) {
       } catch (err) {
         console.error("[Signaling] Failed to update participant join in DB:", err);
       }
-      const existingPeers = Array.from(room.entries()).filter(([pid]) => pid !== peerId).map(([pid, p]) => ({ peerId: pid, name: p.name, avatarUrl: p.avatarUrl }));
-      send(ws, { type: "joined", peerId, existingPeers });
+      const existingPeers = Array.from(room.entries()).filter(([pid]) => pid !== peerId).map(([pid, p]) => ({ peerId: pid, userId: p.userId, name: p.name, avatarUrl: p.avatarUrl }));
+      send(ws, { type: "joined", peerId, userId, existingPeers });
       broadcastToRoom(meetingId, peerId, {
         type: "peer-joined",
         peerId,
+        userId,
         name: user.name,
         avatarUrl: user.avatarUrl
       });
@@ -2015,7 +2022,7 @@ async function cleanupPeer(roomId, pid) {
   const peer = room.get(pid);
   room.delete(pid);
   if (room.size === 0) rooms.delete(roomId);
-  broadcastToRoom(roomId, pid, { type: "peer-left", peerId: pid });
+  broadcastToRoom(roomId, pid, { type: "peer-left", peerId: pid, userId: peer?.userId });
   broadcastRoomPeers(roomId);
   try {
     if (!peer?.userId) return;
