@@ -19,6 +19,7 @@ import {
   RTCSessionDescriptionClass,
   RTCView,
 } from '../lib/webrtc';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 
 // expo-camera: works in Expo Go AND in APK builds (no custom native code needed)
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
@@ -107,6 +108,38 @@ export default function Meetings() {
   const localUserId = String(user?.id || user?._id || '');
   const peerKeyFor = (peer: any) => peer?.userId ? `user-${peer.userId}` : String(peer?.peerId || peer?.id || Date.now());
 
+  const configureCallAudio = React.useCallback(async () => {
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+        staysActiveInBackground: true,
+        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        shouldDuckAndroid: false,
+        playThroughEarpieceAndroid: false,
+      });
+    } catch (err) {
+      console.warn('[Audio] Could not enable call audio mode:', err);
+    }
+  }, []);
+
+  const resetCallAudio = React.useCallback(async () => {
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+        staysActiveInBackground: false,
+        interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+    } catch (err) {
+      console.warn('[Audio] Could not reset call audio mode:', err);
+    }
+  }, []);
+
   // Call timer
   React.useEffect(() => {
     let t: any;
@@ -171,8 +204,13 @@ export default function Meetings() {
     if (!isWebRTCAvailable || !mediaDevices) return null;
     if (localStreamRef.current) return localStreamRef.current;
 
+    await configureCallAudio();
     const stream = await mediaDevices.getUserMedia({
-      audio: true,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
       video: {
         facingMode: facing === 'front' ? 'user' : 'environment',
         width: 640,
@@ -181,10 +219,16 @@ export default function Meetings() {
       },
     });
 
+    stream.getAudioTracks?.().forEach((track: any) => {
+      track.enabled = true;
+    });
+    stream.getVideoTracks?.().forEach((track: any) => {
+      track.enabled = !isVideoOff && !isSharing;
+    });
     localStreamRef.current = stream;
     setLocalStream(stream);
     return stream;
-  }, [facing]);
+  }, [configureCallAudio, facing, isSharing, isVideoOff]);
 
   const createPeerConnection = React.useCallback(async (targetPeerId: string, peer: RemotePeer, shouldOffer: boolean) => {
     if (!isWebRTCAvailable || !RTCPeerConnectionClass || !targetPeerId) return null;
@@ -503,6 +547,7 @@ export default function Meetings() {
     } catch {}
     cleanupPeerConnections();
     stopMediaStream(localStreamRef.current);
+    resetCallAudio();
     localStreamRef.current = null;
     setLocalStream(null);
     setActiveRoom(null);
