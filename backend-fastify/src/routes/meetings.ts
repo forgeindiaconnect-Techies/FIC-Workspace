@@ -39,7 +39,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       return Meeting.findById(value);
     }
 
-    return Meeting.findOne({ joinCode: normalizeJoinCode(value) });
+    return Meeting.findOne({ joinCode: normalizeJoinCode(value) }).sort({ createdAt: 1, _id: 1 });
   }
 
   // 1. CREATE MEETING
@@ -128,16 +128,24 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       };
 
       if (!meeting && persistentRoomTitles[cleanCode]) {
-        // Automatically spin up the persistent meeting room document in MongoDB
-        meeting = await Meeting.create({
-          title: persistentRoomTitles[cleanCode],
-          hostId: new Types.ObjectId(request.user!.id),
-          joinCode: cleanCode,
-          scheduledAt: new Date(),
-          durationMinutes: 9999, // Persistent room has unlimited duration
-          status: 'live',
-          participantIds: [new Types.ObjectId(request.user!.id)]
-        });
+        // Automatically spin up the persistent meeting room document in MongoDB.
+        // Upsert keeps simultaneous first joins from creating separate room docs.
+        meeting = await Meeting.findOneAndUpdate(
+          { joinCode: cleanCode },
+          {
+            $setOnInsert: {
+              title: persistentRoomTitles[cleanCode],
+              hostId: new Types.ObjectId(request.user!.id),
+              joinCode: cleanCode,
+              scheduledAt: new Date(),
+              durationMinutes: 9999,
+              recordingEnabled: false,
+              participantIds: [new Types.ObjectId(request.user!.id)]
+            },
+            $set: { status: 'live' }
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
       }
 
       if (!meeting) {

@@ -591,7 +591,7 @@ async function meetingRoutes(fastify2) {
     }
     return Math.floor(1e8 + Math.random() * 9e8).toString();
   }
-  function normalizeJoinCode(code) {
+  function normalizeJoinCode2(code) {
     const trimmed = String(code || "").trim().toUpperCase();
     const digitsOnly = trimmed.replace(/\D/g, "");
     if (digitsOnly.length === 9) {
@@ -604,7 +604,7 @@ async function meetingRoutes(fastify2) {
     if (import_mongoose8.Types.ObjectId.isValid(value)) {
       return Meeting.findById(value);
     }
-    return Meeting.findOne({ joinCode: normalizeJoinCode(value) });
+    return Meeting.findOne({ joinCode: normalizeJoinCode2(value) }).sort({ createdAt: 1, _id: 1 });
   }
   fastify2.post("/", { preHandler: authenticate }, async (request, reply) => {
     try {
@@ -670,7 +670,7 @@ async function meetingRoutes(fastify2) {
     try {
       const { code } = request.params;
       const { passcode } = request.query;
-      const cleanCode = normalizeJoinCode(String(code || ""));
+      const cleanCode = normalizeJoinCode2(String(code || ""));
       let meeting = await resolveMeetingIdentifier(cleanCode);
       const persistentRoomTitles = {
         "NEXUS-BOARDROOM": "\u{1F30C} General Boardroom",
@@ -678,16 +678,22 @@ async function meetingRoutes(fastify2) {
         "NEXUS-DESIGN": "\u{1F3A8} UX Design Workshop"
       };
       if (!meeting && persistentRoomTitles[cleanCode]) {
-        meeting = await Meeting.create({
-          title: persistentRoomTitles[cleanCode],
-          hostId: new import_mongoose8.Types.ObjectId(request.user.id),
-          joinCode: cleanCode,
-          scheduledAt: /* @__PURE__ */ new Date(),
-          durationMinutes: 9999,
-          // Persistent room has unlimited duration
-          status: "live",
-          participantIds: [new import_mongoose8.Types.ObjectId(request.user.id)]
-        });
+        meeting = await Meeting.findOneAndUpdate(
+          { joinCode: cleanCode },
+          {
+            $setOnInsert: {
+              title: persistentRoomTitles[cleanCode],
+              hostId: new import_mongoose8.Types.ObjectId(request.user.id),
+              joinCode: cleanCode,
+              scheduledAt: /* @__PURE__ */ new Date(),
+              durationMinutes: 9999,
+              recordingEnabled: false,
+              participantIds: [new import_mongoose8.Types.ObjectId(request.user.id)]
+            },
+            $set: { status: "live" }
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
       }
       if (!meeting) {
         return reply.code(404).send({ error: "Meeting not found for this join code." });
@@ -1815,8 +1821,28 @@ async function docsRoutes(fastify2) {
 // backend-fastify/src/services/webrtc.ts
 var import_ws = require("ws");
 var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
+var import_mongoose15 = require("mongoose");
+var import_crypto = require("crypto");
 var JWT_SECRET = process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var rooms = /* @__PURE__ */ new Map();
+function normalizeJoinCode(code) {
+  const trimmed = String(code || "").trim().toUpperCase();
+  const digitsOnly = trimmed.replace(/\D/g, "");
+  if (digitsOnly.length === 9) {
+    return `${digitsOnly.slice(0, 3)}-${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`;
+  }
+  return trimmed;
+}
+async function resolveCanonicalMeetingId(idOrCode) {
+  const value = String(idOrCode || "").trim();
+  if (!value) return null;
+  if (import_mongoose15.Types.ObjectId.isValid(value)) {
+    const meeting2 = await Meeting.findById(value).select("_id").lean();
+    if (meeting2?._id) return meeting2._id.toString();
+  }
+  const meeting = await Meeting.findOne({ joinCode: normalizeJoinCode(value) }).select("_id").lean();
+  return meeting?._id?.toString() || null;
+}
 function send(ws, payload) {
   if (ws.readyState === import_ws.WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
@@ -1832,6 +1858,18 @@ function broadcastToRoom(meetingId, excludePeerId, payload) {
     }
   }
 }
+function broadcastRoomPeers(meetingId) {
+  const room = rooms.get(meetingId);
+  if (!room) return;
+  const peerList = Array.from(room.entries()).map(([pid, p]) => ({
+    peerId: pid,
+    name: p.name,
+    avatarUrl: p.avatarUrl
+  }));
+  for (const peer of room.values()) {
+    send(peer.socket, { type: "room-peers", peers: peerList });
+  }
+}
 function handleWebRtcSignalling(ws) {
   let peerId = null;
   let meetingId = null;
@@ -1844,9 +1882,10 @@ function handleWebRtcSignalling(ws) {
     }
     const { type, data = {} } = msg;
     if (type === "join") {
-      const { token, roomId } = data;
-      if (!token || !roomId) {
-        return send(ws, { type: "error", message: "token and roomId required" });
+      const { token, meetingId: mid, roomId } = data;
+      const resolvedMeetingId = mid || roomId;
+      if (!token || !resolvedMeetingId) {
+        return send(ws, { type: "error", message: "token and meetingId required" });
       }
       let decoded;
       try {
@@ -1856,22 +1895,31 @@ function handleWebRtcSignalling(ws) {
       }
       const user = await User.findById(decoded.userId).catch(() => null);
       if (!user) return send(ws, { type: "error", message: "User not found" });
-      peerId = user._id.toString();
-      meetingId = roomId;
+      const canonicalMeetingId = await resolveCanonicalMeetingId(resolvedMeetingId);
+      if (!canonicalMeetingId) {
+        return send(ws, { type: "error", message: "Meeting not found" });
+      }
+      const userId = user._id.toString();
+      peerId = (0, import_crypto.randomUUID)();
+      meetingId = canonicalMeetingId;
+      console.log(`[Signaling] User ${user.name} (${userId}) joining room: ${meetingId} as peer ${peerId}`);
       if (!rooms.has(meetingId)) rooms.set(meetingId, /* @__PURE__ */ new Map());
       const room = rooms.get(meetingId);
       room.set(peerId, {
         socket: ws,
-        userId: peerId,
+        userId,
         name: user.name,
         avatarUrl: user.avatarUrl
       });
-      await Participant.findOneAndUpdate(
-        { meetingId, userId: peerId },
-        { joinedAt: /* @__PURE__ */ new Date(), $unset: { leftAt: "" } },
-        { upsert: true }
-      ).catch(() => {
-      });
+      try {
+        await Participant.findOneAndUpdate(
+          { meetingId: new import_mongoose15.Types.ObjectId(meetingId), userId: new import_mongoose15.Types.ObjectId(userId) },
+          { joinedAt: /* @__PURE__ */ new Date(), $unset: { leftAt: "" } },
+          { upsert: true }
+        );
+      } catch (err) {
+        console.error("[Signaling] Failed to update participant join in DB:", err);
+      }
       const existingPeers = Array.from(room.entries()).filter(([pid]) => pid !== peerId).map(([pid, p]) => ({ peerId: pid, name: p.name, avatarUrl: p.avatarUrl }));
       send(ws, { type: "joined", peerId, existingPeers });
       broadcastToRoom(meetingId, peerId, {
@@ -1880,6 +1928,7 @@ function handleWebRtcSignalling(ws) {
         name: user.name,
         avatarUrl: user.avatarUrl
       });
+      broadcastRoomPeers(meetingId);
       return;
     }
     if (!peerId || !meetingId) {
@@ -1944,14 +1993,22 @@ function handleWebRtcSignalling(ws) {
 async function cleanupPeer(roomId, pid) {
   const room = rooms.get(roomId);
   if (!room) return;
+  const peer = room.get(pid);
   room.delete(pid);
   if (room.size === 0) rooms.delete(roomId);
   broadcastToRoom(roomId, pid, { type: "peer-left", peerId: pid });
-  await Participant.findOneAndUpdate(
-    { meetingId: roomId, userId: pid },
-    { leftAt: /* @__PURE__ */ new Date() }
-  ).catch(() => {
-  });
+  broadcastRoomPeers(roomId);
+  try {
+    if (!peer?.userId) return;
+    const sameUserStillConnected = Array.from(room.values()).some((activePeer) => activePeer.userId === peer.userId);
+    if (sameUserStillConnected) return;
+    await Participant.findOneAndUpdate(
+      { meetingId: new import_mongoose15.Types.ObjectId(roomId), userId: new import_mongoose15.Types.ObjectId(peer.userId) },
+      { leftAt: /* @__PURE__ */ new Date() }
+    );
+  } catch (err) {
+    console.error("[Signaling] Failed to update participant cleanup in DB:", err);
+  }
 }
 
 // backend-fastify/src/utils/seedDefaultUser.ts

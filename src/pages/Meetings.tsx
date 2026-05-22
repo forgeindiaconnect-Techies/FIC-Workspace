@@ -85,6 +85,7 @@ export default function Meetings() {
 
   // WebSocket signaling ref
   const wsRef = React.useRef<WebSocket | null>(null);
+  const peerIdRef = React.useRef<string | null>(null);
 
   const { user } = getSession();
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
@@ -139,10 +140,16 @@ export default function Meetings() {
     try {
       // Build correct WebSocket URL from SOCKET_URL
       // SOCKET_URL may be wss:// or https://  normalize to wss://
-      const wsBase = SOCKET_URL
-        .replace(/^https:\/\//, 'wss://')
-        .replace(/^http:\/\//, 'ws://')
-        .replace(/\/+$/, '');
+      let wsBase = SOCKET_URL;
+      if (wsBase.startsWith('https://')) {
+        wsBase = wsBase.replace('https://', 'wss://');
+      } else if (wsBase.startsWith('http://')) {
+        wsBase = wsBase.replace('http://', 'ws://');
+      } else if (!wsBase.startsWith('ws://') && !wsBase.startsWith('wss://')) {
+        // If it's just a hostname or missing protocol, default to wss
+        wsBase = `wss://${wsBase}`;
+      }
+      wsBase = wsBase.replace(/\/+$/, '');
       const wsUrl = `${wsBase}/ws/webrtc`;
       console.log('[Signaling] Connecting to:', wsUrl, 'room:', signalingRoomId);
 
@@ -151,7 +158,7 @@ export default function Meetings() {
 
       ws.onopen = () => {
         console.log('[Signaling] Connected, joining room:', signalingRoomId);
-        ws.send(JSON.stringify({ type: 'join', data: { token, roomId: signalingRoomId } }));
+        ws.send(JSON.stringify({ type: 'join', data: { token, meetingId: signalingRoomId } }));
       };
 
       ws.onmessage = (e: any) => {
@@ -159,9 +166,16 @@ export default function Meetings() {
           const msg = JSON.parse(e.data);
           console.log('[Signaling] Received:', msg.type);
           if (msg.type === 'joined') {
+            peerIdRef.current = msg.peerId;
             const peers = (msg.existingPeers || []).map((p: any) => ({ id: p.peerId, name: p.name }));
             setRemotePeers(peers);
             console.log('[Signaling] Joined room. Existing peers:', peers.length);
+          }
+          if (msg.type === 'room-peers') {
+            const peers = (msg.peers || [])
+              .filter((p: any) => p.peerId !== peerIdRef.current)
+              .map((p: any) => ({ id: p.peerId, name: p.name }));
+            setRemotePeers(peers);
           }
           if (msg.type === 'peer-joined') {
             setRemotePeers(prev => [...prev.filter(p => p.id !== msg.peerId), { id: msg.peerId, name: msg.name }]);
@@ -223,10 +237,10 @@ export default function Meetings() {
       // Connect signaling using the canonical _id as room key
       // This ensures all users with the same meeting join the same signaling room
       const { token } = getSession();
-      if (token && room.signalingId) {
-        connectSignaling(room.signalingId, token);
-      } else if (token && room.id && !String(room.id).startsWith('local-')) {
-        connectSignaling(room.id, token);
+      const finalSignalingId = room.signalingId || (room.id && !String(room.id).startsWith('local-') ? room.id : null);
+      
+      if (token && finalSignalingId) {
+        connectSignaling(finalSignalingId, token);
       }
 
     } catch (err: any) {
@@ -248,8 +262,9 @@ export default function Meetings() {
       wsRef.current = null;
     }
     try {
-      if (activeRoom?.id && !String(activeRoom.id).startsWith('local-')) {
-        await api.meetings.endMeeting(activeRoom.id);
+      const endId = activeRoom?.signalingId || activeRoom?.id;
+      if (endId && !String(endId).startsWith('local-')) {
+        await api.meetings.endMeeting(endId);
       }
     } catch {}
     setActiveRoom(null);
@@ -258,6 +273,7 @@ export default function Meetings() {
     setIsVideoOff(false);
     setIsSharing(false);
     setRemotePeers([]);
+    peerIdRef.current = null;
   };
 
   const normalizeCode = (c: string) => {
@@ -273,13 +289,18 @@ export default function Meetings() {
       const res = await api.meetings.registerLiveMeeting({ title: meetTitle, password: meetPass || undefined });
       if (res?._id) await api.meetings.startMeeting(res._id).catch(() => {});
       setCreateModal(false);
-      // Use _id as the signaling room key  joiners will also resolve to this same _id
+      // Use _id as the signaling room key - joiners will also resolve to this same _id
+      const signalingRoomId = res._id || res.meetingId;
+      if (!signalingRoomId) {
+        throw new Error('Meeting created but no valid ID returned for signaling.');
+      }
+
       const room = {
-        id: res._id,
+        id: signalingRoomId,
         title: res.title,
         roomId: res.joinCode,
         password: meetPass,
-        signalingId: res._id,
+        signalingId: signalingRoomId,
       };
       setMeetTitle(''); setMeetPass('');
       await enterRoom(room);
@@ -298,8 +319,14 @@ export default function Meetings() {
       const res = await api.meetings.validateMeeting(code, joinPass || undefined);
       setJoinModal(false);
       // CRITICAL: always use res._id as the signaling room key so all users
-      // join the same WebSocket room regardless of how they entered the code
-      const signalingRoomId = res._id || res.meetingId || res.roomId || code;
+      // join the same WebSocket room regardless of how they entered the code.
+      // We prioritize the MongoDB _id (res._id or res.meetingId).
+      const signalingRoomId = res._id || res.meetingId;
+      
+      if (!signalingRoomId) {
+        throw new Error('Meeting resolved but no valid ID returned for signaling.');
+      }
+
       const room = {
         id: signalingRoomId,
         title: res.title || `Room ${code}`,
@@ -316,6 +343,30 @@ export default function Meetings() {
         `Meeting "${code}" not found or invalid passcode.\n\n${err?.message || 'Check the meeting ID and try again.'}`,
         [{ text: 'OK' }]
       );
+      setLoading(false);
+    }
+  };
+
+  const enterPersistentRoom = async (room: any) => {
+    setLoading(true);
+    try {
+      const res = await api.meetings.validateMeeting(room.id, undefined);
+      const signalingRoomId = res._id || res.meetingId;
+      if (!signalingRoomId) {
+        throw new Error('Room resolved but no valid meeting ID was returned.');
+      }
+      await enterRoom({
+        id: signalingRoomId,
+        title: res.title || room.title,
+        roomId: res.joinCode || room.id,
+        signalingId: signalingRoomId,
+      });
+    } catch (err: any) {
+      Alert.alert(
+        'Could not join room',
+        err?.message || 'This room could not be resolved on the server. Please try again.'
+      );
+    } finally {
       setLoading(false);
     }
   };
@@ -599,14 +650,7 @@ export default function Meetings() {
       <View style={s.section}>
         <Text style={s.sectionTitle}>Persistent Rooms</Text>
         {ROOMS.map(room => (
-          <TouchableOpacity key={room.id} style={s.roomCard} onPress={async () => {
-            setLoading(true);
-            try {
-              const res = await api.meetings.validateMeeting(room.id, undefined);
-              await enterRoom({ id: res._id || room.id, title: res.title || room.title, roomId: res.joinCode || room.id });
-            } catch { await enterRoom({ id: room.id, title: room.title, roomId: room.id }); }
-            finally { setLoading(false); }
-          }}>
+          <TouchableOpacity key={room.id} style={s.roomCard} onPress={() => enterPersistentRoom(room)}>
             <View style={[s.roomTag, { backgroundColor: room.color + '20' }]}>
               <Text style={[s.roomTagText, { color: room.color }]}>{room.tag}</Text>
             </View>
@@ -732,7 +776,7 @@ export default function Meetings() {
         <View style={s.modalOverlay}><View style={s.modalCard}>
           <View style={s.modalTopRow}><Text style={s.modalTitle}>Persistent Rooms</Text><TouchableOpacity onPress={() => setRoomsModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
           {ROOMS.map(room=>(
-            <TouchableOpacity key={room.id} style={s.roomModalItem} onPress={async()=>{setRoomsModal(false);setLoading(true);try{const res=await api.meetings.validateMeeting(room.id,undefined);await enterRoom({id:res._id||room.id,title:res.title||room.title,roomId:res.joinCode||room.id});}catch{await enterRoom({id:room.id,title:room.title,roomId:room.id});}finally{setLoading(false);}}}>
+            <TouchableOpacity key={room.id} style={s.roomModalItem} onPress={()=>{setRoomsModal(false);enterPersistentRoom(room);}}>
               <View style={[s.roomTag,{backgroundColor:room.color+'20'}]}><Text style={[s.roomTagText,{color:room.color}]}>{room.tag}</Text></View>
               <View style={{flex:1}}><Text style={s.roomModalTitle}>{room.title}</Text><Text style={s.roomModalId}>{room.id}</Text></View>
               <View style={[s.memberBadge,{backgroundColor:room.members>0?'#dcfce7':'#f1f5f9'}]}><Text style={[s.memberText,{color:room.members>0?'#15803d':'#64748b'}]}>{room.members} online</Text></View>

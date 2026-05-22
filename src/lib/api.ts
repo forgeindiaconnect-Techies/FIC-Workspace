@@ -51,7 +51,7 @@ export const BASE_IP = getHostIp();
 const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL ? stripTrailingSlash(process.env.EXPO_PUBLIC_API_URL) : '';
 const configuredSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL ? stripTrailingSlash(process.env.EXPO_PUBLIC_SOCKET_URL) : '';
 const LOCAL_API_URL = configuredApiUrl || `http://${BASE_IP}:${API_PORT}`;
-const LOCAL_SOCKET_URL = configuredSocketUrl || LOCAL_API_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+const LOCAL_SOCKET_URL = configuredSocketUrl || LOCAL_API_URL.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://');
 
 // Cloud backend (Render)
 export const PRODUCTION_API_URL = 'https://workspace-backend-r9f8.onrender.com';
@@ -120,7 +120,7 @@ export const setCustomServerUrl = async (url: string) => {
   }
 
   API_URL = cleanUrl;
-  SOCKET_URL = cleanUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+  SOCKET_URL = cleanUrl.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://');
 
   if (Platform.OS === 'web') {
     try {
@@ -191,7 +191,7 @@ const applyStoredApiUrl = async () => {
       return;
     }
     API_URL = stripTrailingSlash(customUrl);
-    SOCKET_URL = API_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+    SOCKET_URL = API_URL.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://');
     return;
   }
 
