@@ -44,7 +44,8 @@
         {
           "microphonePermission": "Allow Nexus to access your microphone for audio in meetings."
         }
-      ]
+      ],
+      "@config-plugins/react-native-webrtc"
     ],
     "updates": {
       "enabled": false

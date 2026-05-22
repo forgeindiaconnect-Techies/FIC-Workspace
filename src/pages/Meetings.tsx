@@ -11,6 +11,14 @@ import {
   FlipHorizontal, MonitorUp,
 } from 'lucide-react-native';
 import { api, getSession, SOCKET_URL } from '../lib/api';
+import {
+  isWebRTCAvailable,
+  mediaDevices,
+  RTCPeerConnectionClass,
+  RTCIceCandidateClass,
+  RTCSessionDescriptionClass,
+  RTCView,
+} from '../lib/webrtc';
 
 // expo-camera: works in Expo Go AND in APK builds (no custom native code needed)
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
@@ -38,6 +46,8 @@ const fmtDur = (s: number) =>
 
 const avatarFor = (name: string) =>
   String(name || 'U').trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'U';
+
+type RemotePeer = { id: string; name: string; peerId?: string; userId?: string };
 
 export default function Meetings() {
   // Camera & microphone permissions via expo-camera hooks
@@ -81,11 +91,16 @@ export default function Meetings() {
   ]);
   const [chatInput, setChatInput] = React.useState('');
   const [audioLevels, setAudioLevels] = React.useState([4, 4, 4, 4, 4]);
-  const [remotePeers, setRemotePeers] = React.useState<{ id: string; name: string }[]>([]);
+  const [remotePeers, setRemotePeers] = React.useState<RemotePeer[]>([]);
+  const [localStream, setLocalStream] = React.useState<any>(null);
+  const [remoteStreams, setRemoteStreams] = React.useState<Record<string, any>>({});
 
   // WebSocket signaling ref
   const wsRef = React.useRef<WebSocket | null>(null);
   const peerIdRef = React.useRef<string | null>(null);
+  const peerConnectionsRef = React.useRef<Map<string, any>>(new Map());
+  const remotePeerKeyRef = React.useRef<Map<string, string>>(new Map());
+  const localStreamRef = React.useRef<any>(null);
 
   const { user } = getSession();
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
@@ -121,14 +136,107 @@ export default function Meetings() {
     return () => { (global as any).isFullScreenMeetingActive = false; };
   }, [activeRoom]);
 
-  const mergeRemotePeers = React.useCallback((peers: { id: string; name: string }[]) => {
+  const mergeRemotePeers = React.useCallback((peers: RemotePeer[]) => {
     setRemotePeers(prev => {
-      const merged = new Map<string, { id: string; name: string }>();
+      const merged = new Map<string, RemotePeer>();
       prev.forEach(peer => merged.set(peer.id, peer));
-      peers.forEach(peer => merged.set(peer.id, peer));
+      peers.forEach(peer => merged.set(peer.id, { ...merged.get(peer.id), ...peer }));
       return Array.from(merged.values());
     });
   }, []);
+
+  const sendSignal = React.useCallback((type: string, data: any) => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type, data }));
+    }
+  }, []);
+
+  const stopMediaStream = React.useCallback((stream: any) => {
+    try {
+      stream?.getTracks?.().forEach((track: any) => track.stop?.());
+    } catch {}
+  }, []);
+
+  const cleanupPeerConnections = React.useCallback(() => {
+    peerConnectionsRef.current.forEach((pc) => {
+      try { pc.close?.(); } catch {}
+    });
+    peerConnectionsRef.current.clear();
+    remotePeerKeyRef.current.clear();
+    setRemoteStreams({});
+  }, []);
+
+  const ensureLocalStream = React.useCallback(async () => {
+    if (!isWebRTCAvailable || !mediaDevices) return null;
+    if (localStreamRef.current) return localStreamRef.current;
+
+    const stream = await mediaDevices.getUserMedia({
+      audio: true,
+      video: {
+        facingMode: facing === 'front' ? 'user' : 'environment',
+        width: 640,
+        height: 480,
+        frameRate: 24,
+      },
+    });
+
+    localStreamRef.current = stream;
+    setLocalStream(stream);
+    return stream;
+  }, [facing]);
+
+  const createPeerConnection = React.useCallback(async (targetPeerId: string, peer: RemotePeer, shouldOffer: boolean) => {
+    if (!isWebRTCAvailable || !RTCPeerConnectionClass || !targetPeerId) return null;
+
+    const existing = peerConnectionsRef.current.get(targetPeerId);
+    if (existing) return existing;
+
+    const peerKey = peer.id || peerKeyFor(peer);
+    remotePeerKeyRef.current.set(targetPeerId, peerKey);
+    mergeRemotePeers([{ ...peer, id: peerKey, peerId: targetPeerId }]);
+
+    const stream = await ensureLocalStream();
+    const pc = new RTCPeerConnectionClass({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ],
+    });
+
+    peerConnectionsRef.current.set(targetPeerId, pc);
+
+    stream?.getTracks?.().forEach((track: any) => {
+      pc.addTrack?.(track, stream);
+    });
+
+    pc.onicecandidate = (event: any) => {
+      if (event.candidate) {
+        sendSignal('ice-candidate', { targetPeerId, candidate: event.candidate });
+      }
+    };
+
+    pc.ontrack = (event: any) => {
+      const remoteStream = event.streams?.[0];
+      if (remoteStream) {
+        setRemoteStreams(prev => ({ ...prev, [peerKey]: remoteStream }));
+      }
+    };
+
+    pc.onaddstream = (event: any) => {
+      if (event.stream) {
+        setRemoteStreams(prev => ({ ...prev, [peerKey]: event.stream }));
+      }
+    };
+
+    if (shouldOffer) {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      sendSignal('offer', { targetPeerId, sdp: offer });
+    }
+
+    return pc;
+  }, [ensureLocalStream, mergeRemotePeers, sendSignal]);
 
   const syncRoomParticipants = React.useCallback(async (room: any) => {
     const meetingId = room?.signalingId || room?.id || room?.roomId;
@@ -140,6 +248,7 @@ export default function Meetings() {
         .filter((p: any) => String(p.userId || '') !== localUserId)
         .map((p: any) => ({
           id: `user-${p.userId || p.id}`,
+          userId: p.userId,
           name: p.name || p.email || 'Participant',
         }));
       mergeRemotePeers(peers);
@@ -155,6 +264,21 @@ export default function Meetings() {
     const t = setInterval(() => syncRoomParticipants(activeRoom), 3000);
     return () => clearInterval(t);
   }, [activeRoom, syncRoomParticipants]);
+
+  React.useEffect(() => {
+    localStreamRef.current?.getAudioTracks?.().forEach((track: any) => {
+      track.enabled = !isMuted;
+    });
+    if (activeRoom) {
+      sendSignal('media-state', { audioEnabled: !isMuted, videoEnabled: !isVideoOff });
+    }
+  }, [activeRoom, isMuted, isVideoOff, sendSignal]);
+
+  React.useEffect(() => {
+    localStreamRef.current?.getVideoTracks?.().forEach((track: any) => {
+      track.enabled = !isVideoOff && !isSharing;
+    });
+  }, [isVideoOff, isSharing]);
 
   // Fetch meetings
   React.useEffect(() => {
@@ -214,27 +338,80 @@ export default function Meetings() {
             peerIdRef.current = msg.peerId;
             const peers = (msg.existingPeers || [])
               .filter((p: any) => String(p.userId || '') !== localUserId)
-              .map((p: any) => ({ id: peerKeyFor(p), name: p.name }));
+              .map((p: any) => {
+                const id = peerKeyFor(p);
+                if (p.peerId) remotePeerKeyRef.current.set(p.peerId, id);
+                return { id, peerId: p.peerId, userId: p.userId, name: p.name };
+              });
             mergeRemotePeers(peers);
+            peers.forEach((peer: RemotePeer) => {
+              if (peer.peerId) {
+                createPeerConnection(peer.peerId, peer, true).catch((err) => console.warn('[WebRTC] Offer failed:', err));
+              }
+            });
             console.log('[Signaling] Joined room. Existing peers:', peers.length);
           }
           if (msg.type === 'room-peers') {
             const peers = (msg.peers || [])
               .filter((p: any) => p.peerId !== peerIdRef.current && String(p.userId || '') !== localUserId)
-              .map((p: any) => ({ id: peerKeyFor(p), name: p.name }));
+              .map((p: any) => {
+                const id = peerKeyFor(p);
+                if (p.peerId) remotePeerKeyRef.current.set(p.peerId, id);
+                return { id, peerId: p.peerId, userId: p.userId, name: p.name };
+              });
             mergeRemotePeers(peers);
           }
           if (msg.type === 'peer-joined') {
             const id = peerKeyFor(msg);
+            if (msg.peerId) remotePeerKeyRef.current.set(msg.peerId, id);
             if (String(msg.userId || '') !== localUserId) {
-              setRemotePeers(prev => [...prev.filter(p => p.id !== id), { id, name: msg.name }]);
+              setRemotePeers(prev => [...prev.filter(p => p.id !== id), { id, peerId: msg.peerId, userId: msg.userId, name: msg.name }]);
             }
             console.log('[Signaling] Peer joined:', msg.name);
           }
           if (msg.type === 'peer-left') {
             const id = peerKeyFor(msg);
             setRemotePeers(prev => prev.filter(p => p.id !== id && p.id !== msg.peerId));
+            const pc = peerConnectionsRef.current.get(msg.peerId);
+            try { pc?.close?.(); } catch {}
+            peerConnectionsRef.current.delete(msg.peerId);
+            remotePeerKeyRef.current.delete(msg.peerId);
+            setRemoteStreams(prev => {
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
             console.log('[Signaling] Peer left:', msg.peerId);
+          }
+          if (msg.type === 'offer') {
+            const fromPeerId = msg.fromPeerId;
+            const peer = {
+              id: remotePeerKeyRef.current.get(fromPeerId) || String(fromPeerId),
+              peerId: fromPeerId,
+              name: 'Participant',
+            };
+            createPeerConnection(fromPeerId, peer, false).then(async (pc) => {
+              if (!pc) return;
+              const desc = RTCSessionDescriptionClass ? new RTCSessionDescriptionClass(msg.sdp) : msg.sdp;
+              await pc.setRemoteDescription(desc);
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              sendSignal('answer', { targetPeerId: fromPeerId, sdp: answer });
+            }).catch((err) => console.warn('[WebRTC] Offer handling failed:', err));
+          }
+          if (msg.type === 'answer') {
+            const pc = peerConnectionsRef.current.get(msg.fromPeerId);
+            if (pc) {
+              const desc = RTCSessionDescriptionClass ? new RTCSessionDescriptionClass(msg.sdp) : msg.sdp;
+              pc.setRemoteDescription(desc).catch((err: any) => console.warn('[WebRTC] Answer failed:', err));
+            }
+          }
+          if (msg.type === 'ice-candidate') {
+            const pc = peerConnectionsRef.current.get(msg.fromPeerId);
+            if (pc && msg.candidate) {
+              const candidate = RTCIceCandidateClass ? new RTCIceCandidateClass(msg.candidate) : msg.candidate;
+              pc.addIceCandidate(candidate).catch((err: any) => console.warn('[WebRTC] ICE failed:', err));
+            }
           }
           if (msg.type === 'error') {
             console.warn('[Signaling] Server error:', msg.message);
@@ -279,6 +456,12 @@ export default function Meetings() {
         }
       }
 
+      if (isWebRTCAvailable) {
+        await ensureLocalStream().catch((err) => {
+          console.warn('[WebRTC] Could not start local media:', err);
+        });
+      }
+
       setActiveRoom(room);
       setIsMuted(false);
       setIsVideoOff(false);
@@ -318,12 +501,17 @@ export default function Meetings() {
         await api.meetings.endMeeting(endId);
       }
     } catch {}
+    cleanupPeerConnections();
+    stopMediaStream(localStreamRef.current);
+    localStreamRef.current = null;
+    setLocalStream(null);
     setActiveRoom(null);
     setSidePanel(null);
     setIsMuted(false);
     setIsVideoOff(false);
     setIsSharing(false);
     setRemotePeers([]);
+    setRemoteStreams({});
     peerIdRef.current = null;
   };
 
@@ -438,6 +626,7 @@ export default function Meetings() {
   };
 
   const camReady = cameraPermission?.granted && !isVideoOff && !isSharing;
+  const rtcLocalStreamUrl = localStream?.toURL?.();
 
   //  ACTIVE MEETING ROOM 
   if (activeRoom) {
@@ -486,7 +675,14 @@ export default function Meetings() {
 
             {/* LOCAL CAMERA TILE */}
             <View style={[s.videoTile, remotePeers.length === 0 ? s.videoTileFull : s.videoTileHalf]}>
-              {camReady ? (
+              {isWebRTCAvailable && rtcLocalStreamUrl && !isVideoOff && !isSharing ? (
+                <RTCView
+                  style={s.cameraView}
+                  streamURL={rtcLocalStreamUrl}
+                  objectFit="cover"
+                  mirror={facing === 'front'}
+                />
+              ) : camReady ? (
                 <CameraView
                   style={s.cameraView}
                   facing={facing}
@@ -518,17 +714,28 @@ export default function Meetings() {
             </View>
 
             {/* REMOTE PEER TILES */}
-            {remotePeers.slice(0, 3).map(peer => (
-              <View key={peer.id} style={[s.videoTile, s.videoTileHalf]}>
-                <View style={[s.videoAvatar, { backgroundColor: '#7c3aed' }]}>
-                  <Text style={s.videoAvatarText}>{avatarFor(peer.name)}</Text>
-                  <Text style={s.connectingText}>Connected</Text>
+            {remotePeers.slice(0, 3).map(peer => {
+              const remoteStreamUrl = remoteStreams[peer.id]?.toURL?.();
+              return (
+                <View key={peer.id} style={[s.videoTile, s.videoTileHalf]}>
+                  {isWebRTCAvailable && remoteStreamUrl ? (
+                    <RTCView
+                      style={s.cameraView}
+                      streamURL={remoteStreamUrl}
+                      objectFit="cover"
+                    />
+                  ) : (
+                    <View style={[s.videoAvatar, { backgroundColor: '#7c3aed' }]}>
+                      <Text style={s.videoAvatarText}>{avatarFor(peer.name)}</Text>
+                      <Text style={s.connectingText}>{isWebRTCAvailable ? 'Connecting media...' : 'Connected'}</Text>
+                    </View>
+                  )}
+                  <View style={s.namePlate}>
+                    <Text style={s.namePlateText} numberOfLines={1}>{peer.name}</Text>
+                  </View>
                 </View>
-                <View style={s.namePlate}>
-                  <Text style={s.namePlateText} numberOfLines={1}>{peer.name}</Text>
-                </View>
-              </View>
-            ))}
+              );
+            })}
 
             {/* WAITING BANNER */}
             {remotePeers.length === 0 && (

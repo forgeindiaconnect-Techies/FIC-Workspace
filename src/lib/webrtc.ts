@@ -1,27 +1,32 @@
-/**
- * WebRTC stub for Expo Go compatibility.
- *
- * react-native-webrtc requires a custom native APK build and
- * crashes Expo Go. This stub keeps the app stable in Expo Go
- * while the APK build can swap in the real implementation.
- *
- * Camera/audio in meetings requires building a custom APK:
- *   npx eas build --profile preview --platform android
- */
 import React from 'react';
 import { View, Text } from 'react-native';
 
-// Always false in Expo Go - true only in a custom APK with native WebRTC
-export const isWebRTCAvailable = false;
+let nativeWebRTC: any = null;
 
-// No-op classes - safe to instantiate, do nothing
-export const RTCPeerConnectionClass: any = null;
-export const RTCIceCandidateClass: any = null;
-export const RTCSessionDescriptionClass: any = null;
-export const mediaDevices: any = null;
+try {
+  nativeWebRTC = require('react-native-webrtc');
+} catch (err) {
+  nativeWebRTC = null;
+}
 
-// Safe RTCView placeholder - renders a dark box instead of crashing
+export const isWebRTCAvailable = !!(
+  nativeWebRTC?.RTCPeerConnection &&
+  nativeWebRTC?.mediaDevices &&
+  nativeWebRTC?.RTCView
+);
+
+export const RTCPeerConnectionClass: any = nativeWebRTC?.RTCPeerConnection || null;
+export const RTCIceCandidateClass: any = nativeWebRTC?.RTCIceCandidate || null;
+export const RTCSessionDescriptionClass: any = nativeWebRTC?.RTCSessionDescription || null;
+export const mediaDevices: any = nativeWebRTC?.mediaDevices || null;
+
+const NativeRTCView = nativeWebRTC?.RTCView;
+
 export function RTCView(props: any) {
+  if (NativeRTCView) {
+    return React.createElement(NativeRTCView, props);
+  }
+
   return React.createElement(
     View,
     {
