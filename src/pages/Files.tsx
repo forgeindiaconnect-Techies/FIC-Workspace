@@ -27,15 +27,6 @@ import { api, getSession } from '../lib/api';
 const { width } = Dimensions.get('window');
 const isMobile = width < 768;
 
-// Fallback data shown when the backend has no documents yet
-const MOCK_FILES = [
-  { id: '1', name: 'Core Guidelines.pdf', size: '12.4 MB', type: 'pdf', ownerName: 'Design Team', date: 'Aug 12' },
-  { id: '2', name: 'Nexus Roadmap.docx', size: '420 KB', type: 'doc', ownerName: 'You', date: 'Yesterday' },
-  { id: '3', name: 'Q3 Financials', size: '--', type: 'folder', ownerName: 'Finance', date: 'Aug 15' },
-  { id: '4', name: 'App Mockups.fig', size: '8.2 MB', type: 'other', ownerName: 'You', date: '2 days' },
-  { id: '5', name: 'Feedback Logs.csv', size: '2.1 MB', type: 'sheet', ownerName: 'Support', date: 'Aug 10' },
-];
-
 const DOC_TYPES = ['doc', 'sheet', 'pdf', 'folder', 'other'] as const;
 type DocType = typeof DOC_TYPES[number];
 
@@ -47,6 +38,15 @@ interface DocFile {
   ownerName: string;
   date: string;
 }
+
+// Fallback data shown when the backend has no documents yet
+const MOCK_FILES: DocFile[] = [
+  { id: '1', name: 'Core Guidelines.pdf', size: '12.4 MB', type: 'pdf', ownerName: 'Design Team', date: 'Aug 12' },
+  { id: '2', name: 'Nexus Roadmap.docx', size: '420 KB', type: 'doc', ownerName: 'You', date: 'Yesterday' },
+  { id: '3', name: 'Q3 Financials', size: '--', type: 'folder', ownerName: 'Finance', date: 'Aug 15' },
+  { id: '4', name: 'App Mockups.fig', size: '8.2 MB', type: 'other', ownerName: 'You', date: '2 days' },
+  { id: '5', name: 'Feedback Logs.csv', size: '2.1 MB', type: 'sheet', ownerName: 'Support', date: 'Aug 10' },
+];
 
 const formatBytes = (bytes?: number) => {
   if (!bytes || bytes === 0) return '--';
