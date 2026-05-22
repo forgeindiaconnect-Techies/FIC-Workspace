@@ -1,14 +1,15 @@
 /**
- * WebRTC wrapper that safely imports react-native-webrtc.
+ * WebRTC safe wrapper for react-native-webrtc.
  *
- * react-native-webrtc requires native modules (camera, audio) that are
- * only available in a custom development build or production APK.
- * In Expo Go (standard sandbox), these native modules are not present.
+ * react-native-webrtc needs native modules compiled into the APK.
+ * This wrapper gracefully handles Expo Go (no native modules) vs APK builds.
  *
- * This wrapper detects availability and exports either the real
- * react-native-webrtc classes or safe no-op stubs so the app
- * does not crash in Expo Go.
+ * IMPORTANT: You MUST rebuild the APK after adding react-native-webrtc.
+ * Run: npx eas build --profile preview --platform android
  */
+
+import { View, Text, StyleSheet } from 'react-native';
+import React from 'react';
 
 let _RTCPeerConnection: any = null;
 let _RTCIceCandidate: any = null;
@@ -18,23 +19,47 @@ let _RTCView: any = null;
 let _isAvailable = false;
 
 try {
+  // registerGlobals() is required by react-native-webrtc to set up
+  // global RTCPeerConnection, getUserMedia etc. on the native side
   const webrtc = require('react-native-webrtc');
+
+  if (webrtc.registerGlobals) {
+    webrtc.registerGlobals();
+  }
+
   _RTCPeerConnection = webrtc.RTCPeerConnection;
   _RTCIceCandidate = webrtc.RTCIceCandidate;
   _RTCSessionDescription = webrtc.RTCSessionDescription;
   _mediaDevices = webrtc.mediaDevices;
   _RTCView = webrtc.RTCView;
-  // Verify the native module is actually loaded (not just JS stubs)
-  if (_mediaDevices && typeof _mediaDevices.getUserMedia === 'function') {
+
+  // Confirm native module is actually present (not just JS stubs)
+  if (
+    _RTCPeerConnection &&
+    _mediaDevices &&
+    typeof _mediaDevices.getUserMedia === 'function'
+  ) {
     _isAvailable = true;
+    console.log('[WebRTC] Native module loaded successfully.');
+  } else {
+    console.warn('[WebRTC] Module loaded but native bridge missing. Rebuild APK.');
   }
-} catch (e) {
-  console.warn('[WebRTC] react-native-webrtc not available (Expo Go). Use a dev build APK for camera/audio.');
+} catch (e: any) {
+  console.warn('[WebRTC] Not available:', e.message);
 }
 
-export const isWebRTCAvailable = _isAvailable;
-export const RTCPeerConnection = _RTCPeerConnection;
-export const RTCIceCandidate = _RTCIceCandidate;
-export const RTCSessionDescription = _RTCSessionDescription;
-export const mediaDevices = _mediaDevices;
-export const RTCView = _RTCView;
+// Fallback RTCView for Expo Go  shows a placeholder instead of crashing
+function RTCViewFallback(props: any) {
+  return React.createElement(
+    View,
+    { style: [{ backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' }, props.style] },
+    React.createElement(Text, { style: { color: '#64748b', fontSize: 12, fontWeight: '600' } }, 'Camera unavailable in Expo Go')
+  );
+}
+
+export const isWebRTCAvailable: boolean = _isAvailable;
+export const RTCPeerConnectionClass: any = _RTCPeerConnection;
+export const RTCIceCandidateClass: any = _RTCIceCandidate;
+export const RTCSessionDescriptionClass: any = _RTCSessionDescription;
+export const mediaDevices: any = _mediaDevices;
+export const RTCView: any = _RTCView || RTCViewFallback;

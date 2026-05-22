@@ -10,13 +10,11 @@ import {
   X, Send, MessageSquare, LogIn, ChevronRight, Wifi, ScreenShare,
 } from 'lucide-react-native';
 import { api, getSession, SOCKET_URL } from '../lib/api';
-
-// Safe WebRTC wrapper - works in APK builds, gracefully degrades in Expo Go
 import {
   isWebRTCAvailable,
-  RTCPeerConnection,
-  RTCIceCandidate,
-  RTCSessionDescription,
+  RTCPeerConnectionClass,
+  RTCIceCandidateClass,
+  RTCSessionDescriptionClass,
   mediaDevices,
   RTCView,
 } from '../lib/webrtc';
@@ -43,6 +41,8 @@ const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
 ];
 
 const fmtDur = (s: number) =>
@@ -51,19 +51,19 @@ const fmtDur = (s: number) =>
 const avatarFor = (name: string) =>
   String(name || 'U').trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'U';
 
-// Request Android permissions for camera and microphone
-async function requestPermissions(): Promise<boolean> {
+async function requestAndroidPermissions(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
   try {
-    const granted = await PermissionsAndroid.requestMultiple([
+    const result = await PermissionsAndroid.requestMultiple([
       PermissionsAndroid.PERMISSIONS.CAMERA,
       PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
     ]);
-    return (
-      granted[PermissionsAndroid.PERMISSIONS.CAMERA] === PermissionsAndroid.RESULTS.GRANTED &&
-      granted[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED
-    );
-  } catch {
+    const camOk = result[PermissionsAndroid.PERMISSIONS.CAMERA] === PermissionsAndroid.RESULTS.GRANTED;
+    const micOk = result[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === PermissionsAndroid.RESULTS.GRANTED;
+    console.log('[Permissions] Camera:', camOk, 'Mic:', micOk);
+    return camOk && micOk;
+  } catch (e) {
+    console.warn('[Permissions] Error:', e);
     return false;
   }
 }
@@ -75,7 +75,6 @@ export default function Meetings() {
   const [activeRoom, setActiveRoom] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
 
-  // Modals
   const [createModal, setCreateModal] = React.useState(false);
   const [joinModal, setJoinModal] = React.useState(false);
   const [scheduleModal, setScheduleModal] = React.useState(false);
@@ -84,7 +83,6 @@ export default function Meetings() {
   const [summaryText, setSummaryText] = React.useState('');
   const [summaryLoading, setSummaryLoading] = React.useState(false);
 
-  // Form state
   const [meetTitle, setMeetTitle] = React.useState('');
   const [meetPass, setMeetPass] = React.useState('');
   const [joinCode, setJoinCode] = React.useState('');
@@ -94,7 +92,6 @@ export default function Meetings() {
   const [schedTime, setSchedTime] = React.useState('10:00 AM');
   const [schedDur, setSchedDur] = React.useState('45');
 
-  // In-call state
   const [isMuted, setIsMuted] = React.useState(false);
   const [isVideoOff, setIsVideoOff] = React.useState(false);
   const [callDur, setCallDur] = React.useState(0);
@@ -105,17 +102,14 @@ export default function Meetings() {
   const [chatInput, setChatInput] = React.useState('');
   const [audioLevels, setAudioLevels] = React.useState([4, 4, 4, 4, 4]);
 
-  // WebRTC state
   const [localStream, setLocalStream] = React.useState<any>(null);
-  const [remoteStreams, setRemoteStreams] = React.useState<Map<string, any>>(new Map());
-  const [remotePeers, setRemotePeers] = React.useState<Map<string, { name: string; avatarUrl?: string }>>(new Map());
-  const [camPermission, setCamPermission] = React.useState<'unknown' | 'granted' | 'denied'>('unknown');
+  const [remoteStreams, setRemoteStreams] = React.useState<{ [peerId: string]: any }>({});
+  const [remotePeers, setRemotePeers] = React.useState<{ [peerId: string]: { name: string } }>({});
+  const [mediaStatus, setMediaStatus] = React.useState<'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable'>('idle');
 
-  // Refs
   const wsRef = React.useRef<WebSocket | null>(null);
-  const peerConnsRef = React.useRef<Map<string, RTCPeerConnection>>(new Map());
+  const peerConnsRef = React.useRef<{ [peerId: string]: any }>({});
   const localStreamRef = React.useRef<any>(null);
-  const myPeerIdRef = React.useRef<string | null>(null);
 
   const { user } = getSession();
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
@@ -143,7 +137,7 @@ export default function Meetings() {
     return () => clearInterval(t);
   }, [activeRoom, isMuted]);
 
-  // Fullscreen flag
+  // Fullscreen flag for AppLayout
   React.useEffect(() => {
     (global as any).isFullScreenMeetingActive = !!activeRoom;
     return () => { (global as any).isFullScreenMeetingActive = false; };
@@ -165,33 +159,34 @@ export default function Meetings() {
     }).catch(() => {});
   }, []);
 
-  //  WebRTC helpers 
+  //  WebRTC peer connection factory 
+  const createPeerConn = (targetPeerId: string): any => {
+    if (!RTCPeerConnectionClass) return null;
 
-  const createPeerConnection = (targetPeerId: string): RTCPeerConnection => {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-
-    // Add local tracks to this connection
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track: any) => {
-        pc.addTrack(track, localStreamRef.current);
-      });
-    }
-
+    const pc = new RTCPeerConnectionClass({ iceServers: ICE_SERVERS });
     const pcAny = pc as any;
 
-    // When we receive a remote track, store it
+    // Add local tracks so the remote peer receives our audio/video
+    if (localStreamRef.current) {
+      try {
+        localStreamRef.current.getTracks().forEach((track: any) => {
+          pcAny.addTrack(track, localStreamRef.current);
+        });
+      } catch (e) {
+        console.warn('[WebRTC] addTrack error:', e);
+      }
+    }
+
+    // Receive remote tracks
     pcAny.addEventListener('track', (event: any) => {
       const stream = event.streams?.[0];
       if (stream) {
-        setRemoteStreams(prev => {
-          const next = new Map(prev);
-          next.set(targetPeerId, stream);
-          return next;
-        });
+        console.log('[WebRTC] Received remote track from', targetPeerId);
+        setRemoteStreams(prev => ({ ...prev, [targetPeerId]: stream }));
       }
     });
 
-    // Relay ICE candidates through signaling server
+    // Send ICE candidates to remote peer via signaling
     pcAny.addEventListener('icecandidate', (event: any) => {
       if (event.candidate && wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
@@ -201,151 +196,177 @@ export default function Meetings() {
       }
     });
 
+    // Handle connection state changes
     pcAny.addEventListener('connectionstatechange', () => {
       const state = pcAny.connectionState;
-      if (state === 'failed' || state === 'disconnected') {
-        setRemoteStreams(prev => { const n = new Map(prev); n.delete(targetPeerId); return n; });
+      console.log('[WebRTC] Connection state with', targetPeerId, ':', state);
+      if (state === 'failed' || state === 'closed') {
+        setRemoteStreams(prev => { const n = { ...prev }; delete n[targetPeerId]; return n; });
       }
     });
 
-    peerConnsRef.current.set(targetPeerId, pc);
+    peerConnsRef.current[targetPeerId] = pc;
     return pc;
   };
 
+  //  WebSocket signaling 
   const connectSignaling = (roomId: string, token: string) => {
-    const wsUrl = SOCKET_URL.replace(/^http/, 'ws') + '/ws/webrtc';
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    try {
+      const wsBase = SOCKET_URL.replace(/^https?:/, 'wss:').replace(/^wss:\/\/wss:/, 'wss:');
+      const wsUrl = `${wsBase}/ws/webrtc`;
+      console.log('[WebRTC] Connecting signaling to:', wsUrl);
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'join', data: { token, roomId } }));
-    };
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onmessage = async (e: any) => {
-      let msg: any;
-      try { msg = JSON.parse(e.data); } catch { return; }
+      ws.onopen = () => {
+        console.log('[WebRTC] Signaling connected, joining room:', roomId);
+        ws.send(JSON.stringify({ type: 'join', data: { token, roomId } }));
+      };
 
-      const { type: msgType } = msg;
+      ws.onmessage = async (e: any) => {
+        let msg: any;
+        try { msg = JSON.parse(e.data); } catch { return; }
+        const { type: t } = msg;
+        console.log('[WebRTC] Signal received:', t);
 
-      if (msgType === 'joined') {
-        myPeerIdRef.current = msg.peerId;
-        // Initiate offers to all existing peers
-        for (const ep of (msg.existingPeers || [])) {
-          setRemotePeers(prev => { const n = new Map(prev); n.set(ep.peerId, { name: ep.name, avatarUrl: ep.avatarUrl }); return n; });
-          const pc = createPeerConnection(ep.peerId);
-          const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-          await pc.setLocalDescription(offer);
-          ws.send(JSON.stringify({ type: 'offer', data: { targetPeerId: ep.peerId, sdp: offer } }));
+        if (t === 'joined') {
+          // Initiate offers to all existing peers in the room
+          for (const ep of (msg.existingPeers || [])) {
+            setRemotePeers(prev => ({ ...prev, [ep.peerId]: { name: ep.name } }));
+            const pc = createPeerConn(ep.peerId);
+            if (!pc) continue;
+            try {
+              const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+              await pc.setLocalDescription(offer);
+              ws.send(JSON.stringify({ type: 'offer', data: { targetPeerId: ep.peerId, sdp: offer } }));
+            } catch (err) { console.warn('[WebRTC] Offer error:', err); }
+          }
         }
-      }
 
-      if (msgType === 'peer-joined') {
-        setRemotePeers(prev => { const n = new Map(prev); n.set(msg.peerId, { name: msg.name, avatarUrl: msg.avatarUrl }); return n; });
-        // New peer will send us an offer, just register them
-      }
-
-      if (msgType === 'offer') {
-        const pc = createPeerConnection(msg.fromPeerId);
-        await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify({ type: 'answer', data: { targetPeerId: msg.fromPeerId, sdp: answer } }));
-      }
-
-      if (msgType === 'answer') {
-        const pc = peerConnsRef.current.get(msg.fromPeerId);
-        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-      }
-
-      if (msgType === 'ice-candidate') {
-        const pc = peerConnsRef.current.get(msg.fromPeerId);
-        if (pc && msg.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {});
+        if (t === 'peer-joined') {
+          setRemotePeers(prev => ({ ...prev, [msg.peerId]: { name: msg.name } }));
         }
-      }
 
-      if (msgType === 'peer-media-state') {
-        // Update remote peer media state if needed
-      }
+        if (t === 'offer') {
+          const pc = createPeerConn(msg.fromPeerId);
+          if (!pc) return;
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescriptionClass(msg.sdp));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            ws.send(JSON.stringify({ type: 'answer', data: { targetPeerId: msg.fromPeerId, sdp: answer } }));
+          } catch (err) { console.warn('[WebRTC] Answer error:', err); }
+        }
 
-      if (msgType === 'peer-left') {
-        const pc = peerConnsRef.current.get(msg.peerId);
-        if (pc) { pc.close(); peerConnsRef.current.delete(msg.peerId); }
-        setRemoteStreams(prev => { const n = new Map(prev); n.delete(msg.peerId); return n; });
-        setRemotePeers(prev => { const n = new Map(prev); n.delete(msg.peerId); return n; });
-      }
-    };
+        if (t === 'answer') {
+          const pc = peerConnsRef.current[msg.fromPeerId];
+          if (pc) {
+            try { await pc.setRemoteDescription(new RTCSessionDescriptionClass(msg.sdp)); }
+            catch (err) { console.warn('[WebRTC] setRemoteDescription error:', err); }
+          }
+        }
 
-    ws.onerror = () => {
-      console.warn('[WebRTC] Signaling WS error');
-    };
+        if (t === 'ice-candidate') {
+          const pc = peerConnsRef.current[msg.fromPeerId];
+          if (pc && msg.candidate) {
+            try { await pc.addIceCandidate(new RTCIceCandidateClass(msg.candidate)); }
+            catch (err) { console.warn('[WebRTC] addIceCandidate error:', err); }
+          }
+        }
+
+        if (t === 'peer-left') {
+          const pc = peerConnsRef.current[msg.peerId];
+          if (pc) { try { pc.close(); } catch {} delete peerConnsRef.current[msg.peerId]; }
+          setRemoteStreams(prev => { const n = { ...prev }; delete n[msg.peerId]; return n; });
+          setRemotePeers(prev => { const n = { ...prev }; delete n[msg.peerId]; return n; });
+        }
+      };
+
+      ws.onerror = (e: any) => console.warn('[WebRTC] WS error:', e.message);
+      ws.onclose = () => console.log('[WebRTC] Signaling WS closed');
+    } catch (e) {
+      console.warn('[WebRTC] connectSignaling error:', e);
+    }
   };
 
-  //  Start local media and join room 
-
-  const startLocalMedia = async (): Promise<any | null> => {
-    // Check if native WebRTC module is available (APK build only, not Expo Go)
+  //  Start local camera + microphone 
+  const startLocalMedia = async (): Promise<any> => {
     if (!isWebRTCAvailable || !mediaDevices) {
+      setMediaStatus('unavailable');
       Alert.alert(
-        'Development Build Required',
-        'Camera and audio require a custom APK build.\n\nRun: eas build --profile preview --platform android\n\nExpo Go does not support native camera/WebRTC modules.',
-        [{ text: 'OK' }]
+        'Native Build Required',
+        'Camera and audio require a custom APK build with react-native-webrtc.\n\nBuild command:\nnpx eas build --profile preview --platform android\n\nThe meeting room will open without camera/audio.',
+        [{ text: 'Continue Anyway' }]
       );
-      // Still allow joining the room in UI-only mode (no camera/audio)
       return 'no-media';
     }
 
-    const ok = await requestPermissions();
-    if (!ok) {
-      setCamPermission('denied');
+    setMediaStatus('requesting');
+    const permOk = await requestAndroidPermissions();
+    if (!permOk) {
+      setMediaStatus('denied');
       Alert.alert(
-        'Permissions Required',
-        'Camera and microphone permissions are needed. Please enable them in Android Settings > Apps > Nexus Workspace > Permissions.',
+        'Permissions Denied',
+        'Camera and microphone permissions are required.\n\nGo to: Settings > Apps > Nexus Workspace > Permissions\nEnable Camera and Microphone, then try again.',
         [{ text: 'OK' }]
       );
       return null;
     }
-    setCamPermission('granted');
+
+    // Try video + audio first
     try {
+      console.log('[WebRTC] Requesting camera + microphone...');
       const stream = await mediaDevices.getUserMedia({
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
         video: {
           facingMode: 'user',
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          frameRate: { ideal: 30 },
+          width: { min: 320, ideal: 640, max: 1280 },
+          height: { min: 240, ideal: 480, max: 720 },
+          frameRate: { ideal: 24, max: 30 },
         },
       });
+      console.log('[WebRTC] Got stream. Tracks:', stream.getTracks().length);
       localStreamRef.current = stream;
       setLocalStream(stream);
+      setMediaStatus('granted');
       return stream;
-    } catch (err: any) {
-      console.warn('[WebRTC] getUserMedia failed:', err.message);
-      // Try audio-only fallback
+    } catch (videoErr: any) {
+      console.warn('[WebRTC] Video+audio failed:', videoErr.message, '- trying audio only...');
+      // Fallback: audio only
       try {
-        const audioStream = await mediaDevices.getUserMedia({ audio: true, video: false });
+        const audioStream = await mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+          video: false,
+        });
+        console.log('[WebRTC] Got audio-only stream.');
         localStreamRef.current = audioStream;
         setLocalStream(audioStream);
-        setCamPermission('denied');
-        Alert.alert('Camera Unavailable', 'Joining with audio only. Camera could not be accessed.');
+        setMediaStatus('granted');
+        Alert.alert('Camera Unavailable', 'Joined with audio only. Camera could not be accessed.\n\nCheck camera permissions in Settings.');
         return audioStream;
-      } catch {
-        Alert.alert('Media Error', 'Could not access camera or microphone. Check permissions in Settings.');
+      } catch (audioErr: any) {
+        console.warn('[WebRTC] Audio-only also failed:', audioErr.message);
+        setMediaStatus('denied');
+        Alert.alert('Media Error', `Could not access camera or microphone.\n\nError: ${audioErr.message}\n\nCheck permissions in Settings > Apps > Nexus Workspace.`);
         return null;
       }
     }
   };
 
+  //  Enter meeting room 
   const enterRoom = async (room: any) => {
     setLoading(true);
     try {
       const stream = await startLocalMedia();
-      // null = permission denied, abort
-      if (stream === null) { setLoading(false); return; }
+      if (stream === null) { setLoading(false); return; } // permission denied
 
       setActiveRoom(room);
 
-      // Only connect WebRTC signaling if native module is available
       if (isWebRTCAvailable && stream !== 'no-media') {
         const { token } = getSession();
         if (token) connectSignaling(room.id, token);
@@ -353,32 +374,36 @@ export default function Meetings() {
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Could not start meeting.');
     } finally {
-      setLoading(false);
-    }
+      setLoading(false); }
   };
 
+  //  End call and clean up 
   const endCall = async () => {
     // Close all peer connections
-    for (const pc of peerConnsRef.current.values()) {
-      pc.close();
-    }
-    peerConnsRef.current.clear();
+    Object.values(peerConnsRef.current).forEach((pc: any) => {
+      try { pc.close(); } catch {}
+    });
+    peerConnsRef.current = {};
 
-    // Stop local media tracks
+    // Stop all local media tracks
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t: any) => t.stop());
+      try {
+        localStreamRef.current.getTracks().forEach((t: any) => t.stop());
+      } catch {}
       localStreamRef.current = null;
     }
     setLocalStream(null);
-    setRemoteStreams(new Map());
-    setRemotePeers(new Map());
+    setRemoteStreams({});
+    setRemotePeers({});
 
-    // Close signaling WS
+    // Close signaling WebSocket
     if (wsRef.current) {
-      if (wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'leave', data: {} }));
-      }
-      wsRef.current.close();
+      try {
+        if (wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'leave', data: {} }));
+        }
+        wsRef.current.close();
+      } catch {}
       wsRef.current = null;
     }
 
@@ -393,48 +418,53 @@ export default function Meetings() {
     setSidePanel(null);
     setIsMuted(false);
     setIsVideoOff(false);
-    setCamPermission('unknown');
+    setMediaStatus('idle');
   };
 
-  // Toggle mute
+  //  Toggle mute 
   const toggleMute = () => {
     if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach((t: any) => {
-        t.enabled = isMuted; // flip: if currently muted, enable
-      });
-      // Broadcast state change
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'media-state',
-          data: { audioEnabled: isMuted, videoEnabled: !isVideoOff },
-        }));
-      }
+      try {
+        localStreamRef.current.getAudioTracks().forEach((t: any) => {
+          t.enabled = isMuted; // if currently muted, enable; if unmuted, disable
+        });
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: 'media-state',
+            data: { audioEnabled: isMuted, videoEnabled: !isVideoOff },
+          }));
+        }
+      } catch (e) { console.warn('[WebRTC] toggleMute error:', e); }
     }
     setIsMuted(p => !p);
   };
 
-  // Toggle camera
+  //  Toggle camera 
   const toggleCamera = () => {
     if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach((t: any) => {
-        t.enabled = isVideoOff; // flip
-      });
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'media-state',
-          data: { audioEnabled: !isMuted, videoEnabled: isVideoOff },
-        }));
-      }
+      try {
+        localStreamRef.current.getVideoTracks().forEach((t: any) => {
+          t.enabled = isVideoOff; // if currently off, enable; if on, disable
+        });
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: 'media-state',
+            data: { audioEnabled: !isMuted, videoEnabled: isVideoOff },
+          }));
+        }
+      } catch (e) { console.warn('[WebRTC] toggleCamera error:', e); }
     }
     setIsVideoOff(p => !p);
   };
 
-  // Switch camera front/back
+  //  Switch front/back camera 
   const switchCamera = () => {
     if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach((t: any) => {
-        if (t._switchCamera) t._switchCamera();
-      });
+      try {
+        localStreamRef.current.getVideoTracks().forEach((t: any) => {
+          if (typeof t._switchCamera === 'function') t._switchCamera();
+        });
+      } catch (e) { console.warn('[WebRTC] switchCamera error:', e); }
     }
   };
 
@@ -482,10 +512,7 @@ export default function Meetings() {
 
   const sendChatMsg = () => {
     if (!chatInput.trim()) return;
-    setChatMsgs(p => [...p, {
-      id: String(Date.now()), sender: 'You', text: chatInput.trim(),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    }]);
+    setChatMsgs(p => [...p, { id: String(Date.now()), sender: 'You', text: chatInput.trim(), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
     setChatInput('');
   };
 
@@ -501,7 +528,8 @@ export default function Meetings() {
   //  ACTIVE MEETING ROOM 
   if (activeRoom) {
     const localUser = user;
-    const remotePeerList = Array.from(remotePeers.entries());
+    const remotePeerList = Object.entries(remotePeers);
+    const hasVideo = localStream && !isVideoOff && mediaStatus === 'granted';
 
     return (
       <View style={s.roomRoot}>
@@ -536,22 +564,31 @@ export default function Meetings() {
           ) : null}
         </View>
 
+        {/* MEDIA STATUS BANNER */}
+        {mediaStatus === 'unavailable' && (
+          <View style={s.mediaBanner}>
+            <Text style={s.mediaBannerText}>Camera/audio unavailable - rebuild APK with react-native-webrtc</Text>
+          </View>
+        )}
+        {mediaStatus === 'denied' && (
+          <View style={[s.mediaBanner, { backgroundColor: '#7f1d1d' }]}>
+            <Text style={s.mediaBannerText}>Permissions denied - enable Camera & Mic in Settings</Text>
+          </View>
+        )}
+
         {/* MAIN BODY */}
         <View style={s.roomBody}>
           {/* VIDEO GRID */}
           <View style={s.videoGrid}>
-            {/* Local tile */}
-            <View style={[
-              s.videoTile,
-              remotePeerList.length === 0 ? s.videoTileFull : s.videoTileHalf,
-            ]}>
-              {localStream && !isVideoOff ? (
+            {/* LOCAL TILE */}
+            <View style={[s.videoTile, remotePeerList.length === 0 ? s.videoTileFull : s.videoTileHalf]}>
+              {hasVideo && localStream ? (
                 <RTCView
                   streamURL={localStream.toURL()}
                   style={s.rtcView}
                   objectFit="cover"
                   mirror={true}
-                  zOrder={0}
+                  zOrder={1}
                 />
               ) : (
                 <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
@@ -563,21 +600,20 @@ export default function Meetings() {
                       ))}
                     </View>
                   )}
+                  {isVideoOff && <Text style={s.camOffLabel}>Camera Off</Text>}
                 </View>
               )}
               <View style={s.namePlate}>
                 <Shield size={9} color="#fff" />
-                <Text style={s.namePlateText} numberOfLines={1}>
-                  {localUser?.name || 'You'} (You)
-                </Text>
+                <Text style={s.namePlateText} numberOfLines={1}>{localUser?.name || 'You'} (You)</Text>
                 {isMuted && <MicOff size={9} color="#ef4444" />}
                 {isVideoOff && <VideoOff size={9} color="#ef4444" />}
               </View>
             </View>
 
-            {/* Remote tiles */}
+            {/* REMOTE TILES */}
             {remotePeerList.slice(0, 3).map(([pid, peerInfo]) => {
-              const remoteStream = remoteStreams.get(pid);
+              const remoteStream = remoteStreams[pid];
               return (
                 <View key={pid} style={[s.videoTile, s.videoTileHalf]}>
                   {remoteStream ? (
@@ -585,7 +621,7 @@ export default function Meetings() {
                       streamURL={remoteStream.toURL()}
                       style={s.rtcView}
                       objectFit="cover"
-                      zOrder={0}
+                      zOrder={1}
                     />
                   ) : (
                     <View style={[s.videoAvatar, { backgroundColor: '#7c3aed' }]}>
@@ -600,10 +636,10 @@ export default function Meetings() {
               );
             })}
 
-            {/* Waiting state */}
+            {/* WAITING STATE */}
             {remotePeerList.length === 0 && (
               <View style={s.waitingBanner}>
-                <Users size={18} color="#64748b" />
+                <Users size={16} color="#64748b" />
                 <Text style={s.waitingText}>Share the room ID to invite others</Text>
               </View>
             )}
@@ -614,11 +650,8 @@ export default function Meetings() {
             <View style={s.sidePanel}>
               <View style={s.sidePanelHeader}>
                 <Text style={s.sidePanelTitle}>{sidePanel === 'chat' ? 'Chat' : 'People'}</Text>
-                <TouchableOpacity onPress={() => setSidePanel(null)}>
-                  <X size={18} color="#94a3b8" />
-                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setSidePanel(null)}><X size={18} color="#94a3b8" /></TouchableOpacity>
               </View>
-
               {sidePanel === 'chat' ? (
                 <View style={s.sidePanelBody}>
                   <ScrollView style={s.sideChatScroll} contentContainerStyle={{ gap: 8, padding: 12 }}>
@@ -630,37 +663,22 @@ export default function Meetings() {
                     ))}
                   </ScrollView>
                   <View style={s.sideChatInput}>
-                    <TextInput style={s.sideChatField} value={chatInput} onChangeText={setChatInput}
-                      placeholder="Message..." placeholderTextColor="#64748b" onSubmitEditing={sendChatMsg} />
-                    <TouchableOpacity style={s.sideChatSend} onPress={sendChatMsg}>
-                      <Send size={15} color="#fff" />
-                    </TouchableOpacity>
+                    <TextInput style={s.sideChatField} value={chatInput} onChangeText={setChatInput} placeholder="Message..." placeholderTextColor="#64748b" onSubmitEditing={sendChatMsg} />
+                    <TouchableOpacity style={s.sideChatSend} onPress={sendChatMsg}><Send size={15} color="#fff" /></TouchableOpacity>
                   </View>
                 </View>
               ) : (
                 <ScrollView style={s.sidePanelBody}>
-                  {/* Local user */}
                   <View style={s.peerRow}>
-                    <View style={[s.peerAvatar, { backgroundColor: '#2563eb' }]}>
-                      <Text style={s.peerAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.peerName}>{localUser?.name || 'You'} (You)</Text>
-                      <Text style={s.peerRole}>Host</Text>
-                    </View>
+                    <View style={[s.peerAvatar, { backgroundColor: '#2563eb' }]}><Text style={s.peerAvatarText}>{avatarFor(localUser?.name || 'You')}</Text></View>
+                    <View style={{ flex: 1 }}><Text style={s.peerName}>{localUser?.name || 'You'} (You)</Text><Text style={s.peerRole}>Host</Text></View>
                     <Wifi size={14} color="#10b981" />
                   </View>
-                  {/* Remote peers */}
                   {remotePeerList.map(([pid, peerInfo]) => (
                     <View key={pid} style={s.peerRow}>
-                      <View style={[s.peerAvatar, { backgroundColor: '#7c3aed' }]}>
-                        <Text style={s.peerAvatarText}>{avatarFor(peerInfo.name)}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.peerName}>{peerInfo.name}</Text>
-                        <Text style={s.peerRole}>Attendee</Text>
-                      </View>
-                      <Wifi size={14} color={remoteStreams.has(pid) ? '#10b981' : '#f59e0b'} />
+                      <View style={[s.peerAvatar, { backgroundColor: '#7c3aed' }]}><Text style={s.peerAvatarText}>{avatarFor(peerInfo.name)}</Text></View>
+                      <View style={{ flex: 1 }}><Text style={s.peerName}>{peerInfo.name}</Text><Text style={s.peerRole}>Attendee</Text></View>
+                      <Wifi size={14} color={remoteStreams[pid] ? '#10b981' : '#f59e0b'} />
                     </View>
                   ))}
                 </ScrollView>
@@ -683,19 +701,15 @@ export default function Meetings() {
 
           <TouchableOpacity style={s.ctrlBtn} onPress={switchCamera}>
             <ScreenShare size={20} color="#fff" />
-            <Text style={s.ctrlLabel}>Flip</Text>
+            <Text style={s.ctrlLabel}>Flip Cam</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[s.ctrlBtn, sidePanel === 'people' && s.ctrlBtnBlue]}
-            onPress={() => setSidePanel(p => p === 'people' ? null : 'people')}>
+          <TouchableOpacity style={[s.ctrlBtn, sidePanel === 'people' && s.ctrlBtnBlue]} onPress={() => setSidePanel(p => p === 'people' ? null : 'people')}>
             <Users size={20} color={sidePanel === 'people' ? '#3b82f6' : '#fff'} />
-            <Text style={[s.ctrlLabel, sidePanel === 'people' && { color: '#3b82f6' }]}>
-              People {remotePeerList.length > 0 ? `(${remotePeerList.length + 1})` : ''}
-            </Text>
+            <Text style={[s.ctrlLabel, sidePanel === 'people' && { color: '#3b82f6' }]}>People ({remotePeerList.length + 1})</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[s.ctrlBtn, sidePanel === 'chat' && s.ctrlBtnBlue]}
-            onPress={() => setSidePanel(p => p === 'chat' ? null : 'chat')}>
+          <TouchableOpacity style={[s.ctrlBtn, sidePanel === 'chat' && s.ctrlBtnBlue]} onPress={() => setSidePanel(p => p === 'chat' ? null : 'chat')}>
             <MessageSquare size={20} color={sidePanel === 'chat' ? '#3b82f6' : '#fff'} />
             <Text style={[s.ctrlLabel, sidePanel === 'chat' && { color: '#3b82f6' }]}>Chat</Text>
           </TouchableOpacity>
@@ -712,7 +726,6 @@ export default function Meetings() {
   //  MEETINGS HOME SCREEN 
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-
       <View style={s.quickGrid}>
         <TouchableOpacity style={[s.quickCard, { backgroundColor: '#2563eb' }]} onPress={() => setCreateModal(true)}>
           <View style={s.quickIcon}><Plus size={22} color="#fff" /></View>
@@ -742,20 +755,12 @@ export default function Meetings() {
           {ROOMS.map(room => (
             <TouchableOpacity key={room.id} style={s.roomCard} onPress={async () => {
               setLoading(true);
-              try {
-                const res = await api.meetings.validateMeeting(room.id, undefined);
-                await enterRoom({ id: res._id || room.id, title: res.title || room.title, roomId: res.joinCode || room.id });
-              } catch {
-                await enterRoom({ id: room.id, title: room.title, roomId: room.id });
-              } finally { setLoading(false); }
+              try { const res = await api.meetings.validateMeeting(room.id, undefined); await enterRoom({ id: res._id || room.id, title: res.title || room.title, roomId: res.joinCode || room.id }); }
+              catch { await enterRoom({ id: room.id, title: room.title, roomId: room.id }); }
+              finally { setLoading(false); }
             }}>
-              <View style={[s.roomCardIcon, { backgroundColor: room.color + '20' }]}>
-                <Text style={[s.roomCardEmoji, { color: room.color }]}>{room.emoji}</Text>
-              </View>
-              <View style={s.roomCardInfo}>
-                <Text style={s.roomCardTitle}>{room.title}</Text>
-                <Text style={s.roomCardId}>{room.id}</Text>
-              </View>
+              <View style={[s.roomCardIcon, { backgroundColor: room.color + '20' }]}><Text style={[s.roomCardEmoji, { color: room.color }]}>{room.emoji}</Text></View>
+              <View style={s.roomCardInfo}><Text style={s.roomCardTitle}>{room.title}</Text><Text style={s.roomCardId}>{room.id}</Text></View>
               <View style={s.roomCardRight}>
                 <View style={[s.roomMemberBadge, { backgroundColor: room.members > 0 ? '#dcfce7' : '#f1f5f9' }]}>
                   <View style={[s.roomMemberDot, { backgroundColor: room.members > 0 ? '#22c55e' : '#94a3b8' }]} />
@@ -773,10 +778,8 @@ export default function Meetings() {
         {meetings.map(m => (
           <TouchableOpacity key={m.id} style={s.meetCard} onPress={async () => {
             setLoading(true);
-            try {
-              const res = await api.meetings.validateMeeting(String(m.id), undefined);
-              await enterRoom({ id: res._id || m.id, title: res.title || m.title, roomId: res.joinCode || m.id });
-            } catch { await enterRoom(m); }
+            try { const res = await api.meetings.validateMeeting(String(m.id), undefined); await enterRoom({ id: res._id || m.id, title: res.title || m.title, roomId: res.joinCode || m.id }); }
+            catch { await enterRoom(m); }
             finally { setLoading(false); }
           }}>
             <View style={[s.meetColorBar, { backgroundColor: m.color }]} />
@@ -832,111 +835,70 @@ export default function Meetings() {
         </View>
       )}
 
-      {/* CREATE MODAL */}
       <Modal visible={createModal} animationType="slide" transparent onRequestClose={() => setCreateModal(false)}>
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <View style={s.modalTopRow}><Text style={s.modalTitle}>New Meeting</Text><TouchableOpacity onPress={() => setCreateModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
-            <View style={s.formGroup}><Text style={s.fieldLabel}>Title</Text><TextInput style={s.modalInput} value={meetTitle} onChangeText={setMeetTitle} placeholder="Meeting topic" placeholderTextColor="#94a3b8" /></View>
-            <View style={s.formGroup}><Text style={s.fieldLabel}>Passcode (optional)</Text><TextInput style={s.modalInput} value={meetPass} onChangeText={setMeetPass} placeholder="Leave blank for open access" placeholderTextColor="#94a3b8" secureTextEntry /></View>
-            <View style={s.modalBtnRow}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setCreateModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={s.primaryBtn} onPress={startMeeting} disabled={loading}>
-                {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.primaryBtnText}>Start Now</Text>}
-              </TouchableOpacity>
-            </View>
+        <View style={s.modalOverlay}><View style={s.modalCard}>
+          <View style={s.modalTopRow}><Text style={s.modalTitle}>New Meeting</Text><TouchableOpacity onPress={() => setCreateModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
+          <View style={s.formGroup}><Text style={s.fieldLabel}>Title</Text><TextInput style={s.modalInput} value={meetTitle} onChangeText={setMeetTitle} placeholder="Meeting topic" placeholderTextColor="#94a3b8" /></View>
+          <View style={s.formGroup}><Text style={s.fieldLabel}>Passcode (optional)</Text><TextInput style={s.modalInput} value={meetPass} onChangeText={setMeetPass} placeholder="Leave blank for open access" placeholderTextColor="#94a3b8" secureTextEntry /></View>
+          <View style={s.modalBtnRow}>
+            <TouchableOpacity style={s.cancelBtn} onPress={() => setCreateModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
+            <TouchableOpacity style={s.primaryBtn} onPress={startMeeting} disabled={loading}>{loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.primaryBtnText}>Start Now</Text>}</TouchableOpacity>
           </View>
-        </View>
+        </View></View>
       </Modal>
 
-      {/* JOIN MODAL */}
       <Modal visible={joinModal} animationType="slide" transparent onRequestClose={() => setJoinModal(false)}>
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <View style={s.modalTopRow}><Text style={s.modalTitle}>Join Meeting</Text><TouchableOpacity onPress={() => setJoinModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
-            <View style={s.formGroup}><Text style={s.fieldLabel}>Meeting ID</Text><TextInput style={s.modalInput} value={joinCode} onChangeText={setJoinCode} placeholder="e.g. 123-456-789" placeholderTextColor="#94a3b8" autoCapitalize="characters" /></View>
-            <View style={s.formGroup}><Text style={s.fieldLabel}>Passcode (if required)</Text><TextInput style={s.modalInput} value={joinPass} onChangeText={setJoinPass} placeholder="Leave blank if none" placeholderTextColor="#94a3b8" secureTextEntry /></View>
-            <View style={s.modalBtnRow}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setJoinModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={s.primaryBtn} onPress={joinMeeting} disabled={loading}>
-                {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.primaryBtnText}>Join Session</Text>}
-              </TouchableOpacity>
-            </View>
+        <View style={s.modalOverlay}><View style={s.modalCard}>
+          <View style={s.modalTopRow}><Text style={s.modalTitle}>Join Meeting</Text><TouchableOpacity onPress={() => setJoinModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
+          <View style={s.formGroup}><Text style={s.fieldLabel}>Meeting ID</Text><TextInput style={s.modalInput} value={joinCode} onChangeText={setJoinCode} placeholder="e.g. 123-456-789" placeholderTextColor="#94a3b8" autoCapitalize="characters" /></View>
+          <View style={s.formGroup}><Text style={s.fieldLabel}>Passcode (if required)</Text><TextInput style={s.modalInput} value={joinPass} onChangeText={setJoinPass} placeholder="Leave blank if none" placeholderTextColor="#94a3b8" secureTextEntry /></View>
+          <View style={s.modalBtnRow}>
+            <TouchableOpacity style={s.cancelBtn} onPress={() => setJoinModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
+            <TouchableOpacity style={s.primaryBtn} onPress={joinMeeting} disabled={loading}>{loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.primaryBtnText}>Join Session</Text>}</TouchableOpacity>
           </View>
-        </View>
+        </View></View>
       </Modal>
 
-      {/* SCHEDULE MODAL */}
       <Modal visible={scheduleModal} animationType="slide" transparent onRequestClose={() => setScheduleModal(false)}>
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <View style={s.modalTopRow}><Text style={s.modalTitle}>Schedule Meeting</Text><TouchableOpacity onPress={() => setScheduleModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
-            {[
-              { label: 'Title', val: schedTitle, set: setSchedTitle, ph: 'Sprint Planning' },
-              { label: 'Date (YYYY-MM-DD)', val: schedDate, set: setSchedDate, ph: '2026-06-01' },
-              { label: 'Time', val: schedTime, set: setSchedTime, ph: '10:00 AM' },
-              { label: 'Duration (minutes)', val: schedDur, set: setSchedDur, ph: '45' },
-            ].map(f => (
-              <View key={f.label} style={s.formGroup}><Text style={s.fieldLabel}>{f.label}</Text><TextInput style={s.modalInput} value={f.val} onChangeText={f.set} placeholder={f.ph} placeholderTextColor="#94a3b8" /></View>
-            ))}
-            <View style={s.modalBtnRow}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setScheduleModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={s.primaryBtn} onPress={async () => {
-                try { await api.meetings.registerLiveMeeting({ title: schedTitle, startTime: new Date(`${schedDate}T12:00:00`), duration: parseInt(schedDur) || 45 }); Alert.alert('Scheduled', `"${schedTitle}" scheduled.`); } catch { Alert.alert('Saved', `"${schedTitle}" saved locally.`); }
-                setScheduleModal(false);
-              }}><Text style={s.primaryBtnText}>Confirm</Text></TouchableOpacity>
-            </View>
+        <View style={s.modalOverlay}><View style={s.modalCard}>
+          <View style={s.modalTopRow}><Text style={s.modalTitle}>Schedule Meeting</Text><TouchableOpacity onPress={() => setScheduleModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
+          {[{label:'Title',val:schedTitle,set:setSchedTitle,ph:'Sprint Planning'},{label:'Date (YYYY-MM-DD)',val:schedDate,set:setSchedDate,ph:'2026-06-01'},{label:'Time',val:schedTime,set:setSchedTime,ph:'10:00 AM'},{label:'Duration (min)',val:schedDur,set:setSchedDur,ph:'45'}].map(f=>(
+            <View key={f.label} style={s.formGroup}><Text style={s.fieldLabel}>{f.label}</Text><TextInput style={s.modalInput} value={f.val} onChangeText={f.set} placeholder={f.ph} placeholderTextColor="#94a3b8" /></View>
+          ))}
+          <View style={s.modalBtnRow}>
+            <TouchableOpacity style={s.cancelBtn} onPress={() => setScheduleModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
+            <TouchableOpacity style={s.primaryBtn} onPress={async()=>{try{await api.meetings.registerLiveMeeting({title:schedTitle,startTime:new Date(`${schedDate}T12:00:00`),duration:parseInt(schedDur)||45});Alert.alert('Scheduled',`"${schedTitle}" scheduled.`);}catch{Alert.alert('Saved',`"${schedTitle}" saved locally.`);}setScheduleModal(false);}}><Text style={s.primaryBtnText}>Confirm</Text></TouchableOpacity>
           </View>
-        </View>
+        </View></View>
       </Modal>
 
-      {/* ROOMS MODAL */}
       <Modal visible={roomsModal} animationType="slide" transparent onRequestClose={() => setRoomsModal(false)}>
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <View style={s.modalTopRow}><Text style={s.modalTitle}>Persistent Rooms</Text><TouchableOpacity onPress={() => setRoomsModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
-            {ROOMS.map(room => (
-              <TouchableOpacity key={room.id} style={s.roomModalItem} onPress={async () => {
-                setRoomsModal(false); setLoading(true);
-                try { const res = await api.meetings.validateMeeting(room.id, undefined); await enterRoom({ id: res._id || room.id, title: res.title || room.title, roomId: res.joinCode || room.id }); }
-                catch { await enterRoom({ id: room.id, title: room.title, roomId: room.id }); }
-                finally { setLoading(false); }
-              }}>
-                <Text style={[s.roomModalEmoji, { color: room.color }]}>{room.emoji}</Text>
-                <View style={{ flex: 1 }}><Text style={s.roomModalTitle}>{room.title}</Text><Text style={s.roomModalId}>{room.id}</Text></View>
-                <View style={[s.roomMemberBadge, { backgroundColor: room.members > 0 ? '#dcfce7' : '#f1f5f9' }]}>
-                  <Text style={[s.roomMemberText, { color: room.members > 0 ? '#15803d' : '#64748b' }]}>{room.members} online</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity style={s.cancelBtn} onPress={() => setRoomsModal(false)}><Text style={s.cancelBtnText}>Close</Text></TouchableOpacity>
-          </View>
-        </View>
+        <View style={s.modalOverlay}><View style={s.modalCard}>
+          <View style={s.modalTopRow}><Text style={s.modalTitle}>Persistent Rooms</Text><TouchableOpacity onPress={() => setRoomsModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
+          {ROOMS.map(room=>(
+            <TouchableOpacity key={room.id} style={s.roomModalItem} onPress={async()=>{setRoomsModal(false);setLoading(true);try{const res=await api.meetings.validateMeeting(room.id,undefined);await enterRoom({id:res._id||room.id,title:res.title||room.title,roomId:res.joinCode||room.id});}catch{await enterRoom({id:room.id,title:room.title,roomId:room.id});}finally{setLoading(false);}}}>
+              <Text style={[s.roomModalEmoji,{color:room.color}]}>{room.emoji}</Text>
+              <View style={{flex:1}}><Text style={s.roomModalTitle}>{room.title}</Text><Text style={s.roomModalId}>{room.id}</Text></View>
+              <View style={[s.roomMemberBadge,{backgroundColor:room.members>0?'#dcfce7':'#f1f5f9'}]}><Text style={[s.roomMemberText,{color:room.members>0?'#15803d':'#64748b'}]}>{room.members} online</Text></View>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity style={s.cancelBtn} onPress={()=>setRoomsModal(false)}><Text style={s.cancelBtnText}>Close</Text></TouchableOpacity>
+        </View></View>
       </Modal>
 
-      {/* SUMMARY MODAL */}
       <Modal visible={summaryModal} animationType="slide" transparent onRequestClose={() => setSummaryModal(false)}>
-        <View style={s.modalOverlay}>
-          <View style={[s.modalCard, { maxHeight: '80%' }]}>
-            <View style={s.modalTopRow}><Text style={s.modalTitle}>AI Summary</Text><TouchableOpacity onPress={() => setSummaryModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
-            <ScrollView style={{ flex: 1 }}>
-              {summaryLoading ? (
-                <View style={{ alignItems: 'center', padding: 32, gap: 12 }}>
-                  <ActivityIndicator size="large" color="#7c3aed" />
-                  <Text style={{ color: '#64748b', fontSize: 14 }}>Generating summary...</Text>
-                </View>
-              ) : <Text style={s.summaryBody}>{summaryText}</Text>}
-            </ScrollView>
-            <TouchableOpacity style={s.primaryBtn} onPress={() => setSummaryModal(false)}><Text style={s.primaryBtnText}>Close</Text></TouchableOpacity>
-          </View>
-        </View>
+        <View style={s.modalOverlay}><View style={[s.modalCard,{maxHeight:'80%'}]}>
+          <View style={s.modalTopRow}><Text style={s.modalTitle}>AI Summary</Text><TouchableOpacity onPress={()=>setSummaryModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
+          <ScrollView style={{flex:1}}>{summaryLoading?<View style={{alignItems:'center',padding:32,gap:12}}><ActivityIndicator size="large" color="#7c3aed" /><Text style={{color:'#64748b',fontSize:14}}>Generating...</Text></View>:<Text style={s.summaryBody}>{summaryText}</Text>}</ScrollView>
+          <TouchableOpacity style={s.primaryBtn} onPress={()=>setSummaryModal(false)}><Text style={s.primaryBtnText}>Close</Text></TouchableOpacity>
+        </View></View>
       </Modal>
-
     </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
+  // Home screen
   container: { flex: 1 },
   content: { paddingBottom: 40, gap: 28 },
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
@@ -981,6 +943,7 @@ const s = StyleSheet.create({
   summaryBody: { fontSize: 14, color: '#334155', lineHeight: 22, padding: 4 },
   loadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center', gap: 12, zIndex: 99 },
   loadingText: { fontSize: 14, color: '#64748b', fontWeight: '700' },
+  // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   modalCard: { width: '100%', maxWidth: 440, backgroundColor: '#fff', borderRadius: 24, padding: 24, gap: 14 },
   modalTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -997,7 +960,7 @@ const s = StyleSheet.create({
   roomModalEmoji: { fontSize: 18, fontWeight: '900' },
   roomModalTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
   roomModalId: { fontSize: 11, color: '#94a3b8', fontWeight: '600' },
-  // Room
+  // Meeting room
   roomRoot: { flex: 1, backgroundColor: '#0a0f1e' },
   roomTopBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
   roomTopLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
@@ -1012,14 +975,17 @@ const s = StyleSheet.create({
   roomIdStrip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: 'rgba(255,255,255,0.03)', gap: 6 },
   roomIdLabel: { fontSize: 10, fontWeight: '800', color: '#64748b', textTransform: 'uppercase' },
   roomIdValue: { fontSize: 12, fontWeight: '700', color: '#60a5fa' },
+  mediaBanner: { backgroundColor: '#7f1d1d', paddingHorizontal: 16, paddingVertical: 8 },
+  mediaBannerText: { fontSize: 12, color: '#fca5a5', fontWeight: '700', textAlign: 'center' },
   roomBody: { flex: 1, flexDirection: 'row' },
   videoGrid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', padding: 6, gap: 6 },
   videoTile: { backgroundColor: '#111827', borderRadius: 16, overflow: 'hidden', position: 'relative' },
   videoTileFull: { width: '100%', aspectRatio: 4 / 3 },
   videoTileHalf: { width: '48%', aspectRatio: 1 },
-  rtcView: { flex: 1, width: '100%', height: '100%' },
-  videoAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 140 },
+  rtcView: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  videoAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 140 },
   videoAvatarText: { fontSize: 28, fontWeight: '900', color: '#fff' },
+  camOffLabel: { fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
   connectingText: { fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
   waveRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 20 },
   waveBar: { width: 3, backgroundColor: '#10b981', borderRadius: 2, minHeight: 3 },
