@@ -30,6 +30,7 @@
     "dotenv": "^17.2.3",
     "esbuild": "^0.25.0",
     "expo": "~54.0.0",
+    "expo-dev-client": "^56.0.14",
     "expo-status-bar": "~3.0.9",
     "express": "^4.21.2",
     "firebase": "^12.13.0",

@@ -11,14 +11,15 @@ import {
 } from 'lucide-react-native';
 import { api, getSession, SOCKET_URL } from '../lib/api';
 
-// react-native-webrtc -- native camera/audio on Android & iOS
+// Safe WebRTC wrapper - works in APK builds, gracefully degrades in Expo Go
 import {
+  isWebRTCAvailable,
   RTCPeerConnection,
   RTCIceCandidate,
   RTCSessionDescription,
   mediaDevices,
   RTCView,
-} from 'react-native-webrtc';
+} from '../lib/webrtc';
 
 const { width } = Dimensions.get('window');
 const isMobile = width < 768;
@@ -283,12 +284,23 @@ export default function Meetings() {
   //  Start local media and join room 
 
   const startLocalMedia = async (): Promise<any | null> => {
+    // Check if native WebRTC module is available (APK build only, not Expo Go)
+    if (!isWebRTCAvailable || !mediaDevices) {
+      Alert.alert(
+        'Development Build Required',
+        'Camera and audio require a custom APK build.\n\nRun: eas build --profile preview --platform android\n\nExpo Go does not support native camera/WebRTC modules.',
+        [{ text: 'OK' }]
+      );
+      // Still allow joining the room in UI-only mode (no camera/audio)
+      return 'no-media';
+    }
+
     const ok = await requestPermissions();
     if (!ok) {
       setCamPermission('denied');
       Alert.alert(
         'Permissions Required',
-        'Camera and microphone permissions are needed for video meetings. Please enable them in Settings.',
+        'Camera and microphone permissions are needed. Please enable them in Android Settings > Apps > Nexus Workspace > Permissions.',
         [{ text: 'OK' }]
       );
       return null;
@@ -318,7 +330,7 @@ export default function Meetings() {
         Alert.alert('Camera Unavailable', 'Joining with audio only. Camera could not be accessed.');
         return audioStream;
       } catch {
-        Alert.alert('Media Error', 'Could not access camera or microphone.');
+        Alert.alert('Media Error', 'Could not access camera or microphone. Check permissions in Settings.');
         return null;
       }
     }
@@ -328,14 +340,15 @@ export default function Meetings() {
     setLoading(true);
     try {
       const stream = await startLocalMedia();
-      if (!stream) { setLoading(false); return; }
+      // null = permission denied, abort
+      if (stream === null) { setLoading(false); return; }
 
       setActiveRoom(room);
 
-      // Connect WebRTC signaling
-      const { token } = getSession();
-      if (token) {
-        connectSignaling(room.id, token);
+      // Only connect WebRTC signaling if native module is available
+      if (isWebRTCAvailable && stream !== 'no-media') {
+        const { token } = getSession();
+        if (token) connectSignaling(room.id, token);
       }
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Could not start meeting.');

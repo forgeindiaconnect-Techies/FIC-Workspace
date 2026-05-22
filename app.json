@@ -10,7 +10,8 @@
       "bundleIdentifier": "com.nexus.workspace",
       "infoPlist": {
         "NSCameraUsageDescription": "Nexus needs camera access for video meetings.",
-        "NSMicrophoneUsageDescription": "Nexus needs microphone access for audio in meetings."
+        "NSMicrophoneUsageDescription": "Nexus needs microphone access for audio in meetings.",
+        "NSLocalNetworkUsageDescription": "Nexus uses local network for peer-to-peer video calls."
       }
     },
     "android": {
@@ -26,7 +27,9 @@
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_CONNECT"
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.WAKE_LOCK"
       ]
     },
     "updates": {
@@ -35,6 +38,9 @@
     "web": {
       "bundler": "metro"
     },
+    "plugins": [
+      "expo-dev-client"
+    ],
     "extra": {
       "eas": {
         "projectId": "7b0a8d9a-396b-4a9f-8745-ea37a51ca24d"
