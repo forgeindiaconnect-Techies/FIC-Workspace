@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "expo": "npx expo start mobile",
+    "dev:mobile": "npx expo start mobile",
+    "expo:android": "npx expo start mobile --android",
     "build": "vite build",
+    "build:api": "npm install --prefix backend-fastify --omit=dev && node scripts/build-backend.mjs",
+    "postinstall": "npm run build:api",
     "start": "node server.js",
     "pm": "node nexus-host.js",
     "lint": "eslint .",
@@ -69,6 +74,7 @@
     "globals": "^17.5.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^4.2.4",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "esbuild": "^0.25.0"
   }
 }

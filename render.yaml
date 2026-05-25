@@ -1,10 +1,12 @@
+# Render Blueprint — API backend (repo root)
+# Dashboard: Build Command = npm install && npm run build:api
+#            Start Command  = node server.js
 services:
   - type: web
-    name: nexus-workspace-api
+    name: workspace-backend
     runtime: node
-    rootDir: backend-fastify
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: npm install && npm run build:api
+    startCommand: node server.js
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

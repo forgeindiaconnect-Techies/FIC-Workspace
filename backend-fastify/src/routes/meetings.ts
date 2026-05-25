@@ -36,15 +36,10 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   async function resolveMeetingIdentifier(idOrCode: string) {
     const value = String(idOrCode || '').trim();
     if (Types.ObjectId.isValid(value)) {
-      const meeting = await Meeting.findById(value);
-      if (meeting?.joinCode) {
-        const canonical = await Meeting.findOne({ joinCode: normalizeJoinCode(meeting.joinCode) }).sort({ createdAt: 1, _id: 1 });
-        return canonical || meeting;
-      }
-      return meeting;
+      return Meeting.findById(value);
     }
 
-    return Meeting.findOne({ joinCode: normalizeJoinCode(value) }).sort({ createdAt: 1, _id: 1 });
+    return Meeting.findOne({ joinCode: normalizeJoinCode(value) });
   }
 
   // 1. CREATE MEETING
@@ -133,24 +128,16 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       };
 
       if (!meeting && persistentRoomTitles[cleanCode]) {
-        // Automatically spin up the persistent meeting room document in MongoDB.
-        // Upsert keeps simultaneous first joins from creating separate room docs.
-        meeting = await Meeting.findOneAndUpdate(
-          { joinCode: cleanCode },
-          {
-            $setOnInsert: {
-              title: persistentRoomTitles[cleanCode],
-              hostId: new Types.ObjectId(request.user!.id),
-              joinCode: cleanCode,
-              scheduledAt: new Date(),
-              durationMinutes: 9999,
-              recordingEnabled: false,
-              participantIds: [new Types.ObjectId(request.user!.id)]
-            },
-            $set: { status: 'live' }
-          },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
+        // Automatically spin up the persistent meeting room document in MongoDB
+        meeting = await Meeting.create({
+          title: persistentRoomTitles[cleanCode],
+          hostId: new Types.ObjectId(request.user!.id),
+          joinCode: cleanCode,
+          scheduledAt: new Date(),
+          durationMinutes: 9999, // Persistent room has unlimited duration
+          status: 'live',
+          participantIds: [new Types.ObjectId(request.user!.id)]
+        });
       }
 
       if (!meeting) {
@@ -221,47 +208,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 3. MEETING HISTORY (must be registered before /:id)
-  fastify.get('/history', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { page = 1, limit = 10 } = request.query as any;
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-
-      const userId = new Types.ObjectId(request.user!.id);
-
-      const meetings = await Meeting.find({
-        $or: [
-          { hostId: userId },
-          { participantIds: userId }
-        ]
-      })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .populate('hostId', 'name email avatarUrl');
-
-      const total = await Meeting.countDocuments({
-        $or: [
-          { hostId: userId },
-          { participantIds: userId }
-        ]
-      });
-
-      return reply.code(200).send({
-        meetings,
-        pagination: {
-          total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / parseInt(limit))
-        }
-      });
-    } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to retrieve history logs.', details: err.message });
-    }
-  });
-
-  // 4. FETCH SINGLE MEETING WITH PARTICIPANT COUNT
+  // 3. FETCH SINGLE MEETING WITH PARTICIPANT COUNT
   fastify.get('/:id', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as any;
@@ -477,6 +424,47 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to leave meeting.', details: err.message });
+    }
+  });
+
+  // 7. MEETING HISTORY (Paginated list of hosted or attended meetings)
+  fastify.get('/history', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { page = 1, limit = 10 } = request.query as any;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      const userId = new Types.ObjectId(request.user!.id);
+
+      // Find all meetings where the user was either the host or registered as participant
+      const meetings = await Meeting.find({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate('hostId', 'name email avatarUrl');
+
+      const total = await Meeting.countDocuments({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      });
+
+      return reply.code(200).send({
+        meetings,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to retrieve history logs.', details: err.message });
     }
   });
 

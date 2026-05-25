@@ -1,4 +1,7 @@
 node_modules/
+mobile/node_modules/
+.expo/
+mobile/.expo/
 build/
 /dist/
 coverage/

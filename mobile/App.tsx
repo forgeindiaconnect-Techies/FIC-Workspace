@@ -1,4 +1,4 @@
-import { registerWebRTCGlobals } from './src/lib/webrtc';
+﻿import { registerWebRTCGlobals } from './src/lib/webrtc';
 
 registerWebRTCGlobals();
 

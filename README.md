@@ -25,7 +25,8 @@ When testing on a physical phone, the phone cannot reach `localhost` on your com
 
 1. Run the backend:
    `cd backend-fastify && npm run dev`
-2. Run Expo:
+2. Run Expo (mobile app lives in `mobile/` — do **not** run bare `npx expo start` at repo root):
    `npm run expo`
-3. If login still cannot reach the backend, create `.env` in the project root and set:
+   Or: `npx expo start mobile`
+3. If login still cannot reach the backend, copy `mobile/.env.example` to `mobile/.env` and set:
    `EXPO_PUBLIC_API_URL="http://YOUR_COMPUTER_LAN_IP:3001"`

@@ -186,6 +186,15 @@ async function resetFailedAttempts(email) {
     delete memoryStore[key];
   }
 }
+async function syncRoomState(meetingId, routerId, peers) {
+  const key = `room:${meetingId}`;
+  if (isRedisAvailable) {
+    await redisClient.hset(key, "routerId", routerId);
+    await redisClient.hset(key, "peers", JSON.stringify(peers));
+  } else {
+    memoryStore[key] = { count: 0, expiresAt: Date.now() + 86400 * 1e3 };
+  }
+}
 
 // backend-fastify/src/utils/mfa.ts
 var import_speakeasy = __toESM(require("speakeasy"));
@@ -591,7 +600,7 @@ async function meetingRoutes(fastify2) {
     }
     return Math.floor(1e8 + Math.random() * 9e8).toString();
   }
-  function normalizeJoinCode2(code) {
+  function normalizeJoinCode(code) {
     const trimmed = String(code || "").trim().toUpperCase();
     const digitsOnly = trimmed.replace(/\D/g, "");
     if (digitsOnly.length === 9) {
@@ -602,14 +611,9 @@ async function meetingRoutes(fastify2) {
   async function resolveMeetingIdentifier(idOrCode) {
     const value = String(idOrCode || "").trim();
     if (import_mongoose8.Types.ObjectId.isValid(value)) {
-      const meeting = await Meeting.findById(value);
-      if (meeting?.joinCode) {
-        const canonical = await Meeting.findOne({ joinCode: normalizeJoinCode2(meeting.joinCode) }).sort({ createdAt: 1, _id: 1 });
-        return canonical || meeting;
-      }
-      return meeting;
+      return Meeting.findById(value);
     }
-    return Meeting.findOne({ joinCode: normalizeJoinCode2(value) }).sort({ createdAt: 1, _id: 1 });
+    return Meeting.findOne({ joinCode: normalizeJoinCode(value) });
   }
   fastify2.post("/", { preHandler: authenticate }, async (request, reply) => {
     try {
@@ -675,7 +679,7 @@ async function meetingRoutes(fastify2) {
     try {
       const { code } = request.params;
       const { passcode } = request.query;
-      const cleanCode = normalizeJoinCode2(String(code || ""));
+      const cleanCode = normalizeJoinCode(String(code || ""));
       let meeting = await resolveMeetingIdentifier(cleanCode);
       const persistentRoomTitles = {
         "NEXUS-BOARDROOM": "\u{1F30C} General Boardroom",
@@ -683,22 +687,16 @@ async function meetingRoutes(fastify2) {
         "NEXUS-DESIGN": "\u{1F3A8} UX Design Workshop"
       };
       if (!meeting && persistentRoomTitles[cleanCode]) {
-        meeting = await Meeting.findOneAndUpdate(
-          { joinCode: cleanCode },
-          {
-            $setOnInsert: {
-              title: persistentRoomTitles[cleanCode],
-              hostId: new import_mongoose8.Types.ObjectId(request.user.id),
-              joinCode: cleanCode,
-              scheduledAt: /* @__PURE__ */ new Date(),
-              durationMinutes: 9999,
-              recordingEnabled: false,
-              participantIds: [new import_mongoose8.Types.ObjectId(request.user.id)]
-            },
-            $set: { status: "live" }
-          },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
+        meeting = await Meeting.create({
+          title: persistentRoomTitles[cleanCode],
+          hostId: new import_mongoose8.Types.ObjectId(request.user.id),
+          joinCode: cleanCode,
+          scheduledAt: /* @__PURE__ */ new Date(),
+          durationMinutes: 9999,
+          // Persistent room has unlimited duration
+          status: "live",
+          participantIds: [new import_mongoose8.Types.ObjectId(request.user.id)]
+        });
       }
       if (!meeting) {
         return reply.code(404).send({ error: "Meeting not found for this join code." });
@@ -758,36 +756,6 @@ async function meetingRoutes(fastify2) {
       });
     } catch (err) {
       return reply.code(500).send({ error: "Error resolving meeting join code.", details: err.message });
-    }
-  });
-  fastify2.get("/history", { preHandler: authenticate }, async (request, reply) => {
-    try {
-      const { page = 1, limit = 10 } = request.query;
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-      const userId = new import_mongoose8.Types.ObjectId(request.user.id);
-      const meetings = await Meeting.find({
-        $or: [
-          { hostId: userId },
-          { participantIds: userId }
-        ]
-      }).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).populate("hostId", "name email avatarUrl");
-      const total = await Meeting.countDocuments({
-        $or: [
-          { hostId: userId },
-          { participantIds: userId }
-        ]
-      });
-      return reply.code(200).send({
-        meetings,
-        pagination: {
-          total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / parseInt(limit))
-        }
-      });
-    } catch (err) {
-      return reply.code(500).send({ error: "Failed to retrieve history logs.", details: err.message });
     }
   });
   fastify2.get("/:id", { preHandler: authenticate }, async (request, reply) => {
@@ -967,6 +935,36 @@ async function meetingRoutes(fastify2) {
       });
     } catch (err) {
       return reply.code(500).send({ error: "Failed to leave meeting.", details: err.message });
+    }
+  });
+  fastify2.get("/history", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { page = 1, limit = 10 } = request.query;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const userId = new import_mongoose8.Types.ObjectId(request.user.id);
+      const meetings = await Meeting.find({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      }).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).populate("hostId", "name email avatarUrl");
+      const total = await Meeting.countDocuments({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      });
+      return reply.code(200).send({
+        meetings,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to retrieve history logs.", details: err.message });
     }
   });
   fastify2.get("/:id/participants", { preHandler: authenticate }, async (request, reply) => {
@@ -1826,222 +1824,277 @@ async function docsRoutes(fastify2) {
 // backend-fastify/src/services/webrtc.ts
 var import_ws = require("ws");
 var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
-var import_mongoose15 = require("mongoose");
-var import_crypto = require("crypto");
 var JWT_SECRET = process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var rooms = /* @__PURE__ */ new Map();
-function normalizeJoinCode(code) {
-  const trimmed = String(code || "").trim().toUpperCase();
-  const digitsOnly = trimmed.replace(/\D/g, "");
-  if (digitsOnly.length === 9) {
-    return `${digitsOnly.slice(0, 3)}-${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`;
-  }
-  return trimmed;
-}
-async function resolveCanonicalMeetingId(idOrCode) {
-  const value = String(idOrCode || "").trim();
-  if (!value) return null;
-  if (import_mongoose15.Types.ObjectId.isValid(value)) {
-    const meeting2 = await Meeting.findById(value).select("_id").lean();
-    if (meeting2?._id) return meeting2._id.toString();
-  }
-  const meeting = await Meeting.findOne({ joinCode: normalizeJoinCode(value) }).sort({ createdAt: 1, _id: 1 }).select("_id").lean();
-  return meeting?._id?.toString() || null;
-}
-async function resolveCanonicalMeetingRoom(idOrCode, publicCode) {
-  const normalizedPublicCode = publicCode ? normalizeJoinCode(publicCode) : "";
-  if (normalizedPublicCode) {
-    const meeting = await Meeting.findOne({ joinCode: normalizedPublicCode }).sort({ createdAt: 1, _id: 1 }).select("_id").lean();
-    if (meeting?._id) return meeting._id.toString();
-  }
-  const value = String(idOrCode || "").trim();
-  if (!value) return null;
-  if (import_mongoose15.Types.ObjectId.isValid(value)) {
-    const meeting = await Meeting.findById(value).select("_id joinCode").lean();
-    if (!meeting?._id) return null;
-    if (meeting.joinCode) {
-      const canonicalByCode = await resolveCanonicalMeetingId(meeting.joinCode);
-      if (canonicalByCode) return canonicalByCode;
-    }
-    return meeting._id.toString();
-  }
-  return resolveCanonicalMeetingId(value);
-}
-function send(ws, payload) {
-  if (ws.readyState === import_ws.WebSocket.OPEN) {
-    ws.send(JSON.stringify(payload));
-  }
-}
-function broadcastToRoom(meetingId, excludePeerId, payload) {
-  const room = rooms.get(meetingId);
-  if (!room) return;
-  const raw = JSON.stringify(payload);
-  for (const [pid, peer] of room.entries()) {
-    if (pid !== excludePeerId && peer.socket.readyState === import_ws.WebSocket.OPEN) {
-      peer.socket.send(raw);
-    }
-  }
-}
-function broadcastRoomPeers(meetingId) {
-  const room = rooms.get(meetingId);
-  if (!room) return;
-  const peerList = Array.from(room.entries()).map(([pid, p]) => ({
-    peerId: pid,
-    userId: p.userId,
-    name: p.name,
-    avatarUrl: p.avatarUrl
-  }));
-  for (const peer of room.values()) {
-    send(peer.socket, { type: "room-peers", peers: peerList });
-  }
-}
 function handleWebRtcSignalling(ws) {
+  let authenticatedPeer = null;
+  let currentMeetingId = null;
   let peerId = null;
-  let meetingId = null;
-  ws.on("message", async (raw) => {
-    let msg;
+  ws.on("message", async (messageBuffer) => {
     try {
-      msg = JSON.parse(raw.toString());
-    } catch {
-      return;
-    }
-    const { type, data = {} } = msg;
-    if (type === "join") {
-      const { token, meetingId: mid, roomId, joinCode } = data;
-      const resolvedMeetingId = mid || roomId || joinCode;
-      if (!token || !resolvedMeetingId) {
-        return send(ws, { type: "error", message: "token and meetingId required" });
-      }
-      let decoded;
-      try {
-        decoded = import_jsonwebtoken3.default.verify(token, JWT_SECRET);
-      } catch {
-        return send(ws, { type: "error", message: "Invalid token" });
-      }
-      const user = await User.findById(decoded.userId).catch(() => null);
-      if (!user) return send(ws, { type: "error", message: "User not found" });
-      const canonicalMeetingId = await resolveCanonicalMeetingRoom(resolvedMeetingId, joinCode || roomId);
-      if (!canonicalMeetingId) {
-        return send(ws, { type: "error", message: "Meeting not found" });
-      }
-      const userId = user._id.toString();
-      peerId = (0, import_crypto.randomUUID)();
-      meetingId = canonicalMeetingId;
-      console.log(`[Signaling] User ${user.name} (${userId}) joining room: ${meetingId} as peer ${peerId}`);
-      if (!rooms.has(meetingId)) rooms.set(meetingId, /* @__PURE__ */ new Map());
-      const room = rooms.get(meetingId);
-      room.set(peerId, {
-        socket: ws,
-        userId,
-        name: user.name,
-        avatarUrl: user.avatarUrl
-      });
-      try {
+      const { event, data, requestId } = JSON.parse(messageBuffer.toString());
+      if (!event) return;
+      if (event === "join-room") {
+        const { token, meetingId } = data;
+        if (!token || !meetingId) {
+          return sendError(ws, "Missing token or meetingId fields.", requestId);
+        }
+        try {
+          const decoded = import_jsonwebtoken3.default.verify(token, JWT_SECRET);
+          const user = await User.findById(decoded.userId);
+          if (!user) {
+            return sendError(ws, "User session not found.", requestId);
+          }
+          authenticatedPeer = {
+            userId: user._id.toString(),
+            name: user.name,
+            avatarUrl: user.avatarUrl
+          };
+          currentMeetingId = meetingId;
+          peerId = user._id.toString();
+        } catch (err) {
+          return sendError(ws, "Invalid token authorization.", requestId);
+        }
+        if (!rooms.has(meetingId)) {
+          rooms.set(meetingId, /* @__PURE__ */ new Map());
+        }
+        const roomPeers2 = rooms.get(meetingId);
+        const newPeer = {
+          socket: ws,
+          userId: authenticatedPeer.userId,
+          name: authenticatedPeer.name,
+          avatarUrl: authenticatedPeer.avatarUrl,
+          transports: /* @__PURE__ */ new Map(),
+          producers: /* @__PURE__ */ new Map(),
+          consumers: /* @__PURE__ */ new Map()
+        };
+        roomPeers2.set(peerId, newPeer);
         await Participant.findOneAndUpdate(
-          { meetingId: new import_mongoose15.Types.ObjectId(meetingId), userId: new import_mongoose15.Types.ObjectId(userId) },
-          { joinedAt: /* @__PURE__ */ new Date(), $unset: { leftAt: "" } },
-          { upsert: true }
+          { meetingId, userId: authenticatedPeer.userId },
+          { joinedAt: /* @__PURE__ */ new Date(), leftAt: void 0 },
+          { upsert: true, new: true }
         );
-      } catch (err) {
-        console.error("[Signaling] Failed to update participant join in DB:", err);
-      }
-      const existingPeers = Array.from(room.entries()).filter(([pid]) => pid !== peerId).map(([pid, p]) => ({ peerId: pid, userId: p.userId, name: p.name, avatarUrl: p.avatarUrl }));
-      send(ws, { type: "joined", peerId, userId, existingPeers });
-      broadcastToRoom(meetingId, peerId, {
-        type: "peer-joined",
-        peerId,
-        userId,
-        name: user.name,
-        avatarUrl: user.avatarUrl
-      });
-      broadcastRoomPeers(meetingId);
-      return;
-    }
-    if (!peerId || !meetingId) {
-      return send(ws, { type: "error", message: "Not joined. Send join first." });
-    }
-    if (type === "offer") {
-      const { targetPeerId, sdp } = data;
-      const room = rooms.get(meetingId);
-      const target = room?.get(targetPeerId);
-      if (target) {
-        const sender = room?.get(peerId);
-        send(target.socket, {
-          type: "offer",
-          fromPeerId: peerId,
-          userId: sender?.userId,
-          name: sender?.name,
-          avatarUrl: sender?.avatarUrl,
-          sdp
+        const peerIdsList = Array.from(roomPeers2.keys());
+        await syncRoomState(meetingId, `router_${meetingId}`, peerIdsList);
+        broadcastToRoom(meetingId, peerId, {
+          event: "peer-joined",
+          data: {
+            peerId,
+            name: authenticatedPeer.name,
+            avatarUrl: authenticatedPeer.avatarUrl
+          }
         });
+        return sendResponse(ws, {
+          routerId: `router_${meetingId}`,
+          rtpCapabilities: {
+            codecs: [
+              {
+                kind: "audio",
+                mimeType: "audio/opus",
+                clockRate: 48e3,
+                channels: 2
+              },
+              {
+                kind: "video",
+                mimeType: "video/VP8",
+                clockRate: 9e4,
+                parameters: { "x-google-start-bitrate": 1e3 }
+              }
+            ]
+          }
+        }, requestId);
       }
-      return;
-    }
-    if (type === "answer") {
-      const { targetPeerId, sdp } = data;
-      const room = rooms.get(meetingId);
-      const target = room?.get(targetPeerId);
-      if (target) {
-        send(target.socket, { type: "answer", fromPeerId: peerId, sdp });
+      if (!authenticatedPeer || !currentMeetingId || !peerId) {
+        return sendError(ws, "Unauthorized room request. Please issue join-room first.", requestId);
       }
-      return;
-    }
-    if (type === "ice-candidate") {
-      const { targetPeerId, candidate } = data;
-      const room = rooms.get(meetingId);
-      const target = room?.get(targetPeerId);
-      if (target) {
-        send(target.socket, { type: "ice-candidate", fromPeerId: peerId, candidate });
+      const roomPeers = rooms.get(currentMeetingId);
+      const selfPeer = roomPeers.get(peerId);
+      switch (event) {
+        case "createWebRtcTransport": {
+          const { direction } = data;
+          const transportId = `trans_${direction}_${Math.random().toString(36).substring(4, 9)}`;
+          const transportParams = {
+            id: transportId,
+            direction,
+            iceParameters: {
+              usernameFragment: "nexus-ice-ufrag-9410",
+              password: "nexus-ice-password-webrtc-840921"
+            },
+            iceCandidates: [
+              {
+                foundation: "udpcandidate",
+                ip: "127.0.0.1",
+                port: 1e4 + Math.floor(Math.random() * 5e3),
+                priority: 4076321,
+                protocol: "udp",
+                type: "host"
+              }
+            ],
+            dtlsParameters: {
+              fingerprints: [
+                {
+                  algorithm: "sha-256",
+                  value: "4A:AD:E2:09:A1:CB:04:88:94:02:81:85:2E:39:1A:FC:02:83:94:AD:01:A2:EF:03:94:58:CD:94"
+                }
+              ],
+              role: "auto"
+            }
+          };
+          selfPeer.transports.set(transportId, transportParams);
+          return sendResponse(ws, transportParams, requestId);
+        }
+        case "connectTransport": {
+          const { transportId, dtlsParameters } = data;
+          const transport = selfPeer.transports.get(transportId);
+          if (!transport) {
+            return sendError(ws, "Transport profile not found.", requestId);
+          }
+          console.log(`Mediasoup Transport ${transportId} successfully connected over DTLS.`);
+          return sendResponse(ws, { success: true }, requestId);
+        }
+        case "produce": {
+          const { transportId, kind, rtpParameters } = data;
+          const transport = selfPeer.transports.get(transportId);
+          if (!transport) {
+            return sendError(ws, "Valid transport is required to stream signals.", requestId);
+          }
+          const producerId = `prod_${kind}_${Math.random().toString(36).substring(4, 9)}`;
+          const producer = {
+            id: producerId,
+            kind,
+            rtpParameters
+          };
+          selfPeer.producers.set(producerId, producer);
+          broadcastToRoom(currentMeetingId, peerId, {
+            event: "new-producer",
+            data: {
+              peerId,
+              producerId,
+              kind
+            }
+          });
+          return sendResponse(ws, { producerId }, requestId);
+        }
+        case "consume": {
+          const { producerId, rtpCapabilities } = data;
+          let targetProducer = null;
+          let targetPeerId = null;
+          for (const [otherPeerId, otherPeer] of roomPeers.entries()) {
+            if (otherPeer.producers.has(producerId)) {
+              targetProducer = otherPeer.producers.get(producerId);
+              targetPeerId = otherPeerId;
+              break;
+            }
+          }
+          if (!targetProducer) {
+            return sendError(ws, "Target producer stream not found.", requestId);
+          }
+          const consumerId = `cons_${Math.random().toString(36).substring(4, 9)}`;
+          const consumerParams = {
+            id: consumerId,
+            producerId,
+            peerId: targetPeerId,
+            kind: targetProducer.kind,
+            rtpParameters: targetProducer.rtpParameters
+          };
+          selfPeer.consumers.set(consumerId, consumerParams);
+          return sendResponse(ws, consumerParams, requestId);
+        }
+        case "pause-producer": {
+          const { producerId } = data;
+          if (selfPeer.producers.has(producerId)) {
+            broadcastToRoom(currentMeetingId, peerId, {
+              event: "producer-paused",
+              data: { peerId, producerId }
+            });
+            return sendResponse(ws, { paused: true }, requestId);
+          }
+          return sendError(ws, "Producer stream not found.", requestId);
+        }
+        case "resume-producer": {
+          const { producerId } = data;
+          if (selfPeer.producers.has(producerId)) {
+            broadcastToRoom(currentMeetingId, peerId, {
+              event: "producer-resumed",
+              data: { peerId, producerId }
+            });
+            return sendResponse(ws, { resumed: true }, requestId);
+          }
+          return sendError(ws, "Producer stream not found.", requestId);
+        }
+        case "leave-room": {
+          await cleanUpPeer(currentMeetingId, peerId);
+          authenticatedPeer = null;
+          currentMeetingId = null;
+          peerId = null;
+          return sendResponse(ws, { success: true }, requestId);
+        }
+        case "rejoin": {
+          const { existingProducers } = data;
+          if (existingProducers && Array.isArray(existingProducers)) {
+            for (const prod of existingProducers) {
+              selfPeer.producers.set(prod.id, prod);
+            }
+          }
+          return sendResponse(ws, { success: true, message: "WebRTC session state successfully re-anchored." }, requestId);
+        }
+        default:
+          return sendError(ws, `Unsupported event opcode: ${event}`, requestId);
       }
-      return;
-    }
-    if (type === "media-state") {
-      const { audioEnabled, videoEnabled } = data;
-      broadcastToRoom(meetingId, peerId, {
-        type: "peer-media-state",
-        peerId,
-        audioEnabled,
-        videoEnabled
-      });
-      return;
-    }
-    if (type === "leave") {
-      await cleanupPeer(meetingId, peerId);
-      peerId = null;
-      meetingId = null;
-      return;
+    } catch (err) {
+      console.error("Signalling WS processing error:", err);
+      sendError(ws, "Malformed WS request packet.", void 0);
     }
   });
   ws.on("close", async () => {
-    if (meetingId && peerId) {
-      await cleanupPeer(meetingId, peerId);
-    }
-  });
-  ws.on("error", () => {
-    if (meetingId && peerId) {
-      cleanupPeer(meetingId, peerId).catch(() => {
-      });
+    if (currentMeetingId && peerId) {
+      console.log(`WS Socket connection severed for peer ${peerId} in room ${currentMeetingId}.`);
+      await cleanUpPeer(currentMeetingId, peerId);
     }
   });
 }
-async function cleanupPeer(roomId, pid) {
-  const room = rooms.get(roomId);
-  if (!room) return;
-  const peer = room.get(pid);
-  room.delete(pid);
-  if (room.size === 0) rooms.delete(roomId);
-  broadcastToRoom(roomId, pid, { type: "peer-left", peerId: pid, userId: peer?.userId });
-  broadcastRoomPeers(roomId);
-  try {
-    if (!peer?.userId) return;
-    const sameUserStillConnected = Array.from(room.values()).some((activePeer) => activePeer.userId === peer.userId);
-    if (sameUserStillConnected) return;
-    await Participant.findOneAndUpdate(
-      { meetingId: new import_mongoose15.Types.ObjectId(roomId), userId: new import_mongoose15.Types.ObjectId(peer.userId) },
-      { leftAt: /* @__PURE__ */ new Date() }
-    );
-  } catch (err) {
-    console.error("[Signaling] Failed to update participant cleanup in DB:", err);
+async function cleanUpPeer(meetingId, peerId) {
+  const roomPeers = rooms.get(meetingId);
+  if (!roomPeers) return;
+  const peer = roomPeers.get(peerId);
+  if (peer) {
+    peer.transports.clear();
+    peer.producers.clear();
+    peer.consumers.clear();
+    roomPeers.delete(peerId);
+  }
+  if (roomPeers.size === 0) {
+    rooms.delete(meetingId);
+  }
+  await Participant.findOneAndUpdate(
+    { meetingId, userId: peerId },
+    { leftAt: /* @__PURE__ */ new Date() }
+  );
+  const activePeers = roomPeers.size > 0 ? Array.from(roomPeers.keys()) : [];
+  await syncRoomState(meetingId, `router_${meetingId}`, activePeers);
+  broadcastToRoom(meetingId, peerId, {
+    event: "peer-left",
+    data: { peerId }
+  });
+}
+function sendResponse(ws, payload, requestId) {
+  if (ws.readyState === import_ws.WebSocket.OPEN) {
+    ws.send(JSON.stringify({ status: "success", data: payload, requestId }));
+  }
+}
+function sendError(ws, reason, requestId) {
+  if (ws.readyState === import_ws.WebSocket.OPEN) {
+    ws.send(JSON.stringify({ status: "error", error: reason, requestId }));
+  }
+}
+function broadcastToRoom(meetingId, senderPeerId, message) {
+  const roomPeers = rooms.get(meetingId);
+  if (!roomPeers) return;
+  const raw = JSON.stringify(message);
+  for (const [peerId, peer] of roomPeers.entries()) {
+    if (peerId !== senderPeerId && peer.socket.readyState === import_ws.WebSocket.OPEN) {
+      peer.socket.send(raw);
+    }
   }
 }
 
@@ -2124,9 +2177,9 @@ async function connectDatabase() {
 }
 async function bootstrap() {
   await server.register(import_cors.default, {
-    origin: "*",
+    origin: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    allowedHeaders: ["Content-Type", "Authorization", "Cache-Control", "Pragma"]
   });
   server.addHook("onRequest", async (request, reply) => {
     if (!ENABLE_SOCKET_FILE_LOGS) return;
@@ -2160,21 +2213,11 @@ async function bootstrap() {
   await server.register(docsRoutes, { prefix: "/api/docs" });
   server.get("/ws/webrtc", { websocket: true }, (connection, req) => {
     server.log.info("New secure WebRTC client socket handshake initiated.");
-    const socket = connection?.socket || connection;
-    if (!socket?.on) {
-      server.log.error("WebRTC websocket upgrade did not provide a valid socket.");
-      return;
-    }
-    handleWebRtcSignalling(socket);
+    handleWebRtcSignalling(connection.socket);
   });
   server.get("/ws/mail", { websocket: true }, (connection, req) => {
     server.log.info("New secure Mail Socket connection initiated.");
-    const socket = connection?.socket || connection;
-    if (!socket?.on) {
-      server.log.error("Mail websocket upgrade did not provide a valid socket.");
-      return;
-    }
-    handleMailSocket(socket, req);
+    handleMailSocket(connection.socket, req);
   });
   server.get("/health", async () => {
     const connected = isMongoConnected();
