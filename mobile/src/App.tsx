@@ -1,5 +1,6 @@
 ﻿import React from "react";
 import { View, ActivityIndicator } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { BrowserRouter, Routes, Route, Navigate } from "./lib/router";
 import AppLayout from "./components/AppLayout";
 import Login from "./pages/Login";
@@ -33,8 +34,9 @@ export default function App() {
     });
   }, []);
 
-  if (loading) {
-    return (
+  return (
+    <SafeAreaProvider>
+  {loading ? (
       <View
         style={{
           flex: 1,
@@ -45,10 +47,7 @@ export default function App() {
       >
         <ActivityIndicator size="large" color="#2563eb" />
       </View>
-    );
-  }
-
-  return (
+  ) : (
     <BrowserRouter>
       <Routes>
         {/* Public route */}
@@ -76,5 +75,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
     </BrowserRouter>
+  )}
+    </SafeAreaProvider>
   );
 }

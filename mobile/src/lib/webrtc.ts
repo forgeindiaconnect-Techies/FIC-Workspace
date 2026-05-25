@@ -85,6 +85,16 @@ export function getRTCSessionDescriptionClass(): any {
   return readRTCSessionDescription();
 }
 
+function readMediaStream(): any {
+  if (nativeWebRTC?.MediaStream) return nativeWebRTC.MediaStream;
+  if (typeof MediaStream !== 'undefined') return MediaStream;
+  return null;
+}
+
+export function getMediaStreamClass(): any {
+  return readMediaStream();
+}
+
 export function getMediaDevices(): any {
   return readMediaDevices();
 }
@@ -152,9 +162,11 @@ export function RTCView(props: any) {
       props.streamURL ||
       (typeof props.stream === 'string' ? props.stream : props.stream?.toURL?.());
     return React.createElement(NativeRTCView, {
-      ...props,
       streamURL,
       objectFit: props.objectFit === 'contain' ? 'contain' : 'cover',
+      style: props.style,
+      mirror: props.mirror,
+      zOrder: props.zOrder,
     });
   }
 

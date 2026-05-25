@@ -18,6 +18,7 @@ import {
   getRTCIceCandidateClass,
   getRTCSessionDescriptionClass,
   getMediaDevices,
+  getMediaStreamClass,
   getWebRTCDiagnostics,
   getIceServers,
 } from '../lib/webrtc';
@@ -107,6 +108,7 @@ export default function Meetings() {
   const iceCandidateBufferRef = React.useRef<Map<string, any[]>>(new Map());
   const createPeerConnectionRef = React.useRef<any>(null);
   const localStreamRef = React.useRef<any>(null);
+  const intentionalCloseRef = React.useRef(false);
 
   const { user } = getSession();
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
@@ -276,9 +278,13 @@ export default function Meetings() {
 
     peerConnectionsRef.current.set(targetPeerId, pc);
 
-    stream?.getTracks?.().forEach((track: any) => {
-      pc.addTrack?.(track, stream);
-    });
+    if (pc.addStream) {
+      pc.addStream(stream);
+    } else {
+      stream?.getTracks?.().forEach((track: any) => {
+        pc.addTrack?.(track, stream);
+      });
+    }
 
     pc.onicecandidate = (event: any) => {
       if (event.candidate) {
@@ -286,20 +292,64 @@ export default function Meetings() {
       }
     };
 
+    pc.oniceconnectionstatechange = () => {
+      const state = pc.iceConnectionState;
+      console.log(`[ICE] state for ${targetPeerId}: ${state}`);
+      if (state === 'failed') {
+        console.warn(`[ICE] Connection failed for ${targetPeerId}, attempting ICE restart...`);
+        setTimeout(async () => {
+          try {
+            const newOffer = await pc.createOffer({ iceRestart: true });
+            await pc.setLocalDescription(newOffer);
+            sendSignal('offer', { targetPeerId, sdp: newOffer });
+          } catch (err) {
+            console.warn(`[ICE] Restart failed for ${targetPeerId}:`, err);
+          }
+        }, 1000);
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      console.log(`[PC] connection state for ${targetPeerId}: ${state}`);
+      if (state === 'failed') {
+        console.warn(`[PC] Connection failed for ${targetPeerId}`);
+        setRemotePeers(prev =>
+          prev.map(p =>
+            (p.peerId === targetPeerId || p.id === peerKey)
+              ? { ...p, connectionState: 'failed' as const }
+              : p
+          )
+        );
+      } else if (state === 'connected') {
+        setRemotePeers(prev =>
+          prev.map(p =>
+            (p.peerId === targetPeerId || p.id === peerKey)
+              ? { ...p, connectionState: 'connected' as const }
+              : p
+          )
+        );
+      }
+    };
+
     pc.ontrack = (event: any) => {
-      let remoteStream = event.streams?.[0];
-      if (!remoteStream && event.track) {
-        const existing = remoteStreamsRef.current[peerKey];
-        if (existing?.addTrack) {
-          existing.addTrack(event.track);
-          remoteStream = existing;
-        } else if (typeof MediaStream !== 'undefined') {
-          remoteStream = new MediaStream([event.track]);
+      let incomingStream = event.streams?.[0];
+      if (!incomingStream && event.track) {
+        const MSClass = getMediaStreamClass();
+        if (MSClass) {
+          incomingStream = new MSClass([event.track]);
         }
       }
-      if (remoteStream) {
-        remoteStreamsRef.current[peerKey] = remoteStream;
-        setRemoteStreams(prev => ({ ...prev, [peerKey]: remoteStream }));
+      if (incomingStream) {
+        const existing = remoteStreamsRef.current[peerKey];
+        if (existing && existing !== incomingStream) {
+          incomingStream.getTracks().forEach((t: any) => {
+            try { existing.addTrack(t); } catch {}
+          });
+        } else {
+          remoteStreamsRef.current[peerKey] = incomingStream;
+          setRemoteStreams(prev => ({ ...prev, [peerKey]: incomingStream }));
+        }
       }
     };
 
@@ -310,9 +360,13 @@ export default function Meetings() {
     };
 
     if (shouldOffer) {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      sendSignal('offer', { targetPeerId, sdp: offer });
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendSignal('offer', { targetPeerId, sdp: offer });
+      } catch (err) {
+        console.warn(`[WebRTC] createOffer/setLocal failed for ${targetPeerId}:`, err);
+      }
     }
 
     return pc;
@@ -382,26 +436,32 @@ export default function Meetings() {
 
   // Connect signaling WebSocket for peer presence
   const connectSignaling = (signalingRoomId: string, token: string, publicRoomId?: string) => {
-    try {
-      // Build correct WebSocket URL from SOCKET_URL
-      // SOCKET_URL may be wss:// or https://  normalize to wss://
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+
+    const buildWsUrl = () => {
       let wsBase = SOCKET_URL;
+      console.log('[Signaling] Raw SOCKET_URL:', SOCKET_URL);
       if (wsBase.startsWith('https://')) {
         wsBase = wsBase.replace('https://', 'wss://');
       } else if (wsBase.startsWith('http://')) {
         wsBase = wsBase.replace('http://', 'ws://');
       } else if (!wsBase.startsWith('ws://') && !wsBase.startsWith('wss://')) {
-        // If it's just a hostname or missing protocol, default to wss
         wsBase = `wss://${wsBase}`;
       }
       wsBase = wsBase.replace(/\/+$/, '');
-      const wsUrl = `${wsBase}/ws/webrtc`;
-      console.log('[Signaling] Connecting to:', wsUrl, 'room:', signalingRoomId);
+      return `${wsBase}/ws/webrtc`;
+    };
+
+    const setupWs = () => {
+      const wsUrl = buildWsUrl();
+      console.log('[Signaling] Connecting to:', wsUrl, 'room:', signalingRoomId, 'attempt:', reconnectAttempts + 1);
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        reconnectAttempts = 0;
         console.log('[Signaling] Connected, joining room:', signalingRoomId);
         ws.send(JSON.stringify({
           type: 'join',
@@ -414,7 +474,7 @@ export default function Meetings() {
         }));
       };
 
-      ws.onmessage = (e: any) => {
+      ws.onmessage = async (e: any) => {
         try {
           const msg = JSON.parse(e.data);
           console.log('[Signaling] Received:', msg.type);
@@ -480,18 +540,26 @@ export default function Meetings() {
             };
             createPeerConnection(fromPeerId, peer, false).then(async (pc) => {
               if (!pc) return;
-              // Use runtime getter for RTCSessionDescription
               const RTCSdpClass = getRTCSessionDescriptionClass();
               const desc = RTCSdpClass ? new RTCSdpClass(msg.sdp) : msg.sdp;
-              await pc.setRemoteDescription(desc);
+              try {
+                await pc.setRemoteDescription(desc);
+              } catch (err) {
+                console.warn(`[WebRTC] setRemoteDescription failed for offer from ${fromPeerId}:`, err);
+                return;
+              }
               const buffered = iceCandidateBufferRef.current.get(fromPeerId) || [];
               iceCandidateBufferRef.current.delete(fromPeerId);
               for (const c of buffered) {
                 await pc.addIceCandidate(c).catch((e: any) => console.warn('[ICE] Buffered candidate failed:', e));
               }
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-              sendSignal('answer', { targetPeerId: fromPeerId, sdp: answer });
+              try {
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                sendSignal('answer', { targetPeerId: fromPeerId, sdp: answer });
+              } catch (err) {
+                console.warn(`[WebRTC] createAnswer/setLocal failed for ${fromPeerId}:`, err);
+              }
             }).catch((err) => console.warn('[WebRTC] Offer handling failed:', err));
           }
           if (msg.type === 'answer') {
@@ -499,13 +567,17 @@ export default function Meetings() {
             if (pc) {
               const RTCSdpClass = getRTCSessionDescriptionClass();
               const desc = RTCSdpClass ? new RTCSdpClass(msg.sdp) : msg.sdp;
-              pc.setRemoteDescription(desc).then(async () => {
-                const buffered = iceCandidateBufferRef.current.get(msg.fromPeerId) || [];
-                iceCandidateBufferRef.current.delete(msg.fromPeerId);
-                for (const c of buffered) {
-                  await pc.addIceCandidate(c).catch((e: any) => console.warn('[ICE] Buffered candidate failed:', e));
-                }
-              }).catch((err: any) => console.warn('[WebRTC] Answer failed:', err));
+              try {
+                await pc.setRemoteDescription(desc);
+              } catch (err) {
+                console.warn(`[WebRTC] setRemoteDescription failed for answer from ${msg.fromPeerId}:`, err);
+                return;
+              }
+              const buffered = iceCandidateBufferRef.current.get(msg.fromPeerId) || [];
+              iceCandidateBufferRef.current.delete(msg.fromPeerId);
+              for (const c of buffered) {
+                await pc.addIceCandidate(c).catch((e: any) => console.warn('[ICE] Buffered candidate failed:', e));
+              }
             }
           }
           if (msg.type === 'ice-candidate') {
@@ -546,10 +618,24 @@ export default function Meetings() {
       };
 
       ws.onerror = (e: any) => console.warn('[Signaling] WS error:', e?.message || e);
-      ws.onclose = (e: any) => console.log('[Signaling] WS closed. Code:', e?.code);
-    } catch (err) {
-      console.warn('[Signaling] Failed to connect:', err);
-    }
+
+      ws.onclose = (e: any) => {
+        console.log('[Signaling] WS closed. Code:', e?.code);
+        peerIdRef.current = null;
+        if (!intentionalCloseRef.current && reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++;
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000);
+          console.log(`[Signaling] Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})...`);
+          setTimeout(setupWs, delay);
+        }
+      };
+    };
+
+    setupWs();
+
+    return () => {
+      intentionalCloseRef.current = true;
+    };
   };
 
   // Request permissions and enter room
@@ -628,6 +714,7 @@ export default function Meetings() {
 
   // End call
   const endCall = async () => {
+    intentionalCloseRef.current = true;
     if (wsRef.current) {
       try {
         if (wsRef.current.readyState === WebSocket.OPEN) {
@@ -862,17 +949,12 @@ export default function Meetings() {
             {/* REMOTE PEER TILES */}
             {remotePeers.slice(0, 3).map(peer => {
               const remoteStream = remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null);
-              const remoteStreamSource =
-                remoteStream && typeof remoteStream !== 'string'
-                  ? remoteStream
-                  : remoteStream?.toURL?.() || remoteStream;
               return (
                 <View key={peer.id} style={[s.videoTile, s.videoTileHalf]}>
-                  {rtcAvailableNow && remoteStreamSource ? (
+                  {rtcAvailableNow && remoteStream ? (
                     <RTCView
                       style={s.cameraView}
-                      stream={remoteStreamSource}
-                      streamURL={typeof remoteStreamSource === 'string' ? remoteStreamSource : undefined}
+                      stream={remoteStream}
                       objectFit="cover"
                     />
                   ) : (
