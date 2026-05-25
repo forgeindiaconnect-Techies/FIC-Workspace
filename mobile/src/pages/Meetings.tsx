@@ -97,6 +97,7 @@ export default function Meetings() {
   const [remotePeers, setRemotePeers] = React.useState<RemotePeer[]>([]);
   const [localStream, setLocalStream] = React.useState<any>(null);
   const [remoteStreams, setRemoteStreams] = React.useState<Record<string, any>>({});
+  const remoteStreamsRef = React.useRef<Record<string, any>>({});
 
   // WebSocket signaling ref
   const wsRef = React.useRef<WebSocket | null>(null);
@@ -202,8 +203,13 @@ export default function Meetings() {
     peerConnectionsRef.current.clear();
     remotePeerKeyRef.current.clear();
     iceCandidateBufferRef.current.clear();
+    remoteStreamsRef.current = {};
     setRemoteStreams({});
   }, []);
+
+  React.useEffect(() => {
+    remoteStreamsRef.current = remoteStreams;
+  }, [remoteStreams]);
 
   /** Only the peer with the higher peerId sends the offer (avoids SDP glare). */
   const shouldInitiateOffer = React.useCallback((remotePeerId: string) => {
@@ -281,8 +287,18 @@ export default function Meetings() {
     };
 
     pc.ontrack = (event: any) => {
-      const remoteStream = event.streams?.[0];
+      let remoteStream = event.streams?.[0];
+      if (!remoteStream && event.track) {
+        const existing = remoteStreamsRef.current[peerKey];
+        if (existing?.addTrack) {
+          existing.addTrack(event.track);
+          remoteStream = existing;
+        } else if (typeof MediaStream !== 'undefined') {
+          remoteStream = new MediaStream([event.track]);
+        }
+      }
       if (remoteStream) {
+        remoteStreamsRef.current[peerKey] = remoteStream;
         setRemoteStreams(prev => ({ ...prev, [peerKey]: remoteStream }));
       }
     };
@@ -846,7 +862,10 @@ export default function Meetings() {
             {/* REMOTE PEER TILES */}
             {remotePeers.slice(0, 3).map(peer => {
               const remoteStream = remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null);
-              const remoteStreamSource = remoteStream?.toURL?.() || remoteStream;
+              const remoteStreamSource =
+                remoteStream && typeof remoteStream !== 'string'
+                  ? remoteStream
+                  : remoteStream?.toURL?.() || remoteStream;
               return (
                 <View key={peer.id} style={[s.videoTile, s.videoTileHalf]}>
                   {rtcAvailableNow && remoteStreamSource ? (
