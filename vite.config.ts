@@ -9,7 +9,10 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        'expo-camera': path.resolve(__dirname, 'src/lib/expoCamera.web.tsx'),
+        'lucide-react-native': 'lucide-react',
         'react-native': 'react-native-web',
+        'react-native-safe-area-context': path.resolve(__dirname, 'src/lib/safeAreaContext.web.tsx'),
       },
     },
     server: {

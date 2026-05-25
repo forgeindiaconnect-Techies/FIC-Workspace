@@ -19,7 +19,6 @@ import {
   RTCSessionDescriptionClass,
   RTCView,
 } from '../lib/webrtc';
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 
 // expo-camera: works in Expo Go AND in APK builds (no custom native code needed)
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
@@ -49,6 +48,16 @@ const avatarFor = (name: string) =>
   String(name || 'U').trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'U';
 
 type RemotePeer = { id: string; name: string; peerId?: string; userId?: string };
+
+const getExpoAv = () => {
+  if (Platform.OS === 'web') return null;
+  try {
+    const nativeRequire = eval('require');
+    return nativeRequire('expo-av');
+  } catch {
+    return null;
+  }
+};
 
 export default function Meetings() {
   // Camera & microphone permissions via expo-camera hooks
@@ -109,13 +118,16 @@ export default function Meetings() {
   const peerKeyFor = (peer: any) => peer?.userId ? `user-${peer.userId}` : String(peer?.peerId || peer?.id || Date.now());
 
   const configureCallAudio = React.useCallback(async () => {
+    const expoAv = getExpoAv();
+    if (!expoAv?.Audio) return;
+
     try {
-      await Audio.setAudioModeAsync({
+      await expoAv.Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
-        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+        interruptionModeIOS: expoAv.InterruptionModeIOS.DoNotMix,
         staysActiveInBackground: true,
-        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        interruptionModeAndroid: expoAv.InterruptionModeAndroid.DoNotMix,
         shouldDuckAndroid: false,
         playThroughEarpieceAndroid: false,
       });
@@ -125,13 +137,16 @@ export default function Meetings() {
   }, []);
 
   const resetCallAudio = React.useCallback(async () => {
+    const expoAv = getExpoAv();
+    if (!expoAv?.Audio) return;
+
     try {
-      await Audio.setAudioModeAsync({
+      await expoAv.Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
-        interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+        interruptionModeIOS: expoAv.InterruptionModeIOS.MixWithOthers,
         staysActiveInBackground: false,
-        interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+        interruptionModeAndroid: expoAv.InterruptionModeAndroid.DuckOthers,
         shouldDuckAndroid: true,
         playThroughEarpieceAndroid: false,
       });
