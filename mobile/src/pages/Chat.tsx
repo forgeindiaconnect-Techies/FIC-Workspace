@@ -1,19 +1,19 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   ActivityIndicator, Alert, Dimensions, KeyboardAvoidingView,
   Modal, Platform, ScrollView, StyleSheet, Text, TextInput,
-  TouchableOpacity, View, Image,
+  TouchableOpacity, View, Image, useWindowDimensions,
 } from 'react-native';
 import {
   CheckCheck, ChevronLeft, Mic, MicOff, Phone, PhoneOff,
   Plus, Search, Send, Shield, Users, Video, X, UserPlus,
   MessageSquare, MoreVertical, Paperclip, Camera, Hash,
-  Bell, Star, Smile,
+  Bell, Star, Smile, Edit, Edit3, Edit2
 } from 'lucide-react-native';
-import { api, getSession } from '../lib/api';
+import { api, getSession, getSocketUrl } from '../lib/api';
+import { getRTCPeerConnectionClass, getMediaDevices, getIceServers, RTCView } from '../lib/webrtc';
 
-const { width, height } = Dimensions.get('window');
-const isMobile = width < 768;
+
 
 /* --- helpers ----------------------------------------------- */
 const avatarFor = (name: string) => {
@@ -26,33 +26,22 @@ const formatTime = (v?: string | Date) => {
   return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-/* --- mock stories ------------------------------------------- */
-const STORIES = [
-  { id: 'my', name: 'Your Story', avatar: 'ME', color: '#6366f1', isOwn: true },
-  { id: 's1', name: 'Sarah C.', avatar: 'SC', color: '#0f766e', isOwn: false },
-  { id: 's2', name: 'Arjun M.', avatar: 'AM', color: '#dc2626', isOwn: false },
-  { id: 's3', name: 'Priya R.', avatar: 'PR', color: '#d97706', isOwn: false },
-  { id: 's4', name: 'Dev Team', avatar: 'DT', color: '#7c3aed', isOwn: false },
-];
-
 /* --- avatar colors ------------------------------------------ */
-const AVATAR_COLORS = ['#0f766e','#2563eb','#7c3aed','#dc2626','#d97706','#059669'];
+const AVATAR_COLORS = ['#006b5e','#4c5b71','#96f3e1','#d5e3fc','#74777d','#0d1c2e'];
 const colorFor = (id: string) => AVATAR_COLORS[id.charCodeAt(0) % AVATAR_COLORS.length];
 
-const fallbackChats = [
-  { id: 'demo-1', name: 'Sarah Chen', email: 'sarah@antigraviity.com', online: true,
-    lastMsg: 'Add a real user to start chatting.', time: 'Demo', unread: 2, avatar: 'SC', type: 'dm' },
-];
-const fallbackMessages = [
-  { id: 'w1', user: 'Kural', time: 'Now', text: 'Messages appear here once users are added.', self: false },
-];
-
 export default function Chat() {
+  const { width, height } = useWindowDimensions();
+  const isMobile = width < 768;
+  const s = React.useMemo(() => getStyles(width, height, isMobile), [width, height, isMobile]);
+  
   /* -- state -- */
   const [tab, setTab] = React.useState<'chats'|'groups'|'calls'>('chats');
   const [selectedChat, setSelectedChat] = React.useState<any>(null);
   const [directMessages, setDirectMessages] = React.useState<any[]>([]);
-  const [messages, setMessages] = React.useState<any[]>(fallbackMessages);
+  const [groupMessages, setGroupMessages] = React.useState<any[]>([]);
+  const [stories, setStories] = React.useState<any[]>([]);
+  const [messages, setMessages] = React.useState<any[]>([{ id: 'init', user: 'Workspace', time: 'Now', text: 'Select a chat to start messaging.', self: false }]);
   const [inputVal, setInputVal] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [loadingChannels, setLoadingChannels] = React.useState(true);
@@ -82,7 +71,12 @@ export default function Chat() {
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
   const email = user?.email || 'admin@antigraviity.com';
 
-  /* -- call timer -- */
+  /* -- call logic & WebRTC -- */
+  const wsRef = React.useRef<any>(null);
+  const pcRef = React.useRef<any>(null);
+  const localStreamRef = React.useRef<any>(null);
+  const remoteStreamRef = React.useRef<any>(null);
+
   React.useEffect(() => {
     let t: any;
     if (callActive) { t = setInterval(() => setCallDuration(p => p + 1), 1000); }
@@ -90,14 +84,79 @@ export default function Chat() {
     return () => clearInterval(t);
   }, [callActive]);
 
+  const startCall = async () => {
+    if (!selectedChat) return;
+    setAudioCallModal(true); setCallActive(true);
+    
+    // Connect WebRTC signaling socket
+    const ws = new WebSocket(getSocketUrl() + '/ws/webrtc');
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'join', data: { meetingId: selectedChat.id, token: getSession().token } }));
+    };
+
+    ws.onmessage = async (e) => {
+      const msg = JSON.parse(e.data);
+      const PC = getRTCPeerConnectionClass();
+      if (!PC) return; // WebRTC not supported
+
+      if (msg.type === 'joined') {
+        const pc = new PC({ iceServers: getIceServers() });
+        pcRef.current = pc;
+
+        // Add local audio
+        try {
+          const stream = await getMediaDevices().getUserMedia({ audio: true });
+          localStreamRef.current = stream;
+          stream.getTracks().forEach((t: any) => pc.addTrack(t, stream));
+        } catch (err) { console.log('Mic failed', err); }
+
+        pc.onicecandidate = (ev: any) => {
+          if (ev.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', data: { toPeerId: null, candidate: ev.candidate } }));
+        };
+
+        pc.ontrack = (ev: any) => { remoteStreamRef.current = ev.streams[0]; };
+
+        if (msg.existingPeers.length > 0) {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          ws.send(JSON.stringify({ type: 'offer', data: { toPeerId: msg.existingPeers[0].peerId, description: pc.localDescription } }));
+        }
+      } else if (msg.type === 'offer') {
+        const pc = pcRef.current;
+        if (!pc) return;
+        await pc.setRemoteDescription(msg.data.description);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({ type: 'answer', data: { toPeerId: msg.fromPeerId, description: pc.localDescription } }));
+      } else if (msg.type === 'answer') {
+        await pcRef.current?.setRemoteDescription(msg.data.description);
+      } else if (msg.type === 'ice-candidate') {
+        await pcRef.current?.addIceCandidate(msg.data.candidate);
+      }
+    };
+  };
+
+  const endCall = () => {
+    wsRef.current?.close();
+    pcRef.current?.close();
+    localStreamRef.current?.getTracks().forEach((t: any) => t.stop());
+    setAudioCallModal(false); setCallActive(false);
+  };
+
   const fmtCall = (s: number) =>
     `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 
-  /* -- load channels -- */
+  /* -- load channels & stories -- */
   const loadChannels = React.useCallback(async () => {
     setLoadingChannels(true);
     try {
-      const data = await api.chat.getChannels(workspaceId, email);
+      const [data, groupsData, storiesData] = await Promise.all([
+        api.chat.getChannels(workspaceId, email),
+        api.chat.getGroups(workspaceId, email),
+        api.chat.getStories(workspaceId)
+      ]);
       const mapped = Array.isArray(data) ? data.map((ch: any) => ({
         id: ch._id, name: ch.displayName || ch.name || ch.email,
         email: ch.email, online: ch.isOnline !== false,
@@ -106,18 +165,34 @@ export default function Chat() {
         avatar: ch.avatar || avatarFor(ch.displayName || ch.name || ch.email),
         role: ch.role || 'Member', type: 'dm',
       })) : [];
-      setDirectMessages(mapped.length ? mapped : fallbackChats);
+      setDirectMessages(mapped);
+      
+      const gMapped = Array.isArray(groupsData) ? groupsData.map((g: any) => ({
+        id: g._id, name: g.displayName || g.name,
+        lastMsg: g.lastMessageContent || 'Group started',
+        time: formatTime(g.lastMessageTime), unread: 0,
+        avatar: avatarFor(g.displayName || g.name),
+        type: 'group',
+      })) : [];
+      setGroupMessages(gMapped);
+
+      const sMapped = Array.isArray(storiesData) ? storiesData.map((s: any) => ({
+        id: s._id, name: s.userName, avatar: s.userAvatar || avatarFor(s.userName), color: colorFor(s.userId), isOwn: s.userId === user?.id, image: s.content
+      })) : [];
+      // Always prepend the "Update" self button
+      setStories([{ id: 'my', name: 'Update', avatar: 'ME', color: '#006b5e', isOwn: true }, ...sMapped]);
     } catch {
-      setDirectMessages(fallbackChats);
+      setDirectMessages([]);
+      setGroupMessages([]);
+      setStories([{ id: 'my', name: 'Update', avatar: 'ME', color: '#006b5e', isOwn: true }]);
     } finally { setLoadingChannels(false); }
-  }, [workspaceId, email]);
+  }, [workspaceId, email, user?.id]);
 
   React.useEffect(() => { loadChannels(); }, [loadChannels]);
 
   /* -- load messages -- */
   React.useEffect(() => {
     if (!selectedChat) return;
-    if (String(selectedChat.id).startsWith('demo-')) { setMessages(fallbackMessages); return; }
     setLoadingMessages(true);
     api.chat.getMessages(workspaceId, selectedChat.id)
       .then((data: any[]) => {
@@ -126,9 +201,9 @@ export default function Chat() {
           time: formatTime(m.timestamp), text: m.content,
           self: m.senderEmail === email || m.sender === 'You',
         })) : [];
-        setMessages(mapped.length ? mapped : []);
+        setMessages(mapped.length ? mapped : [{ id: 'init', user: 'Workspace', time: 'Now', text: 'Start your conversation here.', self: false }]);
       })
-      .catch(() => setMessages(fallbackMessages))
+      .catch(() => setMessages([{ id: 'err', user: 'System', time: 'Now', text: 'Failed to load.', self: false }]))
       .finally(() => setLoadingMessages(false));
   }, [selectedChat, workspaceId, email]);
 
@@ -146,7 +221,6 @@ export default function Chat() {
     setMessages(p => [...p, opt]);
     setInputVal('');
     setDirectMessages(p => p.map(c => c.id === selectedChat.id ? { ...c, lastMsg: content, time: opt.time } : c));
-    if (String(selectedChat.id).startsWith('demo-')) return;
     try {
       const saved = await api.chat.sendMessage(workspaceId, selectedChat.id, content);
       setMessages(p => p.map(m => m.id === oid ? {
@@ -156,17 +230,41 @@ export default function Chat() {
     } catch (e: any) { Alert.alert('Send failed', e.message); }
   };
 
-  /* -- add member -- */
-  const handleAddMember = async () => {
-    if (!newName.trim() || !newEmail.trim()) { Alert.alert('Required', 'Name and email needed.'); return; }
+  /* -- search and add user -- */
+  const handleFindUser = async () => {
+    if (!newEmail.trim()) { Alert.alert('Required', 'Email needed.'); return; }
     setSavingMember(true);
     try {
-      await api.members.addMember({ name: newName.trim(), email: newEmail.trim().toLowerCase(), password: newPass, role: 'Member', workspaceId });
-      setAddMemberModal(false); setNewName(''); setNewEmail(''); setNewPass('password123');
+      const userFound = await api.chat.searchUserByEmail(newEmail.trim().toLowerCase());
+      await api.chat.startDm([userFound.email, email], email, workspaceId);
+      setAddMemberModal(false); setNewEmail('');
       await loadChannels();
-      Alert.alert('Done', 'User added successfully.');
+      Alert.alert('Done', 'Chat started!');
+    } catch (e: any) { Alert.alert('Error', e.message || 'User not found.'); }
+    finally { setSavingMember(false); }
+  };
+  
+  /* -- create group -- */
+  const handleCreateGroup = async () => {
+    if (!groupName.trim()) { Alert.alert('Required', 'Group name needed.'); return; }
+    setSavingMember(true);
+    try {
+      await api.chat.createGroup(workspaceId, groupName.trim(), []);
+      setCreateGroupModal(false); setGroupName('');
+      await loadChannels();
+      Alert.alert('Done', 'Group created!');
     } catch (e: any) { Alert.alert('Error', e.message); }
     finally { setSavingMember(false); }
+  };
+
+  /* -- post story -- */
+  const handlePostStory = async (content: string) => {
+    if (!content.trim()) return;
+    try {
+      await api.chat.postStory(workspaceId, content);
+      await loadChannels();
+      Alert.alert('Done', 'Status updated!');
+    } catch (e: any) { Alert.alert('Error', e.message); }
   };
 
   /* ------------------------------------------------------------
@@ -197,7 +295,7 @@ export default function Chat() {
               <Text style={s.callCtrlLabel}>{callMuted ? 'Unmute' : 'Mute'}</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={s.callEndBtn} onPress={() => { setAudioCallModal(false); setCallActive(false); }}>
+            <TouchableOpacity style={s.callEndBtn} onPress={endCall}>
               <PhoneOff size={26} color="#fff" />
               <Text style={s.callCtrlLabel}>End</Text>
             </TouchableOpacity>
@@ -235,43 +333,51 @@ export default function Chat() {
             </TouchableOpacity>
           </View>
           <View style={s.storyContent}>
-            <Text style={s.storyEmoji}></Text>
-            <Text style={s.storyText}>Status update from {storyModal?.name}</Text>
+            {storyModal?.isOwn ? (
+               <TextInput 
+                 style={[s.storyReplyInput, { fontSize: 24, textAlign: 'center', height: 100 }]} 
+                 placeholder="Type status..." 
+                 placeholderTextColor="rgba(255,255,255,0.6)" 
+                 autoFocus
+                 onSubmitEditing={(e) => {
+                   handlePostStory(e.nativeEvent.text);
+                   setStoryModal(null);
+                 }}
+               />
+            ) : (
+               <Text style={s.storyText}>{storyModal?.image || `Status update from ${storyModal?.name}`}</Text>
+            )}
           </View>
-          <View style={s.storyReplyRow}>
-            <TextInput style={s.storyReplyInput} placeholder="Reply to story" placeholderTextColor="rgba(255,255,255,0.6)" />
-            <TouchableOpacity style={s.storyReplySend}><Send size={18} color="#fff" /></TouchableOpacity>
-          </View>
+          {!storyModal?.isOwn && (
+            <View style={s.storyReplyRow}>
+              <TextInput style={s.storyReplyInput} placeholder="Reply to status" placeholderTextColor="rgba(255,255,255,0.6)" />
+              <TouchableOpacity style={s.storyReplySend}><Send size={18} color="#fff" /></TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
   );
 
   /* ------------------------------------------------------------
-     ADD MEMBER MODAL
+     FIND USER MODAL
   ------------------------------------------------------------ */
   const renderAddMemberModal = () => (
     <Modal visible={addMemberModal} animationType="slide" transparent onRequestClose={() => setAddMemberModal(false)}>
       <View style={s.modalOverlay}>
         <View style={s.modalCard}>
           <View style={s.modalTopRow}>
-            <Text style={s.modalTitle}>Add Member</Text>
+            <Text style={s.modalTitle}>Find User</Text>
             <TouchableOpacity onPress={() => setAddMemberModal(false)}><X size={20} color="#64748b" /></TouchableOpacity>
           </View>
-          {[
-            { label: 'Full Name', val: newName, set: setNewName, ph: 'Priya Raman', secure: false, kb: 'default' as any },
-            { label: 'Email', val: newEmail, set: setNewEmail, ph: 'priya@company.com', secure: false, kb: 'email-address' as any },
-            { label: 'Password', val: newPass, set: setNewPass, ph: '', secure: true, kb: 'default' as any },
-          ].map(f => (
-            <View key={f.label} style={s.formGroup}>
-              <Text style={s.fieldLabel}>{f.label}</Text>
-              <TextInput style={s.modalInput} value={f.val} onChangeText={f.set} placeholder={f.ph} placeholderTextColor="#94a3b8" secureTextEntry={f.secure} keyboardType={f.kb} autoCapitalize="none" />
-            </View>
-          ))}
+          <View style={s.formGroup}>
+            <Text style={s.fieldLabel}>Email Address</Text>
+            <TextInput style={s.modalInput} value={newEmail} onChangeText={setNewEmail} placeholder="user@company.com" placeholderTextColor="#94a3b8" keyboardType="email-address" autoCapitalize="none" />
+          </View>
           <View style={s.modalBtnRow}>
             <TouchableOpacity style={s.cancelBtn} onPress={() => setAddMemberModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
-            <TouchableOpacity style={s.primaryBtn} onPress={handleAddMember} disabled={savingMember}>
-              {savingMember ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.primaryBtnText}>Add User</Text>}
+            <TouchableOpacity style={s.primaryBtn} onPress={handleFindUser} disabled={savingMember}>
+              {savingMember ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.primaryBtnText}>Start Chat</Text>}
             </TouchableOpacity>
           </View>
         </View>
@@ -304,8 +410,8 @@ export default function Chat() {
           </View>
           <View style={s.modalBtnRow}>
             <TouchableOpacity style={s.cancelBtn} onPress={() => setCreateGroupModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
-            <TouchableOpacity style={s.primaryBtn} onPress={() => { Alert.alert('Group Created', `"${groupName}" group created!`); setCreateGroupModal(false); setGroupName(''); setGroupDesc(''); }}>
-              <Text style={s.primaryBtnText}>Create Group</Text>
+            <TouchableOpacity style={s.primaryBtn} onPress={handleCreateGroup} disabled={savingMember}>
+              {savingMember ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.primaryBtnText}>Create Group</Text>}
             </TouchableOpacity>
           </View>
         </View>
@@ -339,7 +445,7 @@ export default function Chat() {
           {[
             { icon: <UserPlus size={16} color="#2563eb" />, label: 'New Direct Message', action: () => { setAddMemberModal(true); setPlusMenu(false); } },
             { icon: <Users size={16} color="#7c3aed" />, label: 'Create Group', action: () => { setCreateGroupModal(true); setPlusMenu(false); } },
-            { icon: <Camera size={16} color="#0f766e" />, label: 'Add Story', action: () => { setStoryModal(STORIES[0]); setPlusMenu(false); } },
+            { icon: <Camera size={16} color="#0f766e" />, label: 'Add Story', action: () => { setStoryModal(stories[0]); setPlusMenu(false); } },
           ].map(item => (
             <TouchableOpacity key={item.label} style={s.plusMenuItem} onPress={item.action}>
               <View style={s.plusMenuIcon}>{item.icon}</View>
@@ -349,89 +455,83 @@ export default function Chat() {
         </View>
       )}
 
+      {/* Search */}
+      <View style={s.searchBarWrapper}>
+        <View style={s.searchBar}>
+          <Search size={20} color="#74777d" style={s.searchIcon} />
+          <TextInput style={s.searchInput} placeholder="Find a conversation..." placeholderTextColor="rgba(116,119,125,0.6)" value={searchQuery} onChangeText={setSearchQuery} />
+        </View>
+      </View>
+
       {/* Stories row */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.storiesRow} contentContainerStyle={s.storiesContent}>
-        {STORIES.map(story => (
+        {stories.map((story, i) => (
           <TouchableOpacity key={story.id} style={s.storyItem} onPress={() => setStoryModal(story)}>
-            <View style={[s.storyRing, { borderColor: story.isOwn ? '#e2e8f0' : story.color }]}>
-              <View style={[s.storyAvatar, { backgroundColor: story.color }]}>
-                {story.isOwn
-                  ? <Plus size={18} color="#fff" />
-                  : <Text style={s.storyAvatarText}>{story.avatar}</Text>}
+            {story.isOwn ? (
+              <View style={s.storyRingOwn}>
+                <View style={s.storyAvatarOwn}>
+                  <Plus size={24} color="#007164" />
+                </View>
               </View>
-            </View>
-            <Text style={s.storyName} numberOfLines={1}>{story.isOwn ? 'Add Story' : story.name}</Text>
+            ) : (
+              <Image source={{ uri: story.image }} style={s.storyAvatarImg} />
+            )}
+            <Text style={s.storyName} numberOfLines={1}>{story.name}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      {/* Tab bar */}
-      <View style={s.tabBar}>
-        {(['chats','groups','calls'] as const).map(t => (
-          <TouchableOpacity key={t} style={[s.tabBtn, tab === t && s.tabBtnActive]} onPress={() => setTab(t)}>
-            <Text style={[s.tabBtnText, tab === t && s.tabBtnTextActive]}>{t.charAt(0).toUpperCase()+t.slice(1)}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Search */}
-      <View style={s.searchBar}>
-        <Search size={16} color="#94a3b8" />
-        <TextInput style={s.searchInput} placeholder="Search" placeholderTextColor="#94a3b8" value={searchQuery} onChangeText={setSearchQuery} />
-      </View>
-
       {/* List */}
       {loadingChannels ? (
-        <View style={s.loadingPane}><ActivityIndicator color="#0f766e" /></View>
-      ) : tab === 'calls' ? (
-        <View style={s.callsEmptyPane}>
-          <Phone size={40} color="#cbd5e1" />
-          <Text style={s.callsEmptyTitle}>No recent calls</Text>
-          <Text style={s.callsEmptyText}>Start an audio call from any conversation.</Text>
-        </View>
-      ) : tab === 'groups' ? (
-        <View style={s.callsEmptyPane}>
-          <Users size={40} color="#cbd5e1" />
-          <Text style={s.callsEmptyTitle}>No groups yet</Text>
-          <TouchableOpacity style={s.createGroupBtn} onPress={() => setCreateGroupModal(true)}>
-            <Plus size={16} color="#fff" />
-            <Text style={s.createGroupBtnText}>Create Group</Text>
-          </TouchableOpacity>
-        </View>
+        <View style={s.loadingPane}><ActivityIndicator color="#006b5e" /></View>
       ) : (
         <ScrollView style={s.chatList} contentContainerStyle={s.chatListContent}>
+          <Text style={s.messagesHeader}>Messages</Text>
           {filteredChats.map(chat => (
             <TouchableOpacity key={chat.id} onPress={() => setSelectedChat(chat)}
-              style={[s.chatCard, selectedChat?.id === chat.id && s.chatCardActive]}>
+              style={[s.chatCard, chat.unread > 0 && s.chatCardUnread]}>
               <View style={s.avatarWrap}>
-                <View style={[s.avatar, { backgroundColor: colorFor(chat.id) }]}>
-                  <Text style={s.avatarText}>{chat.avatar || avatarFor(chat.name)}</Text>
-                </View>
-                {chat.online && <View style={s.onlineDot} />}
+                {chat.image ? (
+                  <Image source={{ uri: chat.image }} style={[s.avatar, !chat.unread && s.avatarRead]} />
+                ) : (
+                  <View style={[s.avatar, { backgroundColor: colorFor(chat.id) }]}>
+                    {chat.type === 'group' ? <Users size={28} color="#4c5b71" /> : <Text style={s.avatarText}>{chat.avatar}</Text>}
+                  </View>
+                )}
+                {chat.online && chat.unread > 0 && <View style={s.onlineDot} />}
               </View>
               <View style={s.chatInfo}>
                 <View style={s.chatRow}>
-                  <Text style={s.chatName} numberOfLines={1}>{chat.name}</Text>
-                  <Text style={s.chatTime}>{chat.time}</Text>
+                  <Text style={[s.chatName, chat.unread > 0 ? s.textBold : s.textSemiBold]} numberOfLines={1}>{chat.name}</Text>
+                  <Text style={[s.chatTime, chat.unread > 0 ? s.timeUnread : s.timeRead]}>{chat.time}</Text>
                 </View>
                 <View style={s.chatRow}>
-                  <Text style={s.chatPreview} numberOfLines={1}>{chat.lastMsg}</Text>
-                  {chat.unread > 0 && <View style={s.unreadBadge}><Text style={s.unreadText}>{chat.unread}</Text></View>}
+                  <Text style={[s.chatPreview, chat.unread > 0 && s.textSemiBold]} numberOfLines={1}>{chat.lastMsg}</Text>
                 </View>
+              </View>
+              <View style={s.chatRightIndicator}>
+                {chat.unread > 0 ? (
+                  <View style={s.unreadBadge}><Text style={s.unreadText}>{chat.unread}</Text></View>
+                ) : chat.read ? (
+                  <CheckCheck size={16} color="#74777d" />
+                ) : null}
               </View>
             </TouchableOpacity>
           ))}
           {filteredChats.length === 0 && (
             <View style={s.emptyList}>
-              <MessageSquare size={36} color="#cbd5e1" />
+              <MessageSquare size={36} color="#c4c6cd" />
               <Text style={s.emptyListTitle}>No conversations</Text>
-              <TouchableOpacity style={s.addFirstBtn} onPress={() => setAddMemberModal(true)}>
-                <UserPlus size={15} color="#fff" />
-                <Text style={s.addFirstBtnText}>Add Member</Text>
-              </TouchableOpacity>
             </View>
           )}
         </ScrollView>
+      )}
+
+      {/* Floating Action Button */}
+      {isMobile && !selectedChat && (
+        <TouchableOpacity style={s.fab} onPress={() => setAddMemberModal(true)}>
+          <Edit2 size={24} color="#ffffff" />
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -477,7 +577,7 @@ export default function Chat() {
             </View>
           </View>
           <View style={s.chatHeaderActions}>
-            <TouchableOpacity style={s.headerActionBtn} onPress={() => { setAudioCallModal(true); setCallActive(false); }}>
+            <TouchableOpacity style={s.headerActionBtn} onPress={startCall}>
               <Phone size={18} color="#0f766e" />
             </TouchableOpacity>
             <TouchableOpacity style={s.headerActionBtn}>
@@ -556,7 +656,7 @@ export default function Chat() {
 /* ------------------------------------------------------------
    STYLES
 ------------------------------------------------------------ */
-const s = StyleSheet.create({
+const getStyles = (width: number, height: number, isMobile: boolean) => StyleSheet.create({
   root: { flex: 1, flexDirection: 'row', backgroundColor: '#f1f5f9' },
 
   /* sidebar */
@@ -574,48 +674,51 @@ const s = StyleSheet.create({
   plusMenuLabel: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
 
   /* stories */
-  storiesRow: { maxHeight: 100 },
-  storiesContent: { paddingHorizontal: 16, paddingVertical: 10, gap: 14 },
-  storyItem: { alignItems: 'center', gap: 5, width: 62 },
-  storyRing: { width: 58, height: 58, borderRadius: 29, borderWidth: 2.5, padding: 2, alignItems: 'center', justifyContent: 'center' },
-  storyAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  storyAvatarText: { fontSize: 14, fontWeight: '900', color: '#fff' },
-  storyName: { fontSize: 10, fontWeight: '700', color: '#475569', textAlign: 'center', width: 60 },
-
-  /* tabs */
-  tabBar: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 10, backgroundColor: '#f1f5f9', borderRadius: 12, padding: 3 },
-  tabBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
-  tabBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
-  tabBtnText: { fontSize: 12, fontWeight: '700', color: '#94a3b8' },
-  tabBtnTextActive: { color: '#0f172a', fontWeight: '900' },
+  storiesRow: { maxHeight: 110, marginTop: 4 },
+  storiesContent: { paddingHorizontal: 16, paddingVertical: 10, gap: 16 },
+  storyItem: { alignItems: 'center', gap: 8, width: 72 },
+  storyRingOwn: { width: 64, height: 64, borderRadius: 32, borderWidth: 2, borderColor: '#006b5e', padding: 4, alignItems: 'center', justifyContent: 'center' },
+  storyAvatarOwn: { width: '100%', height: '100%', borderRadius: 32, backgroundColor: '#96f3e1', alignItems: 'center', justifyContent: 'center' },
+  storyAvatarImg: { width: 56, height: 56, borderRadius: 28 },
+  storyName: { fontSize: 12, fontWeight: '500', color: '#44474c', textAlign: 'center' },
 
   /* search */
-  searchBar: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 10, backgroundColor: '#f8fafc', borderRadius: 12, paddingHorizontal: 12, height: 42, borderWidth: 1, borderColor: '#e2e8f0', gap: 8 },
-  searchInput: { flex: 1, fontSize: 14, color: '#0f172a' },
+  searchBarWrapper: { paddingHorizontal: 16, marginBottom: 12 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 24, paddingHorizontal: 16, height: 48, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
+  searchIcon: { marginRight: 12 },
+  searchInput: { flex: 1, fontSize: 15, color: '#0d1c2e' },
 
   /* chat list */
   chatList: { flex: 1 },
-  chatListContent: { paddingHorizontal: 12, paddingBottom: 24 },
-  chatCard: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, marginBottom: 6, backgroundColor: '#fff', borderWidth: 1, borderColor: '#f1f5f9' },
-  chatCardActive: { backgroundColor: '#f0fdfa', borderColor: '#0f766e' },
-  avatarWrap: { marginRight: 12, position: 'relative' },
-  avatar: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 15, fontWeight: '900', color: '#fff' },
-  onlineDot: { position: 'absolute', bottom: 1, right: 1, width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e', borderWidth: 2, borderColor: '#fff' },
-  chatInfo: { flex: 1, minWidth: 0 },
-  chatRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 },
-  chatName: { flex: 1, fontSize: 15, fontWeight: '800', color: '#0f172a' },
-  chatTime: { fontSize: 11, color: '#94a3b8', fontWeight: '600' },
-  chatPreview: { flex: 1, fontSize: 13, color: '#64748b', marginTop: 2 },
-  unreadBadge: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: '#0f766e', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
-  unreadText: { fontSize: 10, fontWeight: '900', color: '#fff' },
+  chatListContent: { paddingHorizontal: 16, paddingBottom: 100 },
+  messagesHeader: { fontSize: 13, fontWeight: '600', color: '#74777d', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 },
+  chatCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 8, backgroundColor: '#ffffff', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 2 },
+  chatCardUnread: { backgroundColor: '#eff4ff' },
+  avatarWrap: { marginRight: 16, position: 'relative' },
+  avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+  avatarRead: { opacity: 0.8 },
+  avatarText: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  onlineDot: { position: 'absolute', bottom: 2, right: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: '#22c55e', borderWidth: 2, borderColor: '#ffffff' },
+  chatInfo: { flex: 1, minWidth: 0, justifyContent: 'center' },
+  chatRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  chatName: { flex: 1, fontSize: 16, color: '#0d1c2e' },
+  textBold: { fontWeight: '700' },
+  textSemiBold: { fontWeight: '600' },
+  chatTime: { fontSize: 12 },
+  timeUnread: { color: '#006b5e', fontWeight: '700' },
+  timeRead: { color: '#74777d', fontWeight: '500' },
+  chatPreview: { flex: 1, fontSize: 14, color: '#44474c' },
+  chatRightIndicator: { marginLeft: 12, alignItems: 'flex-end', justifyContent: 'center' },
+  unreadBadge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#006b5e', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  unreadText: { fontSize: 11, fontWeight: '700', color: '#ffffff' },
+  
+  /* fab */
+  fab: { position: 'absolute', bottom: 24, right: 24, width: 56, height: 56, backgroundColor: '#006b5e', borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6, zIndex: 50 },
 
   /* empty states */
   loadingPane: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
-  emptyList: { alignItems: 'center', paddingVertical: 40, gap: 10 },
-  emptyListTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
-  addFirstBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#0f766e', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, marginTop: 4 },
-  addFirstBtnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  emptyList: { alignItems: 'center', paddingVertical: 60, gap: 12 },
+  emptyListTitle: { fontSize: 16, fontWeight: '600', color: '#44474c' },
   callsEmptyPane: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 40 },
   callsEmptyTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
   callsEmptyText: { fontSize: 13, color: '#64748b', textAlign: 'center', paddingHorizontal: 24 },
@@ -625,10 +728,10 @@ const s = StyleSheet.create({
   /* chat panel */
   chatPanel: { flex: 1, backgroundColor: '#f8fafc' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
-  emptyStateIcon: { width: 88, height: 88, borderRadius: 28, backgroundColor: '#ccfbf1', alignItems: 'center', justifyContent: 'center' },
+  emptyStateIcon: { width: 88, height: 88, borderRadius: 28, backgroundColor: '#96f3e1', alignItems: 'center', justifyContent: 'center' },
   emptyStateTitle: { fontSize: 22, fontWeight: '900', color: '#0f172a' },
   emptyStateSub: { fontSize: 14, color: '#64748b', textAlign: 'center' },
-  emptyStateBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#0f766e', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 14, marginTop: 8 },
+  emptyStateBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#006b5e', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 14, marginTop: 8 },
   emptyStateBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
 
   /* chat header */
@@ -660,7 +763,7 @@ const s = StyleSheet.create({
   msgAvatarText: { fontSize: 9, fontWeight: '900', color: '#fff' },
   msgAvatarSpacer: { width: 38 },
   bubble: { maxWidth: '76%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
-  bubbleSelf: { backgroundColor: '#0f766e', borderBottomRightRadius: 4 },
+  bubbleSelf: { backgroundColor: '#006b5e', borderBottomRightRadius: 4 },
   bubbleOther: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderBottomLeftRadius: 4 },
   bubbleText: { fontSize: 15, lineHeight: 21 },
   bubbleTextSelf: { color: '#fff' },
@@ -675,7 +778,7 @@ const s = StyleSheet.create({
   inputIconBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   inputField: { flex: 1, backgroundColor: '#f8fafc', borderRadius: 20, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 14, minHeight: 40, maxHeight: 100, justifyContent: 'center' },
   textInput: { fontSize: 15, color: '#0f172a', paddingVertical: 8 },
-  sendBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#0f766e', alignItems: 'center', justifyContent: 'center' },
+  sendBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#006b5e', alignItems: 'center', justifyContent: 'center' },
   sendBtnOff: { backgroundColor: '#cbd5e1' },
 
   /* audio call modal */

@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import {
   Folder,
@@ -24,8 +25,7 @@ import {
 } from 'lucide-react-native';
 import { api, getSession } from '../lib/api';
 
-const { width } = Dimensions.get('window');
-const isMobile = width < 768;
+
 
 const DOC_TYPES = ['doc', 'sheet', 'pdf', 'folder', 'other'] as const;
 type DocType = typeof DOC_TYPES[number];
@@ -63,6 +63,10 @@ const formatDate = (dateStr?: string) => {
 };
 
 export default function Files() {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+  const styles = React.useMemo(() => getStyles(width, isMobile), [width, isMobile]);
+
   const [filesList, setFilesList] = React.useState<DocFile[]>(MOCK_FILES);
   const [loading, setLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -315,7 +319,7 @@ export default function Files() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (width: number, isMobile: boolean) => StyleSheet.create({
   container: { flex: 1 },
   contentContainer: { paddingBottom: 40, gap: 32 },
   header: {

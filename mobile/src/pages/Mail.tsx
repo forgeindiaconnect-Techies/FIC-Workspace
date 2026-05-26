@@ -33,10 +33,9 @@ import {
   CornerUpRight
 } from 'lucide-react-native';
 
-const { width } = Dimensions.get('window');
-const isMobile = width < 768;
 
-import { api, getSession, SOCKET_URL } from '../lib/api';
+
+import { api, getSession, SOCKET_URL, API_URL } from '../lib/api';
 
 const buildLocalSmartDraft = (prompt: string, subject: string, context: string) => {
   const subjectLine = subject.trim() ? ` regarding "${subject.trim()}"` : '';
@@ -56,6 +55,11 @@ const buildLocalSmartDraft = (prompt: string, subject: string, context: string) 
 };
 
 export default function Mail() {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+  const contentWidth = width;
+  const styles = React.useMemo(() => getStyles(width, isMobile), [width, isMobile]);
+
   const [activeFolder, setActiveFolder] = React.useState('inbox');
   const [mailList, setMailList] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -324,7 +328,6 @@ export default function Mail() {
     }
 
     const displayDateFull = new Date(selectedEmail.sentAt).toLocaleString();
-    const { width: contentWidth } = useWindowDimensions();
 
     return (
       <View style={styles.detailContainer}>
@@ -437,8 +440,34 @@ export default function Mail() {
                       </body>
                     </html>
                   `;
-                  const { uri } = await Print.printToFileAsync({ html });
-                  await Sharing.shareAsync(uri);
+                  if (Platform.OS === 'web') {
+                    const { token } = getSession();
+                    const response = await fetch(`${API_URL}/api/mail/export-pdf`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                      },
+                      body: JSON.stringify({ html })
+                    });
+                    
+                    if (!response.ok) {
+                      throw new Error('Failed to export PDF');
+                    }
+                    
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Meeting_Summary_${new Date().getTime()}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                  } else {
+                    const { uri } = await Print.printToFileAsync({ html });
+                    await Sharing.shareAsync(uri);
+                  }
                 } catch (error: any) {
                   Alert.alert('Error generating PDF', error.message);
                 }
@@ -572,7 +601,7 @@ export default function Mail() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (width: number, isMobile: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',

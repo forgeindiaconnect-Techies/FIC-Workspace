@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,12 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { Plus, MoreHorizontal, Clock, Filter, X, Trash2 } from 'lucide-react-native';
 import { api, getSession } from '../lib/api';
 
-const { width } = Dimensions.get('window');
-const isMobile = width < 768;
+
 
 const COLUMNS = [
   { id: 'todo', title: 'To Do', color: '#94a3b8' },
@@ -38,7 +38,7 @@ interface Task {
   dueDate?: string;
 }
 
-const priorityStyle = (priority: Priority) => {
+const priorityStyle = (priority: Priority, styles: any) => {
   if (priority === 'high') return { badge: styles.priorityHigh, text: styles.textHigh };
   if (priority === 'medium') return { badge: styles.priorityMed, text: styles.textMed };
   return { badge: styles.priorityLow, text: styles.textLow };
@@ -52,6 +52,10 @@ const formatDue = (dateStr?: string) => {
 };
 
 export default function Tasks() {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+  const styles = React.useMemo(() => getStyles(width, isMobile), [width, isMobile]);
+
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [createVisible, setCreateVisible] = React.useState(false);
@@ -335,7 +339,7 @@ export default function Tasks() {
                   contentContainerStyle={styles.taskListContent}
                 >
                   {columnTasks.map(task => {
-                    const ps = priorityStyle(task.priority);
+                    const { badge, text } = priorityStyle(task.priority, styles);
                     const due = formatDue(task.dueDate);
                     const initials = task.assigneeName
                       ? task.assigneeName
@@ -348,8 +352,8 @@ export default function Tasks() {
                     return (
                       <View key={task._id} style={styles.taskCard}>
                         <View style={styles.taskHeader}>
-                          <View style={[styles.priorityBadge, ps.badge]}>
-                            <Text style={[styles.priorityText, ps.text]}>
+                          <View style={[styles.priorityBadge, badge]}>
+                            <Text style={[styles.priorityText, text]}>
                               {task.priority}
                             </Text>
                           </View>
@@ -429,7 +433,7 @@ export default function Tasks() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (width: number, isMobile: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     gap: 24,

@@ -1,11 +1,11 @@
-﻿import React from 'react';
+import React from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
   ScrollView, 
+  useWindowDimensions,
   TouchableOpacity, 
-  Dimensions, 
   Platform 
 } from 'react-native';
 import { 
@@ -21,8 +21,7 @@ import {
 } from 'lucide-react-native';
 import { useNavigate } from '../lib/router';
 
-const { width } = Dimensions.get('window');
-const isMobile = width < 768;
+
 
 const apps = [
   { id: 'meetings', icon: Video, label: 'Meetings', color: '#2563eb', description: 'Video conferencing' },
@@ -35,6 +34,9 @@ const apps = [
 
 export default function Home() {
   const navigate = useNavigate();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+  const styles = React.useMemo(() => getStyles(width, isMobile), [width, isMobile]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -110,7 +112,7 @@ export default function Home() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (width: number, isMobile: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'transparent',

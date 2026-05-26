@@ -114,6 +114,10 @@ export const getCustomServerUrl = () => {
   return API_URL;
 };
 
+export const getSocketUrl = () => {
+  return SOCKET_URL;
+};
+
 /** Point API at Render (clears a saved LAN/custom URL). */
 export const useCloudServer = async () => {
   API_URL = PRODUCTION_API_URL;
@@ -603,6 +607,27 @@ export const api = {
   chat: {
     async getChannels(workspaceId: string, email: string) {
       return request(`/api/channels/${workspaceId}?email=${encodeURIComponent(email)}`);
+    },
+    async getGroups(workspaceId: string, email: string) {
+      return request(`/api/channels/${workspaceId}/groups?email=${encodeURIComponent(email)}`);
+    },
+    async searchUserByEmail(email: string) {
+      return request(`/api/chat/search?email=${encodeURIComponent(email)}`);
+    },
+    async createGroup(workspaceId: string, name: string, members: string[]) {
+      return request('/api/chat/groups', {
+        method: 'POST',
+        body: JSON.stringify({ workspaceId, name, members }),
+      });
+    },
+    async getStories(workspaceId: string) {
+      return request(`/api/chat/${workspaceId}/stories`);
+    },
+    async postStory(workspaceId: string, content: string) {
+      return request(`/api/chat/${workspaceId}/stories`, {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      });
     },
     async createChannel(channelData: any) {
       return request('/api/channels/create', {

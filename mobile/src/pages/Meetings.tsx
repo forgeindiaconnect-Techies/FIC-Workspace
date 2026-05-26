@@ -29,8 +29,7 @@ import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 // expo-camera: works in Expo Go AND in APK builds (no custom native code needed)
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 
-const { width, height } = Dimensions.get('window');
-const isMobile = width < 768;
+
 
 const MOCK_MEETINGS = [
   { id: '1', title: 'Product Sync', time: '10:00 AM', duration: '45m', attendees: 5, color: '#2563eb', status: 'scheduled' },
@@ -56,7 +55,11 @@ const avatarFor = (name: string) =>
 type RemotePeer = { id: string; name: string; peerId?: string; userId?: string };
 
 export default function Meetings() {
-  const { width: contentWidth } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const isMobile = width < 768;
+  const contentWidth = width;
+  const s = React.useMemo(() => getStyles(width, height, isMobile), [width, height, isMobile]);
+
   // Camera & microphone permissions via expo-camera hooks
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -1157,6 +1160,8 @@ export default function Meetings() {
         roomId: res.joinCode,
         password: meetPass,
         signalingId: signalingRoomId,
+        isHost: true,
+        hostId: user?.id,
       };
       setMeetTitle(''); setMeetPass('');
       await enterRoom(room);
@@ -1189,6 +1194,8 @@ export default function Meetings() {
         roomId: res.joinCode || code,
         password: joinPass,
         signalingId: signalingRoomId,
+        isHost: res.isHost || res.host?._id === user?.id,
+        hostId: res.host?._id || res.host,
       };
       setJoinCode(''); setJoinPass('');
       await enterRoom(room);
@@ -1216,6 +1223,8 @@ export default function Meetings() {
         title: res.title || room.title,
         roomId: res.joinCode || room.id,
         signalingId: signalingRoomId,
+        isHost: res.isHost || res.host?._id === user?.id,
+        hostId: res.host?._id || res.host,
       });
     } catch (err: any) {
       Alert.alert(
@@ -1242,6 +1251,19 @@ export default function Meetings() {
     finally { setSummaryLoading(false); }
   };
 
+  const showConfirm = (title: string, message: string, onConfirm: () => void, confirmText = 'Confirm', cancelText = 'Cancel') => {
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${message}`)) {
+        onConfirm();
+      }
+    } else {
+      Alert.alert(title, message, [
+        { text: cancelText, style: 'cancel' },
+        { text: confirmText, style: 'destructive', onPress: onConfirm }
+      ]);
+    }
+  };
+
   const camReady = cameraPermission?.granted && !isVideoOff && !isSharing;
   const rtcAvailableNow = getIsWebRTCAvailable();
   const rtcLocalStreamSource = localStream?.toURL?.() || localStream;
@@ -1249,7 +1271,7 @@ export default function Meetings() {
   // ===== HOST CONTROLS MODAL =====
   const isHost = activeRoom?.isHost || (activeRoom?.hostId && activeRoom.hostId === user?.id);
 
-  const HostControlsModal = () => (
+  const renderHostControlsModal = () => (
     <Modal visible={hostControlsModal} transparent animationType="slide" onRequestClose={() => setHostControlsModal(false)}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' }}>
         <View style={{ backgroundColor: '#0f172a', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' }}>
@@ -1322,10 +1344,16 @@ export default function Meetings() {
                 <View style={{ backgroundColor: '#1e293b', borderRadius: 12, padding: 4, overflow: 'hidden', marginTop: 4 }}>
                   {[
                     { label: 'End Meeting for All', desc: 'Terminate the session for everyone', color: '#ef4444', bg: '#450a0a',
-                      onPress: () => { setHostControlsModal(false); Alert.alert('End Meeting', 'This will end the meeting for all participants.', [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'End for All', style: 'destructive', onPress: () => { endCall(); } }
-                      ]); }},
+                      onPress: () => {
+                        setHostControlsModal(false);
+                        showConfirm(
+                          'End Meeting',
+                          'This will end the meeting for all participants.',
+                          () => { endCall(); },
+                          'End for All',
+                          'Cancel'
+                        );
+                      }},
                     { label: 'Leave (Keep Meeting Active)', desc: 'Leave but keep room running', color: '#f59e0b', bg: '#451a03',
                       onPress: () => { setHostControlsModal(false); endCall(); }},
                   ].map((item, i) => (
@@ -1447,18 +1475,54 @@ export default function Meetings() {
                       { label: '📹 Stop Video', color: '#f1f5f9', onPress: () => { Alert.alert('Video Stopped', `${participantMenuTarget.name}'s video was stopped.`); setParticipantMenuTarget(null); }},
                       { label: '👑 Make Co-Host', color: '#a78bfa', onPress: () => { Alert.alert('Role Updated', `${participantMenuTarget.name} is now a Co-Host.`); setParticipantMenuTarget(null); }},
                       { label: '🎤 Assign Presenter', color: '#60a5fa', onPress: () => { Alert.alert('Role Updated', `${participantMenuTarget.name} is now the Presenter.`); setParticipantMenuTarget(null); }},
-                      { label: '🔄 Transfer Host', color: '#f59e0b', onPress: () => { Alert.alert('Transfer Host', `Transfer host rights to ${participantMenuTarget.name}?`, [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Transfer', onPress: () => { Alert.alert('Done', 'Host rights transferred.'); setParticipantMenuTarget(null); }}
-                      ]); }},
-                      { label: '❌ Remove from Meeting', color: '#ef4444', onPress: () => { Alert.alert('Remove Participant', `Remove ${participantMenuTarget.name}?`, [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Remove', style: 'destructive', onPress: () => { Alert.alert('Removed', `${participantMenuTarget.name} has been removed.`); setParticipantMenuTarget(null); }}
-                      ]); }},
-                      { label: '🚫 Ban (Block Rejoin)', color: '#ef4444', onPress: () => { Alert.alert('Ban Participant', `Ban ${participantMenuTarget.name} from rejoining?`, [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Ban', style: 'destructive', onPress: () => { Alert.alert('Banned', `${participantMenuTarget.name} has been banned.`); setParticipantMenuTarget(null); }}
-                      ]); }},
+                      { label: '🔄 Transfer Host', color: '#f59e0b', onPress: () => {
+                        showConfirm(
+                          'Transfer Host',
+                          `Transfer host rights to ${participantMenuTarget.name}?`,
+                          () => {
+                            if (Platform.OS === 'web') {
+                              window.alert('Host rights transferred.');
+                            } else {
+                              Alert.alert('Done', 'Host rights transferred.');
+                            }
+                            setParticipantMenuTarget(null);
+                          },
+                          'Transfer',
+                          'Cancel'
+                        );
+                      }},
+                      { label: '❌ Remove from Meeting', color: '#ef4444', onPress: () => {
+                        showConfirm(
+                          'Remove Participant',
+                          `Remove ${participantMenuTarget.name}?`,
+                          () => {
+                            if (Platform.OS === 'web') {
+                              window.alert(`${participantMenuTarget.name} has been removed.`);
+                            } else {
+                              Alert.alert('Removed', `${participantMenuTarget.name} has been removed.`);
+                            }
+                            setParticipantMenuTarget(null);
+                          },
+                          'Remove',
+                          'Cancel'
+                        );
+                      }},
+                      { label: '🚫 Ban (Block Rejoin)', color: '#ef4444', onPress: () => {
+                        showConfirm(
+                          'Ban Participant',
+                          `Ban ${participantMenuTarget.name} from rejoining?`,
+                          () => {
+                            if (Platform.OS === 'web') {
+                              window.alert(`${participantMenuTarget.name} has been banned.`);
+                            } else {
+                              Alert.alert('Banned', `${participantMenuTarget.name} has been banned.`);
+                            }
+                            setParticipantMenuTarget(null);
+                          },
+                          'Ban',
+                          'Cancel'
+                        );
+                      }},
                     ].map((action, i) => (
                       <TouchableOpacity key={i} onPress={action.onPress}
                         style={{ padding: 14, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: '#0f172a' }}>
@@ -1829,7 +1893,7 @@ export default function Meetings() {
           </TouchableOpacity>
 
           {/* HOST CONTROLS */}
-          {(isHost || true) && (
+          {isHost && (
             <TouchableOpacity style={[s.ctrlBtn, { backgroundColor: '#1e3a5f' }]} onPress={() => setHostControlsModal(true)}>
               <Shield size={20} color="#60a5fa" />
               <Text style={[s.ctrlLabel, { color: '#60a5fa' }]}>Host</Text>
@@ -1838,10 +1902,13 @@ export default function Meetings() {
 
           {/* END CALL */}
           <TouchableOpacity style={s.endCallBtn} onPress={() => {
-            Alert.alert('Leave Meeting', 'Are you sure you want to leave?', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Leave', style: 'destructive', onPress: () => { endCall(); }},
-            ]);
+            showConfirm(
+              'Leave Meeting',
+              'Are you sure you want to leave?',
+              () => { endCall(); },
+              'Leave',
+              'Cancel'
+            );
           }}>
             <PhoneOff size={22} color="#fff" />
             <Text style={[s.ctrlLabel, { color: '#fff' }]}>Leave</Text>
@@ -1850,7 +1917,7 @@ export default function Meetings() {
           </ScrollView>
         </View>
 
-        <HostControlsModal />
+        {renderHostControlsModal()}
       </View>
     );
   }
@@ -1918,6 +1985,8 @@ export default function Meetings() {
                 title: res.title || m.title,
                 roomId: res.joinCode || m.id,
                 signalingId: signalingRoomId,
+                isHost: res.isHost || res.host?._id === user?.id,
+                hostId: res.host?._id || res.host,
               });
             } catch (err: any) {
               Alert.alert('Could not join', err?.message || 'This meeting could not be resolved on the server.');
@@ -2062,7 +2131,7 @@ export default function Meetings() {
   );
 }
 
-const s = StyleSheet.create({
+const getStyles = (width: number, height: number, isMobile: boolean) => StyleSheet.create({
   container: { flex: 1 },
   content: { paddingBottom: 40, gap: 28 },
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
