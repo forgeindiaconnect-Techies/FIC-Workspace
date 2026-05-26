@@ -132,6 +132,10 @@ const MeetingApp = () => {
   const screenStreamRef = useRef();
   const candidateQueue = useRef(new Map());
   const iceCandidateBufferRef = useRef(new Map());
+  const createPeerConnectionRef = useRef(null);
+  const shouldInitiateOfferRef = useRef(null);
+  const sendWsRef = useRef(null);
+  const iceServersRef = useRef(null);
   
   const audioContextRef = useRef();
   const audioDestinationRef = useRef();
@@ -182,22 +186,22 @@ const MeetingApp = () => {
                   
   const API_URL = getApiUrl('/');
   const [iceServers, setIceServers] = useState([
-    { urls: "stun:stun.l.google.com:19302" },
-    {
-      urls: "turn:global.relay.metered.ca:80",
-      username: "9f091677e1d3082375fdfe63",
-      credential: "7AsjPX9jmD2X4E0R",
-    }
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
   ]);
 
   useEffect(() => {
     fetch(getApiUrl('/api/meet/ice-servers'))
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) setIceServers(data);
+        if (Array.isArray(data) && data.length > 0) setIceServers(data);
       })
       .catch(err => console.error("Failed to fetch ICE servers:", err));
   }, []);
+
+  useEffect(() => {
+    iceServersRef.current = iceServers;
+  }, [iceServers]);
 
   const handleCopy = (text) => {
     navigator.clipboard.writeText(text);
@@ -213,7 +217,7 @@ const MeetingApp = () => {
   };
 
   const createPeerConnection = async (targetPeerId, stream, name) => {
-    const pc = new RTCPeerConnection({ iceServers });
+    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current || iceServers });
     pc.onicecandidate = (event) => {
       if (event.candidate) sendWs('ice-candidate', { targetPeerId, candidate: event.candidate });
     };
@@ -315,6 +319,12 @@ const MeetingApp = () => {
     }
   };
 
+  useEffect(() => {
+    createPeerConnectionRef.current = createPeerConnection;
+    shouldInitiateOfferRef.current = shouldInitiateOffer;
+    sendWsRef.current = sendWs;
+  }, [createPeerConnection, shouldInitiateOffer, sendWs]);
+
   const connectSignaling = useCallback((signalingRoomId, token) => {
     intentionalCloseRef.current = false;
     const wsUrl = buildWsUrl();
@@ -346,14 +356,14 @@ const MeetingApp = () => {
           }));
           // Initiate offers with peers whose ID sorts higher (avoid SDP glare)
           for (const peer of peers) {
-            if (shouldInitiateOffer(peer.peerId)) {
-              const pc = await createPeerConnection(peer.peerId, streamRef.current, peer.name);
+            if (shouldInitiateOfferRef.current(peer.peerId)) {
+              const pc = await createPeerConnectionRef.current(peer.peerId, streamRef.current, peer.name);
               if (pc) {
                 peersRef.current.push({ peerID: peer.peerId, pc });
                 setPeers(prev => [...prev, { peerID: peer.peerId, pc, stream: null, name: peer.name }]);
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
-                sendWs('offer', { targetPeerId: peer.peerId, sdp: offer });
+                sendWsRef.current('offer', { targetPeerId: peer.peerId, sdp: offer });
               }
             } else {
               // The other peer will send the offer — just register the peer
@@ -365,14 +375,14 @@ const MeetingApp = () => {
           if (msg.peerId === peerIdRef.current) return;
           if (peersRef.current.find(p => p.peerID === msg.peerId)) return;
           setPeers(prev => [...prev, { peerID: msg.peerId, pc: null, stream: null, name: msg.name || 'Participant' }]);
-          if (shouldInitiateOffer(msg.peerId)) {
-            const pc = await createPeerConnection(msg.peerId, streamRef.current, msg.name || 'Participant');
+          if (shouldInitiateOfferRef.current(msg.peerId)) {
+            const pc = await createPeerConnectionRef.current(msg.peerId, streamRef.current, msg.name || 'Participant');
             if (pc) {
               peersRef.current.push({ peerID: msg.peerId, pc });
               setPeers(prev => prev.map(p => p.peerID === msg.peerId ? { ...p, pc } : p));
               const offer = await pc.createOffer();
               await pc.setLocalDescription(offer);
-              sendWs('offer', { targetPeerId: msg.peerId, sdp: offer });
+              sendWsRef.current('offer', { targetPeerId: msg.peerId, sdp: offer });
             }
           }
         }
@@ -380,7 +390,7 @@ const MeetingApp = () => {
           const fromPeerId = msg.fromPeerId;
           let pc = peersRef.current.find(p => p.peerID === fromPeerId)?.pc;
           if (!pc) {
-            pc = await createPeerConnection(fromPeerId, streamRef.current, 'Participant');
+            pc = await createPeerConnectionRef.current(fromPeerId, streamRef.current, 'Participant');
             peersRef.current.push({ peerID: fromPeerId, pc });
             setPeers(prev => [...prev, { peerID: fromPeerId, pc, stream: null, name: 'Participant' }]);
           }
@@ -398,7 +408,7 @@ const MeetingApp = () => {
           try {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            sendWs('answer', { targetPeerId: fromPeerId, sdp: answer });
+            sendWsRef.current('answer', { targetPeerId: fromPeerId, sdp: answer });
           } catch (err) {
             console.warn('[WebRTC] createAnswer/setLocal failed:', err);
           }
@@ -468,7 +478,7 @@ const MeetingApp = () => {
         }, 3000);
       }
     };
-  }, [appState, createPeerConnection, sendWs, shouldInitiateOffer]);
+  }, [appState]);
 
   const handleJoinCall = async () => {
     console.log(`📡 [CLIENT] Attempting to join call: ID=${id}`);
