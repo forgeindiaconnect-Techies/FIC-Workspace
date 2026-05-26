@@ -14,6 +14,8 @@ import {
   useWindowDimensions
 } from 'react-native';
 import RenderHtml from 'react-native-render-html';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { 
   Archive, 
   Trash2, 
@@ -407,6 +409,43 @@ export default function Mail() {
             >
               <CornerUpRight size={16} color="#64748b" />
               <Text style={styles.replyQuickText}>Forward</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.replyQuickBtn}
+              onPress={async () => {
+                try {
+                  const html = `
+                    <html>
+                      <head>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+                        <style>
+                          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #333; }
+                          h1 { font-size: 24px; color: #1e293b; margin-bottom: 5px; }
+                          .meta { color: #64748b; font-size: 14px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #e2e8f0; }
+                        </style>
+                      </head>
+                      <body>
+                        <h1>${selectedEmail.subject}</h1>
+                        <div class="meta">
+                          <strong>From:</strong> ${selectedEmail.senderName} &lt;${selectedEmail.senderEmail}&gt;<br>
+                          <strong>Date:</strong> ${new Date(selectedEmail.sentAt).toLocaleString()}<br>
+                        </div>
+                        <div class="content">
+                          ${selectedEmail.body}
+                        </div>
+                      </body>
+                    </html>
+                  `;
+                  const { uri } = await Print.printToFileAsync({ html });
+                  await Sharing.shareAsync(uri);
+                } catch (error: any) {
+                  Alert.alert('Error generating PDF', error.message);
+                }
+              }}
+            >
+              <FileText size={16} color="#64748b" />
+              <Text style={styles.replyQuickText}>Export PDF</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
