@@ -286,18 +286,24 @@ export default function Meetings() {
     mergeRemotePeers([{ ...peer, id: peerKey, peerId: targetPeerId }]);
 
     const stream = await ensureLocalStream();
+    console.log(`[WebRTC] ICE servers (${dynamicIceServersRef.current?.length || 0}):`, JSON.stringify(dynamicIceServersRef.current?.map((s: any) => s.urls)));
     const pc = new rtcClass({
       iceServers: dynamicIceServersRef.current,
     });
 
     peerConnectionsRef.current.set(targetPeerId, pc);
 
-    if (pc.addStream) {
-      pc.addStream(stream);
+    if (stream) {
+      if (pc.addStream) {
+        pc.addStream(stream);
+      } else {
+        stream.getTracks().forEach((track: any) => {
+          pc.addTrack(track, stream);
+        });
+      }
+      console.log(`[WebRTC] Added ${stream.getTracks().length} tracks for ${targetPeerId}`);
     } else {
-      stream?.getTracks?.().forEach((track: any) => {
-        pc.addTrack?.(track, stream);
-      });
+      console.warn(`[WebRTC] No local stream for ${targetPeerId}, PC created without media`);
     }
 
     pc.onicecandidate = (event: any) => {
@@ -507,8 +513,25 @@ export default function Meetings() {
             const initiateOffer = shouldInitiateOfferRef.current;
             const createPC = createPeerConnectionRef.current;
             peers.forEach((peer: RemotePeer) => {
-              if (peer.peerId && initiateOffer(peer.peerId) && createPC) {
-                createPC(peer.peerId, peer, true).catch((err: any) => console.warn('[WebRTC] Offer failed:', err));
+              if (peer.peerId && createPC) {
+                const shouldOffer = initiateOffer(peer.peerId);
+                console.log(`[WebRTC] PC for existing peer ${peer.peerId}, shouldOffer=${shouldOffer}, myPeerId=${peerIdRef.current}`);
+                createPC(peer.peerId, peer, shouldOffer)
+                  .then((pc: any) => {
+                    if (pc && !shouldOffer) {
+                      setTimeout(async () => {
+                        if (pc.iceConnectionState === 'new' && !pc.remoteDescription) {
+                          console.log(`[WebRTC] Fallback: sending offer to ${peer.peerId} (no offer received in 5s)`);
+                          try {
+                            const offer = await pc.createOffer();
+                            await pc.setLocalDescription(offer);
+                            sendSignalRef.current('offer', { targetPeerId: peer.peerId, sdp: offer });
+                          } catch (err) { console.warn('[WebRTC] Fallback offer failed:', err); }
+                        }
+                      }, 5000);
+                    }
+                  })
+                  .catch((err: any) => console.warn('[WebRTC] PC creation failed:', err));
               }
             });
             console.log('[Signaling] Joined room. Existing peers:', peers.length);
@@ -528,11 +551,26 @@ export default function Meetings() {
             if (msg.peerId) remotePeerKeyRef.current.set(msg.peerId, id);
             if (String(msg.userId || '') !== localUserId) {
               setRemotePeers(prev => [...prev.filter(p => p.id !== id), { id, peerId: msg.peerId, userId: msg.userId, name: msg.name }]);
-              if (msg.peerId && shouldInitiateOfferRef.current(msg.peerId)) {
-                const createPC = createPeerConnectionRef.current;
-                if (createPC) {
-                  createPC(msg.peerId, { id, peerId: msg.peerId, userId: msg.userId, name: msg.name }, true).catch((err: any) => console.warn('[WebRTC] Offer failed:', err));
-                }
+              const createPC = createPeerConnectionRef.current;
+              if (createPC && msg.peerId) {
+                const shouldOffer = shouldInitiateOfferRef.current(msg.peerId);
+                console.log(`[WebRTC] PC for new peer ${msg.peerId}, shouldOffer=${shouldOffer}, myPeerId=${peerIdRef.current}`);
+                createPC(msg.peerId, { id, peerId: msg.peerId, userId: msg.userId, name: msg.name }, shouldOffer)
+                  .then((pc: any) => {
+                    if (pc && !shouldOffer) {
+                      setTimeout(async () => {
+                        if (pc.iceConnectionState === 'new' && !pc.remoteDescription) {
+                          console.log(`[WebRTC] Fallback: sending offer to ${msg.peerId} (no offer received in 5s)`);
+                          try {
+                            const offer = await pc.createOffer();
+                            await pc.setLocalDescription(offer);
+                            sendSignalRef.current('offer', { targetPeerId: msg.peerId, sdp: offer });
+                          } catch (err) { console.warn('[WebRTC] Fallback offer failed:', err); }
+                        }
+                      }, 5000);
+                    }
+                  })
+                  .catch((err: any) => console.warn('[WebRTC] PC creation failed:', err));
               }
             }
             console.log('[Signaling] Peer joined:', msg.name);
@@ -553,6 +591,20 @@ export default function Meetings() {
           }
           if (msg.type === 'offer') {
             const fromPeerId = msg.fromPeerId;
+            console.log(`[WebRTC] Received offer from ${fromPeerId}`);
+            // Handle glare: both sides sent offers simultaneously
+            const existingPC = peerConnectionsRef.current.get(fromPeerId);
+            if (existingPC && existingPC.signalingState === 'have-local-offer') {
+              const isPolite = !shouldInitiateOfferRef.current(fromPeerId);
+              if (!isPolite) {
+                console.log(`[WebRTC] Glare: ignoring offer from ${fromPeerId} (my offer has priority)`);
+                return;
+              }
+              console.log(`[WebRTC] Glare: accepting offer from ${fromPeerId}, recreating PC`);
+              existingPC.close();
+              peerConnectionsRef.current.delete(fromPeerId);
+              iceCandidateBufferRef.current.delete(fromPeerId);
+            }
             const peer = {
               id: remotePeerKeyRef.current.get(fromPeerId) || String(fromPeerId),
               peerId: fromPeerId,
@@ -579,6 +631,7 @@ export default function Meetings() {
                 await pc.setLocalDescription(answer);
                 const signal = sendSignalRef.current;
                 signal('answer', { targetPeerId: fromPeerId, sdp: answer });
+                console.log(`[WebRTC] Sent answer to ${fromPeerId}`);
               } catch (err) {
                 console.warn(`[WebRTC] createAnswer/setLocal failed for ${fromPeerId}:`, err);
               }
