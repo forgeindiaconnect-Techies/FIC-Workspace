@@ -111,6 +111,18 @@ export default function Meetings() {
   const sendSignalRef = React.useRef<(type: string, data: any) => void>(() => {});
   const localStreamRef = React.useRef<any>(null);
   const intentionalCloseRef = React.useRef(false);
+  const dynamicIceServersRef = React.useRef<any[]>(getIceServers());
+
+  React.useEffect(() => {
+    api.meetings.getIceServers().then(servers => {
+      if (servers && servers.length > 0) {
+        console.log('[WebRTC] Loaded dynamic ICE servers from backend');
+        dynamicIceServersRef.current = servers;
+      }
+    }).catch(err => {
+      console.warn('[WebRTC] Failed to fetch dynamic ICE servers:', err);
+    });
+  }, []);
 
   const { user } = getSession();
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
@@ -275,7 +287,7 @@ export default function Meetings() {
 
     const stream = await ensureLocalStream();
     const pc = new rtcClass({
-      iceServers: getIceServers(),
+      iceServers: dynamicIceServersRef.current,
     });
 
     peerConnectionsRef.current.set(targetPeerId, pc);

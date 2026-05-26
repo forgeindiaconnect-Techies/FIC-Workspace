@@ -133,42 +133,26 @@ async function bootstrap() {
 
   // 3b. ICE / TURN server config endpoint (public — returns STUN + Metered TURN via REST API)
   server.get('/api/meet/ice-servers', async () => {
-    const servers: Array<{ urls: string | string[]; username?: string; credential?: string }> = [
+    try {
+      const apiKey = process.env.TURN_API_KEY || '5b2b016149c3a46ecddbca3d89feffb889b2';
+      const meteredDomain = process.env.TURN_DOMAIN || 'meetspace.metered.live';
+      
+      const response = await fetch(`https://${meteredDomain}/api/v1/turn/credentials?apiKey=${apiKey}`);
+      if (response.ok) {
+        const iceServers = await response.json();
+        return iceServers;
+      } else {
+        server.log.warn(`Metered API error: ${response.status}`);
+      }
+    } catch (err: any) {
+      server.log.error('Metered TURN fetch failed:', err.message);
+    }
+    
+    // Fallback if the API call fails
+    return [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
     ];
-
-    const meteredDomain = process.env.TURN_DOMAIN;
-    const secretKey = process.env.TURN_SECRET_KEY;
-
-    if (meteredDomain && secretKey) {
-      try {
-        const createResp = await fetch(
-          `https://${meteredDomain}/api/v1/turn/credential?secretKey=${encodeURIComponent(secretKey)}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ expiryInSeconds: 14400, label: 'nexus-meeting' }),
-          }
-        );
-        if (createResp.ok) {
-          const cred: any = await createResp.json();
-          const iceResp = await fetch(
-            `https://${meteredDomain}/api/v1/turn/credentials?apiKey=${cred.apiKey}`
-          );
-          if (iceResp.ok) {
-            const iceArr: any = await iceResp.json();
-            if (Array.isArray(iceArr)) servers.push(...iceArr);
-          }
-        } else {
-          server.log.warn(`Metered API error: ${createResp.status}`);
-        }
-      } catch (err: any) {
-        server.log.warn('Metered TURN unavailable, using STUN only:', err.message);
-      }
-    }
-
-    return servers;
   });
 
   // 4. ATTACH WEBRTC SIGNALLING & MAIL SOCKET CHANNELS
