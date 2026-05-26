@@ -75,7 +75,7 @@ export async function launchAIBot(meetingId: string, joinCode: string, frontendU
       await page.goto(`${frontendUrl}/meetings`, { waitUntil: 'networkidle2', timeout: 15000 });
       
       // Wait a moment for Meetings.tsx to mount and expose window.joinRoomForBot
-      await page.waitForTimeout(2000);
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       console.log(`[AIBot] Joining room ${joinCode}...`);
       await page.evaluate(`
