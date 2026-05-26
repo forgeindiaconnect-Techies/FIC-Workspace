@@ -99,6 +99,14 @@ export function getMediaDevices(): any {
   return readMediaDevices();
 }
 
+export async function getDisplayMedia(options?: any): Promise<any> {
+  const md = readMediaDevices();
+  if (md && typeof md.getDisplayMedia === 'function') {
+    return md.getDisplayMedia(options);
+  }
+  throw new Error('getDisplayMedia is not supported in this environment');
+}
+
 export function getIsWebRTCAvailable(): boolean {
   return !!readRTCPeerConnection();
 }

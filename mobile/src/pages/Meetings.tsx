@@ -21,6 +21,7 @@ import {
   getMediaStreamClass,
   getWebRTCDiagnostics,
   getIceServers,
+  getDisplayMedia,
 } from '../lib/webrtc';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 
@@ -110,6 +111,7 @@ export default function Meetings() {
   const [audioLevels, setAudioLevels] = React.useState([4, 4, 4, 4, 4]);
   const [remotePeers, setRemotePeers] = React.useState<RemotePeer[]>([]);
   const [localStream, setLocalStream] = React.useState<any>(null);
+  const [localScreenStream, setLocalScreenStream] = React.useState<any>(null);
   const [remoteStreams, setRemoteStreams] = React.useState<Record<string, any>>({});
   const remoteStreamsRef = React.useRef<Record<string, any>>({});
 
@@ -1110,8 +1112,12 @@ export default function Meetings() {
     } catch {}
     cleanupPeerConnections();
     stopMediaStream(localStreamRef.current);
+    if (localScreenStream) {
+      localScreenStream.getTracks().forEach((t: any) => t.stop());
+    }
     resetCallAudio();
     localStreamRef.current = null;
+    setLocalScreenStream(null);
     setLocalStream(null);
     setActiveRoom(null);
     setSidePanel(null);
@@ -1565,13 +1571,13 @@ export default function Meetings() {
 
             {/* LOCAL CAMERA TILE */}
             <View style={[s.videoTile, remotePeers.length === 0 ? s.videoTileFull : s.videoTileHalf]}>
-              {rtcAvailableNow && rtcLocalStreamSource && !isVideoOff && !isSharing ? (
+              {rtcAvailableNow && (localScreenStream || (rtcLocalStreamSource && !isVideoOff && !isSharing)) ? (
                 <RTCView
                   style={s.cameraView}
-                  stream={rtcLocalStreamSource}
-                  streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : undefined}
+                  stream={localScreenStream || rtcLocalStreamSource}
+                  streamURL={typeof (localScreenStream || rtcLocalStreamSource) === 'string' ? (localScreenStream || rtcLocalStreamSource) : undefined}
                   objectFit="cover"
-                  mirror={facing === 'front'}
+                  mirror={!localScreenStream && facing === 'front'}
                   muted
                 />
               ) : camReady ? (
@@ -1749,17 +1755,56 @@ export default function Meetings() {
           </TouchableOpacity>
 
           {/* SCREEN SHARE */}
-          <TouchableOpacity style={[s.ctrlBtn, isSharing && s.ctrlBtnBlue]} onPress={() => {
-            if (Platform.OS !== 'web') {
-              Alert.alert(
-                'Screen Share',
-                isSharing ? 'Screen sharing stopped.' : 'Screen sharing started. Your screen is now visible to participants.',
-                [{ text: 'OK' }]
-              );
+          <TouchableOpacity style={[s.ctrlBtn, isSharing && s.ctrlBtnBlue]} onPress={async () => {
+            if (!isSharing) {
+              try {
+                const displayStream = await getDisplayMedia({ video: true });
+                setLocalScreenStream(displayStream);
+                setIsSharing(true);
+                setIsVideoOff(true);
+                
+                const screenTrack = displayStream.getVideoTracks()[0];
+                if (screenTrack) {
+                  peerConnectionsRef.current.forEach((pc: any) => {
+                    const senders = pc.getSenders();
+                    const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
+                    if (videoSender) videoSender.replaceTrack(screenTrack);
+                  });
+                  screenTrack.onended = () => {
+                     setIsSharing(false);
+                     setLocalScreenStream(null);
+                     const camTrack = localStreamRef.current?.getVideoTracks()[0];
+                     if (camTrack) {
+                       peerConnectionsRef.current.forEach((pc: any) => {
+                          const senders = pc.getSenders();
+                          const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
+                          if (videoSender) videoSender.replaceTrack(camTrack);
+                       });
+                     }
+                  };
+                }
+                
+                if (Platform.OS !== 'web') {
+                  Alert.alert('Screen Share', 'Screen sharing started. Your screen is now visible to participants.', [{ text: 'OK' }]);
+                }
+              } catch (e: any) {
+                Alert.alert('Screen Share Error', e.message || 'Could not start screen sharing');
+              }
+            } else {
+               setIsSharing(false);
+               if (localScreenStream) {
+                 localScreenStream.getTracks().forEach((t: any) => t.stop());
+                 setLocalScreenStream(null);
+               }
+               const camTrack = localStreamRef.current?.getVideoTracks()[0];
+               if (camTrack) {
+                 peerConnectionsRef.current.forEach((pc: any) => {
+                    const senders = pc.getSenders();
+                    const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
+                    if (videoSender) videoSender.replaceTrack(camTrack);
+                 });
+               }
             }
-            setIsSharing(p => !p);
-            if (!isSharing) setIsVideoOff(true);
-            else setIsVideoOff(false);
           }}>
             <MonitorUp size={20} color={isSharing ? '#3b82f6' : '#fff'} />
             <Text style={[s.ctrlLabel, isSharing && { color: '#3b82f6' }]}>{isSharing ? 'Sharing' : 'Share'}</Text>
