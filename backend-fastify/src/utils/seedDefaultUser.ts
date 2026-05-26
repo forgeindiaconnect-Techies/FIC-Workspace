@@ -22,4 +22,19 @@ export async function ensureDefaultUser() {
     role: 'company-admin',
     workspaceId: 'antigraviity-hq',
   });
+
+  const AI_EMAIL = 'ai-assistant@nexus.app';
+  const aiExisting = await User.findOne({ email: AI_EMAIL });
+  if (!aiExisting) {
+    const aiPasswordHash = await bcrypt.hash('AI_SECURE_PASSWORD_123!@#', salt);
+    await User.create({
+      name: 'Nexus AI Assistant',
+      email: AI_EMAIL,
+      passwordHash: aiPasswordHash,
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=nexusai`,
+      mfaEnabled: false,
+      role: 'company-admin',
+      workspaceId: 'antigraviity-hq',
+    });
+  }
 }

@@ -19,6 +19,7 @@ import { taskRoutes } from './routes/tasks';
 import { docsRoutes } from './routes/docs';
 import { handleWebRtcSignalling } from './services/webrtc';
 import { handleMailSocket } from './services/mailSockets';
+import { handleAudioSocket } from './services/aiBot';
 import { ensureDefaultUser } from './utils/seedDefaultUser';
 import { connectMongo, getLastMongoError, isMongoConnected, validateMongoUri } from './utils/mongo';
 
@@ -166,6 +167,11 @@ async function bootstrap() {
     server.log.info('New secure Mail Socket connection initiated.');
     const ws = connection.socket || connection;
     handleMailSocket(ws, req);
+  });
+
+  server.get('/ws/audio', { websocket: true }, (connection: any, req: any) => {
+    const ws = connection.socket || connection;
+    handleAudioSocket(ws);
   });
 
   // Status check endpoint

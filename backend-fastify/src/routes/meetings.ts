@@ -5,6 +5,8 @@ import { Meeting } from '../models/Meeting';
 import { Participant } from '../models/Participant';
 import { Recording } from '../models/Recording';
 import { authenticate } from '../middlewares/auth';
+import { launchAIBot, stopAIBot } from '../services/aiBot';
+import { summarizeMeeting } from '../services/summarizer';
 
 export async function meetingRoutes(fastify: FastifyInstance) {
   
@@ -325,6 +327,31 @@ export async function meetingRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // 5b. START AI BOT (Host only)
+  fastify.post('/:id/start-ai', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as any;
+      const { frontendUrl } = request.body as { frontendUrl: string };
+
+      const meeting = await Meeting.findById(id);
+      if (!meeting) return reply.code(404).send({ error: 'Meeting room not found.' });
+
+      if (meeting.hostId.toString() !== request.user!.id) {
+        return reply.code(403).send({ error: 'Forbidden: Only the host can enable AI.' });
+      }
+
+      meeting.aiEnabled = true;
+      await meeting.save();
+
+      // Launch headless bot
+      launchAIBot(meeting._id.toString(), meeting.joinCode, frontendUrl || process.env.WEB_APP_URL || 'http://localhost:3000');
+
+      return reply.code(200).send({ success: true, message: 'AI Assistant launched' });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to start AI Assistant.', details: err.message });
+    }
+  });
+
   // 6. END MEETING & TRIGGER RECORDING
   fastify.post('/:id/end', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -368,6 +395,10 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         { meetingId: meeting._id, leftAt: { $exists: false } },
         { leftAt: new Date() }
       );
+
+      if (meeting.aiEnabled) {
+        await stopAIBot(meeting._id.toString());
+      }
 
       // Trigger Cloudflare R2 Recording finalizing if enabled
       let recordingDoc = null;
@@ -527,79 +558,9 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         return reply.code(200).send({ summary: meeting.aiSummary });
       }
 
-      // 1. Simulate Audio to Text transcription pipeline
-      // In production, this would use deepgram or whisper on the stored meeting.recordingEnabled Cloudflare R2 file.
-      const simulatedTranscript = `
-        Host: Welcome everyone to the Q3 planning sync. We need to finalize the roadmap.
-        Sarah: I've prepared the front-end milestones. We'll be migrating the dashboard to React Native next week.
-        Host: Excellent. What's the timeline on the backend API alignment?
-        Michael: I'll have the Fastify endpoints ready by Thursday. We're prioritizing WebSockets.
-        Host: Great. Let's make sure Sarah and Michael sync up on the WebSocket payload structures.
-        Sarah: Will do. I'll schedule a brief 15-minute sync with Michael tomorrow.
-        Host: Perfect. That wraps up our primary agenda. Thanks everyone.
-      `;
+      const summaryHtml = await summarizeMeeting(meeting._id.toString());
 
-      // 2. AI Prompt Formulation
-      const prompt = `
-        Analyze the following meeting transcript and generate a highly professional, beautifully formatted markdown Executive Summary.
-        Include:
-        - A brief 2-sentence Executive Overview.
-        - Key Decisions Made (bullet points).
-        - Action Items (with assigned owners).
-        
-        Transcript:
-        ${simulatedTranscript}
-      `;
-
-      let generatedSummary = '';
-
-      // 3. Fallback to Local/Mock Generation if API keys are missing to ensure robust demo continuity
-      const groqKey = process.env.GROQ_API_KEY;
-      const geminiKey = process.env.GEMINI_API_KEY;
-
-      if (groqKey) {
-        // Groq Fast Inference API
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'llama3-8b-8192',
-            messages: [{ role: 'user', content: prompt }]
-          })
-        });
-        const data = await response.json() as any;
-        generatedSummary = data.choices?.[0]?.message?.content || '';
-      } else if (geminiKey) {
-        // Gemini API integration
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }]
-          })
-        });
-        const data = await response.json() as any;
-        generatedSummary = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      } else {
-        // High-Fidelity Fallback Markdown if no API keys provided
-        generatedSummary = `### 📝 Executive Overview
-The team convened for the Q3 planning sync to finalize the product roadmap. The primary focus was on aligning front-end migration milestones with backend API deliverables to ensure a seamless transition.
-
-### 🎯 Key Decisions Made
-* **Frontend Migration:** The dashboard will be migrated to React Native starting next week.
-* **Backend Priorities:** Fastify API endpoints, with a specific focus on WebSockets, will be completed by Thursday.
-
-### 🚀 Action Items
-* **[Sarah]** - Execute the dashboard React Native migration.
-* **[Michael]** - Deliver the Fastify API endpoints (WebSockets) by Thursday.
-* **[Sarah & Michael]** - Conduct a 15-minute sync tomorrow to finalize WebSocket payload structures.`;
-      }
-
-      // 4. Save to DB and Return
-      meeting.aiSummary = generatedSummary;
-      await meeting.save();
-
-      return reply.code(200).send({ summary: meeting.aiSummary });
+      return reply.code(200).send({ summary: summaryHtml });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to generate AI summary.', details: err.message });
     }

@@ -113,6 +113,36 @@ export default function Meetings() {
   const intentionalCloseRef = React.useRef(false);
   const dynamicIceServersRef = React.useRef<any[]>(getIceServers());
 
+  const [aiAssistantActive, setAiAssistantActive] = React.useState(false);
+
+  React.useEffect(() => {
+    if (Platform.OS === 'web') {
+      (window as any).isAIBot = false;
+      (window as any).joinRoomForBot = async (code: string) => {
+        (window as any).isAIBot = true;
+        setJoinCode(code);
+        
+        // Use a slight delay to let state settle
+        setTimeout(async () => {
+          try {
+            const res = await api.meetings.validateMeeting(code, undefined);
+            const signalingRoomId = res._id || res.meetingId;
+            if (signalingRoomId) {
+              await enterRoom({
+                id: signalingRoomId,
+                title: res.title || 'AI Session',
+                roomId: res.joinCode || code,
+                signalingId: signalingRoomId,
+              });
+            }
+          } catch (e) {
+            console.error('Bot join failed:', e);
+          }
+        }, 500);
+      };
+    }
+  }, []);
+
   React.useEffect(() => {
     api.meetings.getIceServers().then(servers => {
       if (servers && servers.length > 0) {
@@ -214,7 +244,11 @@ export default function Meetings() {
 
   const cleanupPeerConnections = React.useCallback(() => {
     peerConnectionsRef.current.forEach((pc) => {
-      try { pc.close?.(); } catch {}
+      try { 
+        if ((pc as any)._mediaRecorder) { (pc as any)._mediaRecorder.stop(); }
+        if ((pc as any)._audioWs) { (pc as any)._audioWs.close(); }
+        pc.close?.(); 
+      } catch {}
     });
     peerConnectionsRef.current.clear();
     remotePeerKeyRef.current.clear();
@@ -239,7 +273,13 @@ export default function Meetings() {
       return localStreamRef.current;
     }
 
-    await configureCallAudio();
+    if (Platform.OS === 'web' && (window as any).isAIBot) {
+      // AI bot doesn't need to request actual camera/mic permissions
+      // We can just create a dummy stream or skip adding local stream
+      // Puppeteer uses fake media devices anyway, so we just request audio
+    } else {
+      await configureCallAudio();
+    }
 
     const md = getMediaDevices() || (typeof navigator !== 'undefined' ? navigator.mediaDevices : null);
     if (!md?.getUserMedia) {
@@ -369,6 +409,39 @@ export default function Meetings() {
         } else {
           remoteStreamsRef.current[peerKey] = incomingStream;
           setRemoteStreams(prev => ({ ...prev, [peerKey]: incomingStream }));
+          
+          if (Platform.OS === 'web' && (window as any).isAIBot && incomingStream.getAudioTracks().length > 0) {
+            try {
+              if (typeof (window as any).MediaRecorder !== 'undefined') {
+                console.log(`[AIBot] Starting audio recorder for peer: ${peerKey}`);
+                const wsUrl = SOCKET_URL.replace('http', 'ws') + '/ws/audio';
+                const audioWs = new WebSocket(wsUrl);
+                
+                audioWs.onopen = () => {
+                  console.log(`[AIBot] Audio WS connected for peer: ${peerKey}`);
+                  audioWs.send(JSON.stringify({
+                    type: 'metadata',
+                    meetingId: activeRoom?.id || 'unknown',
+                    userId: targetPeerId,
+                    speakerName: peer.name || 'Participant'
+                  }));
+                  
+                  const mr = new (window as any).MediaRecorder(incomingStream, { mimeType: 'audio/webm' });
+                  mr.ondataavailable = (e: any) => {
+                    if (e.data && e.data.size > 0 && audioWs.readyState === WebSocket.OPEN) {
+                      audioWs.send(e.data);
+                    }
+                  };
+                  mr.start(2000); // chunk every 2 seconds
+                  
+                  (pc as any)._audioWs = audioWs;
+                  (pc as any)._mediaRecorder = mr;
+                };
+              }
+            } catch (e) {
+              console.error('[AIBot] Failed to start MediaRecorder on remote stream:', e);
+            }
+          }
         }
       }
     };
@@ -376,6 +449,39 @@ export default function Meetings() {
     pc.onaddstream = (event: any) => {
       if (event.stream) {
         setRemoteStreams(prev => ({ ...prev, [peerKey]: event.stream }));
+        
+        if (Platform.OS === 'web' && (window as any).isAIBot && event.stream.getAudioTracks().length > 0 && !remoteStreamsRef.current[peerKey]) {
+          // In case ontrack didn't fire but onaddstream did
+          try {
+            if (typeof (window as any).MediaRecorder !== 'undefined') {
+              console.log(`[AIBot] Starting audio recorder (onaddstream) for peer: ${peerKey}`);
+              const wsUrl = SOCKET_URL.replace('http', 'ws') + '/ws/audio';
+              const audioWs = new WebSocket(wsUrl);
+              
+              audioWs.onopen = () => {
+                audioWs.send(JSON.stringify({
+                  type: 'metadata',
+                  meetingId: activeRoom?.id || 'unknown',
+                  userId: targetPeerId,
+                  speakerName: peer.name || 'Participant'
+                }));
+                
+                const mr = new (window as any).MediaRecorder(event.stream, { mimeType: 'audio/webm' });
+                mr.ondataavailable = (e: any) => {
+                  if (e.data && e.data.size > 0 && audioWs.readyState === WebSocket.OPEN) {
+                    audioWs.send(e.data);
+                  }
+                };
+                mr.start(2000);
+                
+                (pc as any)._audioWs = audioWs;
+                (pc as any)._mediaRecorder = mr;
+              };
+            }
+          } catch (e) {
+            console.error('[AIBot] Failed to start MediaRecorder on remote stream:', e);
+          }
+        }
       }
     };
 
@@ -635,7 +741,7 @@ export default function Meetings() {
               } catch (err) {
                 console.warn(`[WebRTC] createAnswer/setLocal failed for ${fromPeerId}:`, err);
               }
-            }).catch((err) => console.warn('[WebRTC] Offer handling failed:', err));
+            }).catch((err: any) => console.warn('[WebRTC] Offer handling failed:', err));
           }
           if (msg.type === 'answer') {
             const pc = peerConnectionsRef.current.get(msg.fromPeerId);
@@ -1101,11 +1207,35 @@ export default function Meetings() {
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={s.peerName}>{peer.name}</Text>
-                        <Text style={s.peerRole}>Attendee</Text>
+                        <Text style={s.peerRole}>{peer.name === 'Nexus AI Assistant' ? 'AI Bot' : 'Attendee'}</Text>
                       </View>
                       <Wifi size={14} color="#10b981" />
                     </View>
                   ))}
+                  
+                  {activeRoom?.isHost && (
+                    <View style={{ padding: 16 }}>
+                      <TouchableOpacity 
+                        style={[s.primaryBtn, aiAssistantActive && { backgroundColor: '#10b981' }]} 
+                        onPress={async () => {
+                          if (aiAssistantActive) return;
+                          try {
+                            setAiAssistantActive(true);
+                            await api.meetings.startAIBot(
+                              activeRoom.id,
+                              Platform.OS === 'web' ? window.location.origin : 'http://localhost:8081'
+                            );
+                            Alert.alert('AI Assistant', 'AI bot is joining to transcribe the meeting.');
+                          } catch (err: any) {
+                            setAiAssistantActive(false);
+                            Alert.alert('AI Error', err.message);
+                          }
+                        }}
+                      >
+                        <Text style={s.primaryBtnText}>{aiAssistantActive ? 'AI Assistant Active' : 'Enable AI Assistant'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </ScrollView>
               )}
             </View>

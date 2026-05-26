@@ -10,6 +10,7 @@ export interface IMeeting extends Document {
   status: 'scheduled' | 'live' | 'ended';
   recordingEnabled: boolean;
   participantIds: Types.ObjectId[];
+  aiEnabled: boolean;
   aiSummary?: string;
   createdAt: Date;
 }
@@ -24,6 +25,7 @@ const MeetingSchema = new Schema<IMeeting>({
   status: { type: String, enum: ['scheduled', 'live', 'ended'], default: 'scheduled' },
   recordingEnabled: { type: Boolean, default: false },
   participantIds: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+  aiEnabled: { type: Boolean, default: false },
   aiSummary: { type: String },
   createdAt: { type: Date, default: Date.now }
 });

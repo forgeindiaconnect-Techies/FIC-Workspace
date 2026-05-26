@@ -532,6 +532,12 @@ export const api = {
     async leaveMeeting(id: string) {
       return request(`/api/meetings/${id}/leave`, { method: 'POST' });
     },
+    async startAIBot(id: string, frontendUrl: string) {
+      return request(`/api/meetings/${id}/start-ai`, {
+        method: 'POST',
+        body: JSON.stringify({ frontendUrl }),
+      });
+    },
     async getParticipants(meetingId: string) {
       return request(`/api/meetings/${meetingId}/participants`);
     },
