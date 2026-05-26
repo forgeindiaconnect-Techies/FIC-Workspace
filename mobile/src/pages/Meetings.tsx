@@ -1725,9 +1725,9 @@ export default function Meetings() {
         </View>
 
         {/* CONTROL DOCK */}
-        <View style={s.controlDock}>
-
-          {/* MUTE */}
+        <View style={s.controlDockWrapper}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.controlDock}>
+            {/* MUTE */}
           <TouchableOpacity style={[s.ctrlBtn, isMuted && s.ctrlBtnRed]} onPress={() => setIsMuted(p => !p)}>
             {isMuted ? <MicOff size={20} color="#ef4444" /> : <Mic size={20} color="#fff" />}
             <Text style={[s.ctrlLabel, isMuted && { color: '#ef4444' }]}>{isMuted ? 'Unmute' : 'Mute'}</Text>
@@ -1834,22 +1834,18 @@ export default function Meetings() {
             </TouchableOpacity>
           )}
 
-          {/* LEAVE */}
+          {/* END CALL */}
           <TouchableOpacity style={s.endCallBtn} onPress={() => {
-            Alert.alert(
-              'Leave Meeting',
-              'What would you like to do?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Leave Meeting', onPress: endCall },
-                { text: 'End for All', style: 'destructive', onPress: () => { endCall(); }},
-              ]
-            );
+            Alert.alert('Leave Meeting', 'Are you sure you want to leave?', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Leave', style: 'destructive', onPress: () => { endCall(); }},
+            ]);
           }}>
             <PhoneOff size={22} color="#fff" />
             <Text style={[s.ctrlLabel, { color: '#fff' }]}>Leave</Text>
           </TouchableOpacity>
 
+          </ScrollView>
         </View>
 
         <HostControlsModal />
@@ -2051,7 +2047,7 @@ const s = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingBottom: 40, gap: 28 },
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  quickCard: { flex: 1, minWidth: isMobile ? (width - 40 - 12) / 2 : 180, borderRadius: 24, padding: 20, gap: 10 },
+  quickCard: { flex: 1, minWidth: isMobile ? '45%' : 180, borderRadius: 24, padding: 20, gap: 10 },
   quickCardLight: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0' },
   quickIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   quickTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
@@ -2154,10 +2150,11 @@ const s = StyleSheet.create({
   peerAvatarText: { fontSize: 12, fontWeight: '900', color: '#fff' },
   peerName: { fontSize: 13, fontWeight: '800', color: '#fff' },
   peerRole: { fontSize: 11, color: '#64748b', fontWeight: '600' },
-  controlDock: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 4, paddingVertical: 12, backgroundColor: 'rgba(15,23,42,0.97)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
-  ctrlBtn: { alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 8, borderRadius: 14, minWidth: 44 },
+  controlDockWrapper: { backgroundColor: 'rgba(15,23,42,0.97)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
+  controlDock: { flexDirection: 'row', alignItems: 'center', minWidth: '100%', justifyContent: 'space-evenly', paddingHorizontal: 8, paddingVertical: 12, gap: 4 },
+  ctrlBtn: { alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 8, borderRadius: 14, minWidth: 50 },
   ctrlBtnRed: { backgroundColor: 'rgba(239,68,68,0.15)' },
   ctrlBtnBlue: { backgroundColor: 'rgba(59,130,246,0.15)' },
   ctrlLabel: { fontSize: 9, fontWeight: '800', color: '#94a3b8', textAlign: 'center' },
-  endCallBtn: { alignItems: 'center', gap: 4, backgroundColor: '#ef4444', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 },
+  endCallBtn: { alignItems: 'center', gap: 4, backgroundColor: '#ef4444', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 16, marginLeft: 4 },
 });
