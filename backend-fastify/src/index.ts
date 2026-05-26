@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
@@ -131,20 +132,30 @@ async function bootstrap() {
   await server.register(taskRoutes, { prefix: '/api/tasks' });
   await server.register(docsRoutes, { prefix: '/api/docs' });
 
+  // Generate time-limited Metered TURN credentials
+  function getTurnCredentials() {
+    const turnUrl = process.env.TURN_URL;
+    if (!turnUrl) return null;
+    const secretKey = process.env.TURN_SECRET_KEY;
+    const turnUsername = process.env.TURN_USERNAME || '';
+    if (secretKey && turnUsername) {
+      const timestamp = Math.floor(Date.now() / 1000) + 86400;
+      const userName = `${timestamp.toString(16)}:${turnUsername}`;
+      const hmac = crypto.createHmac('sha256', secretKey);
+      hmac.update(userName);
+      return { urls: turnUrl, username: userName, credential: hmac.digest('base64') };
+    }
+    return { urls: turnUrl, username: turnUsername, credential: process.env.TURN_CREDENTIAL || '' };
+  }
+
   // 3b. ICE / TURN server config endpoint (public — returns STUN + optional TURN)
   server.get('/api/meet/ice-servers', async () => {
     const servers: Array<{ urls: string | string[]; username?: string; credential?: string }> = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
     ];
-    const turnUrl = process.env.TURN_URL;
-    if (turnUrl) {
-      servers.push({
-        urls: turnUrl,
-        username: process.env.TURN_USERNAME || '',
-        credential: process.env.TURN_CREDENTIAL || '',
-      });
-    }
+    const turn = getTurnCredentials();
+    if (turn) servers.push(turn);
     return servers;
   });
 
