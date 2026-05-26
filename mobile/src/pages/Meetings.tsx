@@ -157,15 +157,59 @@ export default function Meetings() {
         const audioTracks = localStream.getAudioTracks();
         if (audioTracks.length > 0) {
           const stream = new MediaStream([audioTracks[0]]);
-          const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+          
+          // Detect best supported mime type
+          const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus'
+            : MediaRecorder.isTypeSupported('audio/webm')
+            ? 'audio/webm'
+            : '';
+          
+          const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
           aiMediaRecorderRef.current = recorder;
 
+          // We collect all chunks and flush every ~10s as a complete valid blob
+          let chunkBuffer: Blob[] = [];
+          let flushTimer: ReturnType<typeof setInterval> | null = null;
+
+          const flush = () => {
+            if (chunkBuffer.length === 0 || ws.readyState !== WebSocket.OPEN || isMutedRef.current) {
+              chunkBuffer = [];
+              return;
+            }
+            const blob = new Blob(chunkBuffer, { type: recorder.mimeType || 'audio/webm' });
+            if (blob.size > 1000) { // Only send if there's meaningful data (>1KB)
+              blob.arrayBuffer().then(buf => {
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(buf);
+                }
+              });
+            }
+            chunkBuffer = [];
+          };
+
           recorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && ws.readyState === WebSocket.OPEN && !isMutedRef.current) {
-              ws.send(e.data);
+            if (e.data.size > 0) {
+              chunkBuffer.push(e.data);
             }
           };
-          recorder.start(4000); // 4-second chunks
+
+          // Collect chunks every 1s, flush full blob every 10s
+          recorder.start(1000);
+          flushTimer = setInterval(flush, 10000);
+
+          return () => {
+            if (flushTimer) clearInterval(flushTimer);
+            flush(); // Send any remaining audio before cleanup
+            if (aiMediaRecorderRef.current) {
+              try { aiMediaRecorderRef.current.stop(); } catch {}
+              aiMediaRecorderRef.current = null;
+            }
+            if (aiWsRef.current) {
+              aiWsRef.current.close();
+              aiWsRef.current = null;
+            }
+          };
         }
       } catch (e) {
         console.warn('Could not start MediaRecorder for AI:', e);
