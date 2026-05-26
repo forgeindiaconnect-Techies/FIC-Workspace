@@ -10,14 +10,19 @@ const activeBots = new Map<string, { browser: Browser, page: Page }>();
 
 export async function launchAIBot(meetingId: string, joinCode: string, frontendUrl: string) {
   if (activeBots.has(meetingId)) {
-    console.log(`[AIBot] Bot already active for meeting ${meetingId}`);
+    console.log(`[AIBot] Bot already active or launching for meeting ${meetingId}`);
     return;
   }
+
+  // Set placeholder immediately to prevent race conditions
+  activeBots.set(meetingId, { browser: null as any, page: null as any });
 
   console.log(`[AIBot] Launching Headless Bot for meeting ${meetingId}...`);
 
   try {
     const browser = await puppeteer.launch({
+      executablePath: process.platform === 'win32' ? undefined : undefined,
+      channel: process.platform === 'win32' ? 'chrome' : undefined,
       headless: true, // Use new headless mode
       args: [
         '--no-sandbox',
@@ -37,14 +42,13 @@ export async function launchAIBot(meetingId: string, joinCode: string, frontendU
 
     try {
       console.log(`[AIBot] Logging in...`);
-      await page.waitForSelector('input[placeholder="Email Address"]', { timeout: 10000 });
-      await page.type('input[placeholder="Email Address"]', 'ai-assistant@nexus.app');
+      await page.waitForSelector('input[placeholder="name@company.com"]', { timeout: 10000 });
+      await page.type('input[placeholder="name@company.com"]', 'ai-assistant@nexus.app');
       
-      const pwdInputs = await page.$$('input[secureTextEntry]');
+      const pwdInputs = await page.$$('input[type="password"]');
       if (pwdInputs.length > 0) {
         await pwdInputs[0].type('AI_SECURE_PASSWORD_123!@#');
       } else {
-        // Fallback placeholder logic if secureTextEntry selector fails
         const allInputs = await page.$$('input');
         for (const input of allInputs) {
           const type = await page.evaluate(el => el.getAttribute('type'), input);
@@ -55,25 +59,39 @@ export async function launchAIBot(meetingId: string, joinCode: string, frontendU
         }
       }
       
-      await page.click('div[role="button"]:has-text("Sign In"), button:has-text("Sign In")');
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
-      console.log(`[AIBot] Logged in successfully.`);
-    } catch (e) {
-      console.warn(`[AIBot] Login step failed (perhaps already logged in?):`, e);
-    }
-    
-    // Now on home/meetings page, trigger the room join
-    console.log(`[AIBot] Joining room ${joinCode}...`);
-    await page.evaluate(`
-      if (window.joinRoomForBot) {
-        window.joinRoomForBot('${joinCode}');
-      } else {
-        console.error('window.joinRoomForBot is not defined');
+      const buttons = await page.$$('div[role="button"]');
+      for (const btn of buttons) {
+        const text = await page.evaluate(el => el.textContent, btn);
+        if (text && text.includes('Sign In')) {
+          await btn.click();
+          break;
+        }
       }
-    `);
+      
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 5000 }).catch(() => {});
+      console.log(`[AIBot] Logged in successfully. Current URL: ${page.url()}`);
+      
+      console.log(`[AIBot] Navigating to ${frontendUrl}/meetings...`);
+      await page.goto(`${frontendUrl}/meetings`, { waitUntil: 'networkidle2', timeout: 15000 });
+      
+      // Wait a moment for Meetings.tsx to mount and expose window.joinRoomForBot
+      await page.waitForTimeout(2000);
+
+      console.log(`[AIBot] Joining room ${joinCode}...`);
+      await page.evaluate(`
+        if (window.joinRoomForBot) {
+          window.joinRoomForBot('${joinCode}');
+        } else {
+          console.error('window.joinRoomForBot is not defined');
+        }
+      `);
+    } catch (e) {
+      console.warn(`[AIBot] Login/Navigation step failed (perhaps already logged in?):`, e);
+    }
 
   } catch (error: any) {
     console.error(`[AIBot] Failed to launch bot:`, error.message);
+    activeBots.delete(meetingId);
     stopAIBot(meetingId);
   }
 }

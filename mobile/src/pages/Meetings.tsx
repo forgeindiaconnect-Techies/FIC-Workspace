@@ -115,6 +115,20 @@ export default function Meetings() {
 
   const [aiAssistantActive, setAiAssistantActive] = React.useState(false);
 
+  // Automatically start AI Assistant when a room is joined (unless this is the bot itself)
+  React.useEffect(() => {
+    if (activeRoom && !aiAssistantActive && Platform.OS !== 'web' || (activeRoom && !aiAssistantActive && Platform.OS === 'web' && !(window as any).isAIBot)) {
+      setAiAssistantActive(true);
+      api.meetings.startAIBot(
+        activeRoom.id,
+        Platform.OS === 'web' ? window.location.origin : 'http://localhost:8081'
+      ).catch((err: any) => {
+        console.warn('Auto-start AI Assistant failed:', err.message);
+        setAiAssistantActive(false);
+      });
+    }
+  }, [activeRoom]);
+
   React.useEffect(() => {
     if (Platform.OS === 'web') {
       (window as any).isAIBot = false;
@@ -921,6 +935,7 @@ export default function Meetings() {
     setIsMuted(false);
     setIsVideoOff(false);
     setIsSharing(false);
+    setAiAssistantActive(false);
     setRemotePeers([]);
     setRemoteStreams({});
     peerIdRef.current = null;
@@ -1213,29 +1228,27 @@ export default function Meetings() {
                     </View>
                   ))}
                   
-                  {activeRoom?.isHost && (
-                    <View style={{ padding: 16 }}>
-                      <TouchableOpacity 
-                        style={[s.primaryBtn, aiAssistantActive && { backgroundColor: '#10b981' }]} 
-                        onPress={async () => {
-                          if (aiAssistantActive) return;
-                          try {
-                            setAiAssistantActive(true);
-                            await api.meetings.startAIBot(
-                              activeRoom.id,
-                              Platform.OS === 'web' ? window.location.origin : 'http://localhost:8081'
-                            );
-                            Alert.alert('AI Assistant', 'AI bot is joining to transcribe the meeting.');
-                          } catch (err: any) {
-                            setAiAssistantActive(false);
-                            Alert.alert('AI Error', err.message);
-                          }
-                        }}
-                      >
-                        <Text style={s.primaryBtnText}>{aiAssistantActive ? 'AI Assistant Active' : 'Enable AI Assistant'}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                  <View style={{ padding: 16 }}>
+                    <TouchableOpacity 
+                      style={[s.primaryBtn, aiAssistantActive && { backgroundColor: '#10b981' }]} 
+                      onPress={async () => {
+                        if (aiAssistantActive) return;
+                        try {
+                          setAiAssistantActive(true);
+                          await api.meetings.startAIBot(
+                            activeRoom.id,
+                            Platform.OS === 'web' ? window.location.origin : 'http://localhost:8081'
+                          );
+                          Alert.alert('AI Assistant', 'AI bot is joining to transcribe the meeting.');
+                        } catch (err: any) {
+                          setAiAssistantActive(false);
+                          Alert.alert('AI Error', err.message);
+                        }
+                      }}
+                    >
+                      <Text style={s.primaryBtnText}>{aiAssistantActive ? 'AI Assistant Active' : 'Enable AI Assistant'}</Text>
+                    </TouchableOpacity>
+                  </View>
                 </ScrollView>
               )}
             </View>
