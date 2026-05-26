@@ -2,8 +2,9 @@ import React from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Dimensions, Platform, Modal, TextInput, ActivityIndicator,
-  Alert, StatusBar,
+  Alert, StatusBar, useWindowDimensions,
 } from 'react-native';
+import RenderHtml from 'react-native-render-html';
 import {
   Video, Plus, Calendar, Clock, Users, Play, Bell, BellRing,
   Mic, MicOff, VideoOff, PhoneOff, Copy, Lock, Shield,
@@ -55,6 +56,7 @@ const avatarFor = (name: string) =>
 type RemotePeer = { id: string; name: string; peerId?: string; userId?: string };
 
 export default function Meetings() {
+  const { width: contentWidth } = useWindowDimensions();
   // Camera & microphone permissions via expo-camera hooks
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -2034,7 +2036,24 @@ export default function Meetings() {
       <Modal visible={summaryModal} animationType="slide" transparent onRequestClose={() => setSummaryModal(false)}>
         <View style={s.modalOverlay}><View style={[s.modalCard,{maxHeight:'80%'}]}>
           <View style={s.modalTopRow}><Text style={s.modalTitle}>AI Summary</Text><TouchableOpacity onPress={()=>setSummaryModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
-          <ScrollView style={{flex:1}}>{summaryLoading?<View style={{alignItems:'center',padding:32,gap:12}}><ActivityIndicator size="large" color="#7c3aed" /><Text style={{color:'#64748b',fontSize:14}}>Generating...</Text></View>:<Text style={s.summaryBody}>{summaryText}</Text>}</ScrollView>
+          <ScrollView style={{flex:1}}>
+            {summaryLoading ? (
+              <View style={{alignItems:'center',padding:32,gap:12}}>
+                <ActivityIndicator size="large" color="#7c3aed" />
+                <Text style={{color:'#64748b',fontSize:14}}>Generating...</Text>
+              </View>
+            ) : (
+              summaryText && summaryText.includes('<') && summaryText.includes('>') ? (
+                <RenderHtml
+                  contentWidth={contentWidth}
+                  source={{ html: summaryText }}
+                  baseStyle={{ fontSize: 14, color: '#334155', lineHeight: 22 }}
+                />
+              ) : (
+                <Text style={s.summaryBody}>{summaryText}</Text>
+              )
+            )}
+          </ScrollView>
           <TouchableOpacity style={s.primaryBtn} onPress={()=>setSummaryModal(false)}><Text style={s.primaryBtnText}>Close</Text></TouchableOpacity>
         </View></View>
       </Modal>

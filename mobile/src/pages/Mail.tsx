@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { 
   View, 
   Text, 
@@ -10,8 +10,10 @@ import {
   Platform,
   Modal,
   ActivityIndicator,
-  Alert
+  Alert,
+  useWindowDimensions
 } from 'react-native';
+import RenderHtml from 'react-native-render-html';
 import { 
   Archive, 
   Trash2, 
@@ -320,6 +322,7 @@ export default function Mail() {
     }
 
     const displayDateFull = new Date(selectedEmail.sentAt).toLocaleString();
+    const { width: contentWidth } = useWindowDimensions();
 
     return (
       <View style={styles.detailContainer}>
@@ -370,7 +373,15 @@ export default function Mail() {
           </View>
 
           <View style={styles.emailBodyContentBox}>
-            <Text style={styles.emailContentText}>{selectedEmail.body}</Text>
+            {selectedEmail.body && selectedEmail.body.includes('<') && selectedEmail.body.includes('>') ? (
+              <RenderHtml
+                contentWidth={contentWidth}
+                source={{ html: selectedEmail.body }}
+                baseStyle={{ fontSize: 14, color: '#334155', lineHeight: 22 }}
+              />
+            ) : (
+              <Text style={styles.emailContentText}>{selectedEmail.body}</Text>
+            )}
           </View>
           
           <View style={styles.replyFooterActions}>
