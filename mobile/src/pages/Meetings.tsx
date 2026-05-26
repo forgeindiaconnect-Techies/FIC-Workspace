@@ -115,6 +115,14 @@ export default function Meetings() {
 
   const [aiAssistantActive, setAiAssistantActive] = React.useState(false);
 
+  const aiMediaRecorderRef = React.useRef<any>(null);
+  const aiWsRef = React.useRef<WebSocket | null>(null);
+  const isMutedRef = React.useRef(isMuted);
+
+  React.useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
   // Automatically start AI Assistant when a room is joined (unless this is the bot itself)
   React.useEffect(() => {
     if (activeRoom && !aiAssistantActive && Platform.OS !== 'web' || (activeRoom && !aiAssistantActive && Platform.OS === 'web' && !(window as any).isAIBot)) {
@@ -128,6 +136,53 @@ export default function Meetings() {
       });
     }
   }, [activeRoom]);
+
+  // Handle streaming audio to the backend AI transcriber when active
+  React.useEffect(() => {
+    if (aiAssistantActive && localStream && Platform.OS === 'web' && !(window as any).isAIBot) {
+      const wsUrl = SOCKET_URL + '/ws/audio';
+      const ws = new WebSocket(wsUrl);
+      aiWsRef.current = ws;
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          type: 'metadata',
+          meetingId: activeRoom?.id || activeRoom?.signalingId,
+          userId: user?.id || 'unknown-user',
+          speakerName: user?.name || 'User'
+        }));
+      };
+
+      try {
+        const audioTracks = localStream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          const stream = new MediaStream([audioTracks[0]]);
+          const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+          aiMediaRecorderRef.current = recorder;
+
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0 && ws.readyState === WebSocket.OPEN && !isMutedRef.current) {
+              ws.send(e.data);
+            }
+          };
+          recorder.start(4000); // 4-second chunks
+        }
+      } catch (e) {
+        console.warn('Could not start MediaRecorder for AI:', e);
+      }
+      
+      return () => {
+        if (aiMediaRecorderRef.current) {
+          try { aiMediaRecorderRef.current.stop(); } catch {}
+          aiMediaRecorderRef.current = null;
+        }
+        if (aiWsRef.current) {
+          aiWsRef.current.close();
+          aiWsRef.current = null;
+        }
+      };
+    }
+  }, [aiAssistantActive, localStream]);
 
   React.useEffect(() => {
     if (Platform.OS === 'web') {

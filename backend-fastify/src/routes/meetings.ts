@@ -4,6 +4,7 @@ import { Schema, Types } from 'mongoose';
 import { Meeting } from '../models/Meeting';
 import { Participant } from '../models/Participant';
 import { Recording } from '../models/Recording';
+import { User } from '../models/User';
 import { authenticate } from '../middlewares/auth';
 import { launchAIBot, stopAIBot } from '../services/aiBot';
 import { summarizeMeeting } from '../services/summarizer';
@@ -443,16 +444,25 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         { new: true }
       );
 
-      const activeParticipantCount = await Participant.countDocuments({
+      const aiBotUser = await User.findOne({ email: 'ai-assistant@nexus.app' });
+      const query: any = {
         meetingId: meeting._id,
         leftAt: { $exists: false }
-      });
+      };
+      if (aiBotUser) {
+        query.userId = { $ne: aiBotUser._id };
+      }
 
-      return reply.code(200).send({
-        success: true,
-        meetingId: meeting._id,
-        activeParticipantCount
-      });
+      const activeParticipantCount = await Participant.countDocuments(query);
+
+      if (activeParticipantCount === 0 && meeting.aiEnabled) {
+        // Everyone (except possibly the bot) has left, terminate bot and trigger summary
+        meeting.status = 'ended';
+        await meeting.save();
+        await stopAIBot(meeting._id.toString());
+      }
+
+      return reply.code(200).send({ success: true, message: 'Left meeting successfully', activeParticipantCount });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to leave meeting.', details: err.message });
     }
