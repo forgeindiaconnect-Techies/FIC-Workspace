@@ -27,7 +27,6 @@ var import_fastify = __toESM(require("fastify"));
 var import_cors = __toESM(require("@fastify/cors"));
 var import_websocket = __toESM(require("@fastify/websocket"));
 var import_dotenv2 = __toESM(require("dotenv"));
-var import_crypto = __toESM(require("crypto"));
 var import_fs2 = __toESM(require("fs"));
 var import_path2 = __toESM(require("path"));
 
@@ -2074,36 +2073,50 @@ async function bootstrap() {
   await server.register(memberRoutes, { prefix: "/api/members" });
   await server.register(taskRoutes, { prefix: "/api/tasks" });
   await server.register(docsRoutes, { prefix: "/api/docs" });
-  function getTurnCredentials() {
-    const turnUrl = process.env.TURN_URL;
-    if (!turnUrl) return null;
-    const secretKey = process.env.TURN_SECRET_KEY;
-    const turnUsername = process.env.TURN_USERNAME || "";
-    if (secretKey && turnUsername) {
-      const timestamp = Math.floor(Date.now() / 1e3) + 86400;
-      const userName = `${timestamp.toString(16)}:${turnUsername}`;
-      const hmac = import_crypto.default.createHmac("sha256", secretKey);
-      hmac.update(userName);
-      return { urls: turnUrl, username: userName, credential: hmac.digest("base64") };
-    }
-    return { urls: turnUrl, username: turnUsername, credential: process.env.TURN_CREDENTIAL || "" };
-  }
   server.get("/api/meet/ice-servers", async () => {
     const servers = [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" }
     ];
-    const turn = getTurnCredentials();
-    if (turn) servers.push(turn);
+    const meteredDomain = process.env.TURN_DOMAIN;
+    const secretKey = process.env.TURN_SECRET_KEY;
+    if (meteredDomain && secretKey) {
+      try {
+        const createResp = await fetch(
+          `https://${meteredDomain}/api/v1/turn/credential?secretKey=${encodeURIComponent(secretKey)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ expiryInSeconds: 14400, label: "nexus-meeting" })
+          }
+        );
+        if (createResp.ok) {
+          const cred = await createResp.json();
+          const iceResp = await fetch(
+            `https://${meteredDomain}/api/v1/turn/credentials?apiKey=${cred.apiKey}`
+          );
+          if (iceResp.ok) {
+            const iceArr = await iceResp.json();
+            if (Array.isArray(iceArr)) servers.push(...iceArr);
+          }
+        } else {
+          server.log.warn(`Metered API error: ${createResp.status}`);
+        }
+      } catch (err) {
+        server.log.warn("Metered TURN unavailable, using STUN only:", err.message);
+      }
+    }
     return servers;
   });
   server.get("/ws/webrtc", { websocket: true }, (connection, req) => {
     server.log.info("New secure WebRTC client socket handshake initiated.");
-    handleWebRtcSignalling(connection.socket);
+    const ws = connection.socket || connection;
+    handleWebRtcSignalling(ws);
   });
   server.get("/ws/mail", { websocket: true }, (connection, req) => {
     server.log.info("New secure Mail Socket connection initiated.");
-    handleMailSocket(connection.socket, req);
+    const ws = connection.socket || connection;
+    handleMailSocket(ws, req);
   });
   server.get("/health", async () => {
     const connected = isMongoConnected();

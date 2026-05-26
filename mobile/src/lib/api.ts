@@ -1,4 +1,4 @@
-﻿import { NativeModules, Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_PORT = process.env.EXPO_PUBLIC_API_PORT || '3001';
@@ -533,6 +533,17 @@ export const api = {
     },
     async summarizeMeeting(id: string) {
       return request(`/api/meetings/${id}/summarize`, { method: 'POST' });
+    },
+    async getIceServers() {
+      try {
+        return await request('/api/meet/ice-servers');
+      } catch {
+        // Fallback STUN servers if request fails
+        return [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+        ];
+      }
     }
   },
 

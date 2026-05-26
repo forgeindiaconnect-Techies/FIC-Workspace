@@ -3,7 +3,6 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
@@ -132,42 +131,57 @@ async function bootstrap() {
   await server.register(taskRoutes, { prefix: '/api/tasks' });
   await server.register(docsRoutes, { prefix: '/api/docs' });
 
-  // Generate time-limited Metered TURN credentials
-  function getTurnCredentials() {
-    const turnUrl = process.env.TURN_URL;
-    if (!turnUrl) return null;
-    const secretKey = process.env.TURN_SECRET_KEY;
-    const turnUsername = process.env.TURN_USERNAME || '';
-    if (secretKey && turnUsername) {
-      const timestamp = Math.floor(Date.now() / 1000) + 86400;
-      const userName = `${timestamp.toString(16)}:${turnUsername}`;
-      const hmac = crypto.createHmac('sha256', secretKey);
-      hmac.update(userName);
-      return { urls: turnUrl, username: userName, credential: hmac.digest('base64') };
-    }
-    return { urls: turnUrl, username: turnUsername, credential: process.env.TURN_CREDENTIAL || '' };
-  }
-
-  // 3b. ICE / TURN server config endpoint (public — returns STUN + optional TURN)
+  // 3b. ICE / TURN server config endpoint (public — returns STUN + Metered TURN via REST API)
   server.get('/api/meet/ice-servers', async () => {
     const servers: Array<{ urls: string | string[]; username?: string; credential?: string }> = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
     ];
-    const turn = getTurnCredentials();
-    if (turn) servers.push(turn);
+
+    const meteredDomain = process.env.TURN_DOMAIN;
+    const secretKey = process.env.TURN_SECRET_KEY;
+
+    if (meteredDomain && secretKey) {
+      try {
+        const createResp = await fetch(
+          `https://${meteredDomain}/api/v1/turn/credential?secretKey=${encodeURIComponent(secretKey)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ expiryInSeconds: 14400, label: 'nexus-meeting' }),
+          }
+        );
+        if (createResp.ok) {
+          const cred: any = await createResp.json();
+          const iceResp = await fetch(
+            `https://${meteredDomain}/api/v1/turn/credentials?apiKey=${cred.apiKey}`
+          );
+          if (iceResp.ok) {
+            const iceArr: any = await iceResp.json();
+            if (Array.isArray(iceArr)) servers.push(...iceArr);
+          }
+        } else {
+          server.log.warn(`Metered API error: ${createResp.status}`);
+        }
+      } catch (err: any) {
+        server.log.warn('Metered TURN unavailable, using STUN only:', err.message);
+      }
+    }
+
     return servers;
   });
 
   // 4. ATTACH WEBRTC SIGNALLING & MAIL SOCKET CHANNELS
   server.get('/ws/webrtc', { websocket: true }, (connection: any, req: any) => {
     server.log.info('New secure WebRTC client socket handshake initiated.');
-    handleWebRtcSignalling(connection.socket);
+    const ws = connection.socket || connection;
+    handleWebRtcSignalling(ws);
   });
 
   server.get('/ws/mail', { websocket: true }, (connection: any, req: any) => {
     server.log.info('New secure Mail Socket connection initiated.');
-    handleMailSocket(connection.socket, req);
+    const ws = connection.socket || connection;
+    handleMailSocket(ws, req);
   });
 
   // Status check endpoint
