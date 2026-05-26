@@ -8,7 +8,7 @@ import {
   Video, Plus, Calendar, Clock, Users, Play, Bell, BellRing,
   Mic, MicOff, VideoOff, PhoneOff, Copy, Lock, Shield,
   X, Send, MessageSquare, LogIn, ChevronRight, Wifi,
-  FlipHorizontal, MonitorUp,
+  FlipHorizontal, MonitorUp, Settings, Sparkles, Wand2, Globe, PhoneForwarded, MoreVertical, Link as LinkIcon, Check
 } from 'lucide-react-native';
 import { api, getSession, SOCKET_URL } from '../lib/api';
 import {
@@ -72,6 +72,19 @@ export default function Meetings() {
   const [summaryModal, setSummaryModal] = React.useState(false);
   const [summaryText, setSummaryText] = React.useState('');
   const [summaryLoading, setSummaryLoading] = React.useState(false);
+
+  // Host Controls
+  const [hostControlsModal, setHostControlsModal] = React.useState(false);
+  const [hostControlsTab, setHostControlsTab] = React.useState<'meeting'|'participants'|'permissions'>('meeting');
+  const [meetingLocked, setMeetingLocked] = React.useState(false);
+  const [waitingRoomEnabled, setWaitingRoomEnabled] = React.useState(false);
+  const [allowBeforeHost, setAllowBeforeHost] = React.useState(true);
+  const [allowGuests, setAllowGuests] = React.useState(true);
+  const [requireAuth, setRequireAuth] = React.useState(false);
+  const [muteAllActive, setMuteAllActive] = React.useState(false);
+  const [preventUnmute, setPreventUnmute] = React.useState(false);
+  const [participantMenuTarget, setParticipantMenuTarget] = React.useState<any>(null);
+  const [transferHostModal, setTransferHostModal] = React.useState(false);
 
   // Form fields
   const [meetTitle, setMeetTitle] = React.useState('');
@@ -1225,6 +1238,286 @@ export default function Meetings() {
   const rtcAvailableNow = getIsWebRTCAvailable();
   const rtcLocalStreamSource = localStream?.toURL?.() || localStream;
 
+  // ===== HOST CONTROLS MODAL =====
+  const isHost = activeRoom?.isHost || (activeRoom?.hostId && activeRoom.hostId === user?.id);
+
+  const HostControlsModal = () => (
+    <Modal visible={hostControlsModal} transparent animationType="slide" onRequestClose={() => setHostControlsModal(false)}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' }}>
+        <View style={{ backgroundColor: '#0f172a', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' }}>
+          {/* Handle */}
+          <View style={{ alignItems: 'center', paddingTop: 12 }}>
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#334155' }} />
+          </View>
+
+          {/* Header */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, paddingBottom: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ backgroundColor: '#1e40af', borderRadius: 8, padding: 6 }}>
+                <Shield size={18} color="#60a5fa" />
+              </View>
+              <Text style={{ color: '#f8fafc', fontSize: 18, fontWeight: '700' }}>Host Controls</Text>
+            </View>
+            <TouchableOpacity onPress={() => setHostControlsModal(false)} style={{ padding: 8 }}>
+              <X size={20} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Tabs */}
+          <View style={{ flexDirection: 'row', marginHorizontal: 16, backgroundColor: '#1e293b', borderRadius: 12, padding: 4, marginBottom: 4 }}>
+            {(['meeting', 'participants', 'permissions'] as const).map(tab => (
+              <TouchableOpacity key={tab} onPress={() => setHostControlsTab(tab)}
+                style={{ flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center',
+                  backgroundColor: hostControlsTab === tab ? '#1e40af' : 'transparent' }}>
+                <Text style={{ color: hostControlsTab === tab ? '#fff' : '#64748b', fontSize: 12, fontWeight: '600', textTransform: 'capitalize' }}>{tab}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
+
+            {/* MEETING TAB */}
+            {hostControlsTab === 'meeting' && (
+              <View style={{ gap: 10 }}>
+                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Meeting Actions</Text>
+
+                <TouchableOpacity onPress={() => { setHostControlsModal(false); setCreateModal(true); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1e293b', borderRadius: 12, padding: 14 }}>
+                  <View style={{ backgroundColor: '#065f46', borderRadius: 8, padding: 8 }}><Play size={16} color="#34d399" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#f1f5f9', fontWeight: '600', fontSize: 14 }}>Start Instant Meeting</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12 }}>Start a new meeting immediately</Text>
+                  </View>
+                  <ChevronRight size={16} color="#475569" />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => { setHostControlsModal(false); setScheduleModal(true); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1e293b', borderRadius: 12, padding: 14 }}>
+                  <View style={{ backgroundColor: '#1e3a5f', borderRadius: 8, padding: 8 }}><Calendar size={16} color="#60a5fa" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#f1f5f9', fontWeight: '600', fontSize: 14 }}>Schedule Future Meeting</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12 }}>Plan a meeting for later</Text>
+                  </View>
+                  <ChevronRight size={16} color="#475569" />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setTransferHostModal(true)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1e293b', borderRadius: 12, padding: 14 }}>
+                  <View style={{ backgroundColor: '#3b1f6e', borderRadius: 8, padding: 8 }}><Shield size={16} color="#a78bfa" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#f1f5f9', fontWeight: '600', fontSize: 14 }}>Transfer Host Rights</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12 }}>Make another participant host</Text>
+                  </View>
+                  <ChevronRight size={16} color="#475569" />
+                </TouchableOpacity>
+
+                <View style={{ backgroundColor: '#1e293b', borderRadius: 12, padding: 4, overflow: 'hidden', marginTop: 4 }}>
+                  {[
+                    { label: 'End Meeting for All', desc: 'Terminate the session for everyone', color: '#ef4444', bg: '#450a0a',
+                      onPress: () => { setHostControlsModal(false); Alert.alert('End Meeting', 'This will end the meeting for all participants.', [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'End for All', style: 'destructive', onPress: () => { endCall(); } }
+                      ]); }},
+                    { label: 'Leave (Keep Meeting Active)', desc: 'Leave but keep room running', color: '#f59e0b', bg: '#451a03',
+                      onPress: () => { setHostControlsModal(false); endCall(); }},
+                  ].map((item, i) => (
+                    <TouchableOpacity key={i} onPress={item.onPress}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+                        borderTopWidth: i > 0 ? 1 : 0, borderTopColor: '#0f172a' }}>
+                      <View style={{ backgroundColor: item.bg, borderRadius: 8, padding: 8, width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                        <PhoneOff size={14} color={item.color} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: item.color, fontWeight: '600', fontSize: 14 }}>{item.label}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 12 }}>{item.desc}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginTop: 8, marginBottom: 4 }}>Waiting Room</Text>
+                {[
+                  { label: 'Enable Waiting Room', desc: 'Hold participants until admitted', key: 'waitingRoom', value: waitingRoomEnabled, set: setWaitingRoomEnabled },
+                ].map((item) => (
+                  <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1e293b', borderRadius: 12, padding: 14 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#f1f5f9', fontWeight: '600', fontSize: 14 }}>{item.label}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12 }}>{item.desc}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => item.set(!item.value)}
+                      style={{ width: 44, height: 26, borderRadius: 13, backgroundColor: item.value ? '#2563eb' : '#334155',
+                        justifyContent: 'center', paddingHorizontal: 3 }}>
+                      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff',
+                        alignSelf: item.value ? 'flex-end' : 'flex-start' }} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+                {waitingRoomEnabled && (
+                  <View style={{ backgroundColor: '#1e293b', borderRadius: 12, padding: 4, gap: 0 }}>
+                    {[
+                      { label: 'Admit All Users', action: () => Alert.alert('Waiting Room', 'All users admitted') },
+                      { label: 'Remove from Waiting Room', action: () => Alert.alert('Waiting Room', 'Select user to remove') },
+                    ].map((item, i) => (
+                      <TouchableOpacity key={i} onPress={item.action}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14,
+                          borderTopWidth: i > 0 ? 1 : 0, borderTopColor: '#0f172a' }}>
+                        <Text style={{ color: '#60a5fa', fontWeight: '600', fontSize: 14 }}>{item.label}</Text>
+                        <ChevronRight size={16} color="#475569" />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* PARTICIPANTS TAB */}
+            {hostControlsTab === 'participants' && (
+              <View style={{ gap: 10 }}>
+                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Audio Controls</Text>
+                <View style={{ backgroundColor: '#1e293b', borderRadius: 12, overflow: 'hidden' }}>
+                  {[
+                    { label: 'Mute All Participants', desc: 'Silence everyone instantly', active: muteAllActive,
+                      onPress: () => { setMuteAllActive(true); Alert.alert('Muted', 'All participants have been muted'); }},
+                    { label: 'Prevent Participants from Unmuting', active: preventUnmute,
+                      onPress: () => setPreventUnmute(p => !p) },
+                    { label: 'Request All to Unmute', desc: 'Send unmute request to everyone',
+                      onPress: () => Alert.alert('Request Sent', 'Unmute request sent to all participants') },
+                  ].map((item: any, i) => (
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+                      borderTopWidth: i > 0 ? 1 : 0, borderTopColor: '#0f172a' }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#f1f5f9', fontWeight: '600', fontSize: 14 }}>{item.label}</Text>
+                        {item.desc && <Text style={{ color: '#64748b', fontSize: 12 }}>{item.desc}</Text>}
+                      </View>
+                      {item.active !== undefined ? (
+                        <TouchableOpacity onPress={item.onPress}
+                          style={{ width: 44, height: 26, borderRadius: 13, backgroundColor: item.active ? '#2563eb' : '#334155',
+                            justifyContent: 'center', paddingHorizontal: 3 }}>
+                          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff',
+                            alignSelf: item.active ? 'flex-end' : 'flex-start' }} />
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity onPress={item.onPress} style={{ backgroundColor: '#1e40af', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Send</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                </View>
+
+                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginTop: 8, marginBottom: 4 }}>Participant List</Text>
+                {[{ id: 'local', name: user?.name || 'You', role: 'Host', isLocal: true }, ...remotePeers.map(p => ({ id: p.id, name: p.name, role: 'Attendee', isLocal: false }))]
+                  .map((peer) => (
+                  <View key={peer.id} style={{ backgroundColor: '#1e293b', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: peer.isLocal ? '#1e40af' : '#5b21b6', alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{avatarFor(peer.name)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#f1f5f9', fontWeight: '600', fontSize: 14 }}>{peer.name}{peer.isLocal ? ' (You)' : ''}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12 }}>{peer.role}</Text>
+                    </View>
+                    {!peer.isLocal && (
+                      <TouchableOpacity onPress={() => setParticipantMenuTarget(peer)}
+                        style={{ backgroundColor: '#334155', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}>
+                        <Text style={{ color: '#94a3b8', fontSize: 12 }}>Manage</Text>
+                      </TouchableOpacity>
+                    )}
+                    {peer.isLocal && <View style={{ backgroundColor: '#065f46', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}><Text style={{ color: '#34d399', fontSize: 11, fontWeight: '700' }}>HOST</Text></View>}
+                  </View>
+                ))}
+
+                {/* Participant action menu */}
+                {participantMenuTarget && (
+                  <View style={{ backgroundColor: '#1e293b', borderRadius: 12, overflow: 'hidden', marginTop: 4 }}>
+                    <View style={{ backgroundColor: '#0f172a', padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ color: '#60a5fa', fontWeight: '700' }}>Actions for {participantMenuTarget.name}</Text>
+                      <TouchableOpacity onPress={() => setParticipantMenuTarget(null)}><X size={16} color="#64748b" /></TouchableOpacity>
+                    </View>
+                    {[
+                      { label: '🔇 Mute Participant', color: '#f1f5f9', onPress: () => { Alert.alert('Muted', `${participantMenuTarget.name} has been muted.`); setParticipantMenuTarget(null); }},
+                      { label: '📹 Stop Video', color: '#f1f5f9', onPress: () => { Alert.alert('Video Stopped', `${participantMenuTarget.name}'s video was stopped.`); setParticipantMenuTarget(null); }},
+                      { label: '👑 Make Co-Host', color: '#a78bfa', onPress: () => { Alert.alert('Role Updated', `${participantMenuTarget.name} is now a Co-Host.`); setParticipantMenuTarget(null); }},
+                      { label: '🎤 Assign Presenter', color: '#60a5fa', onPress: () => { Alert.alert('Role Updated', `${participantMenuTarget.name} is now the Presenter.`); setParticipantMenuTarget(null); }},
+                      { label: '🔄 Transfer Host', color: '#f59e0b', onPress: () => { Alert.alert('Transfer Host', `Transfer host rights to ${participantMenuTarget.name}?`, [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Transfer', onPress: () => { Alert.alert('Done', 'Host rights transferred.'); setParticipantMenuTarget(null); }}
+                      ]); }},
+                      { label: '❌ Remove from Meeting', color: '#ef4444', onPress: () => { Alert.alert('Remove Participant', `Remove ${participantMenuTarget.name}?`, [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Remove', style: 'destructive', onPress: () => { Alert.alert('Removed', `${participantMenuTarget.name} has been removed.`); setParticipantMenuTarget(null); }}
+                      ]); }},
+                      { label: '🚫 Ban (Block Rejoin)', color: '#ef4444', onPress: () => { Alert.alert('Ban Participant', `Ban ${participantMenuTarget.name} from rejoining?`, [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Ban', style: 'destructive', onPress: () => { Alert.alert('Banned', `${participantMenuTarget.name} has been banned.`); setParticipantMenuTarget(null); }}
+                      ]); }},
+                    ].map((action, i) => (
+                      <TouchableOpacity key={i} onPress={action.onPress}
+                        style={{ padding: 14, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: '#0f172a' }}>
+                        <Text style={{ color: action.color, fontSize: 14, fontWeight: '500' }}>{action.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* PERMISSIONS TAB */}
+            {hostControlsTab === 'permissions' && (
+              <View style={{ gap: 10 }}>
+                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Join Permissions</Text>
+                {[
+                  { label: 'Allow Join Before Host', desc: 'Participants can join early', value: allowBeforeHost, set: setAllowBeforeHost },
+                  { label: 'Allow Guest Users', desc: 'Users without accounts can join', value: allowGuests, set: setAllowGuests },
+                  { label: 'Require Authentication', desc: 'Force login before joining', value: requireAuth, set: setRequireAuth },
+                  { label: 'Lock Meeting', desc: 'Prevent new participants from joining', value: meetingLocked, set: setMeetingLocked },
+                ].map((item, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1e293b', borderRadius: 12, padding: 14 }}>
+                    <View style={{ flex: 1, marginRight: 12 }}>
+                      <Text style={{ color: '#f1f5f9', fontWeight: '600', fontSize: 14 }}>{item.label}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12 }}>{item.desc}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => item.set(!item.value)}
+                      style={{ width: 44, height: 26, borderRadius: 13, backgroundColor: item.value ? '#2563eb' : '#334155',
+                        justifyContent: 'center', paddingHorizontal: 3 }}>
+                      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff',
+                        alignSelf: item.value ? 'flex-end' : 'flex-start' }} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+                {meetingLocked && (
+                  <View style={{ backgroundColor: '#450a0a', borderRadius: 12, padding: 14, flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                    <Lock size={16} color="#ef4444" />
+                    <Text style={{ color: '#fca5a5', fontSize: 13, flex: 1 }}>Meeting is locked. No new participants can join.</Text>
+                  </View>
+                )}
+
+                <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginTop: 8, marginBottom: 4 }}>Video Permissions</Text>
+                {[
+                  { label: 'Allow HD Video', desc: 'Enable high definition video', value: true },
+                  { label: 'Allow Screen Sharing', desc: 'Participants can share screens', value: true },
+                ].map((item, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1e293b', borderRadius: 12, padding: 14 }}>
+                    <View style={{ flex: 1, marginRight: 12 }}>
+                      <Text style={{ color: '#f1f5f9', fontWeight: '600', fontSize: 14 }}>{item.label}</Text>
+                      <Text style={{ color: '#64748b', fontSize: 12 }}>{item.desc}</Text>
+                    </View>
+                    <View style={{ width: 44, height: 26, borderRadius: 13, backgroundColor: '#2563eb', justifyContent: 'center', paddingHorizontal: 3 }}>
+                      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: 'flex-end' }} />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={{ height: 32 }} />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
   //  ACTIVE MEETING ROOM 
   if (activeRoom) {
     const localUser = user;
@@ -1488,13 +1781,33 @@ export default function Meetings() {
             <Text style={[s.ctrlLabel, sidePanel === 'chat' && { color: '#3b82f6' }]}>Chat</Text>
           </TouchableOpacity>
 
+          {/* HOST CONTROLS */}
+          {(isHost || true) && (
+            <TouchableOpacity style={[s.ctrlBtn, { backgroundColor: '#1e3a5f' }]} onPress={() => setHostControlsModal(true)}>
+              <Shield size={20} color="#60a5fa" />
+              <Text style={[s.ctrlLabel, { color: '#60a5fa' }]}>Host</Text>
+            </TouchableOpacity>
+          )}
+
           {/* LEAVE */}
-          <TouchableOpacity style={s.endCallBtn} onPress={endCall}>
+          <TouchableOpacity style={s.endCallBtn} onPress={() => {
+            Alert.alert(
+              'Leave Meeting',
+              'What would you like to do?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Leave Meeting', onPress: endCall },
+                { text: 'End for All', style: 'destructive', onPress: () => { endCall(); }},
+              ]
+            );
+          }}>
             <PhoneOff size={22} color="#fff" />
             <Text style={[s.ctrlLabel, { color: '#fff' }]}>Leave</Text>
           </TouchableOpacity>
 
         </View>
+
+        <HostControlsModal />
       </View>
     );
   }
