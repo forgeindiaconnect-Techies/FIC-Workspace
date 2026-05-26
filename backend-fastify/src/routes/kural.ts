@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { User } from '../models/User';
 import { KuralConversation } from '../models/KuralConversation';
 import { KuralMessage } from '../models/KuralMessage';
+import { Story } from '../models/Story';
 import { authenticate } from '../middlewares/auth';
 
 const defaultWorkspaceId = 'antigraviity-hq';
@@ -81,6 +82,35 @@ export async function channelRoutes(fastify: FastifyInstance) {
       return reply.code(200).send(channels);
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to fetch Kural channels.', details: err.message });
+    }
+  });
+
+  // Fetch groups
+  fastify.get('/:workspaceId/groups', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { workspaceId } = request.params as any;
+      const currentEmail = normalizeEmail((request.query as any).email || request.user?.email);
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+
+      const groups = await KuralConversation.find({
+        workspaceId: activeWorkspaceId,
+        type: 'channel',
+        participantEmails: currentEmail
+      }).sort({ updatedAt: -1 });
+
+      return reply.code(200).send(groups.map(g => ({
+        _id: g._id,
+        type: g.type,
+        name: g.name,
+        displayName: g.name,
+        participantEmails: g.participantEmails,
+        lastMessageContent: g.lastMessageContent,
+        lastMessageTime: g.lastMessageTime || g.updatedAt,
+        unread: 0,
+        isOnline: true
+      })));
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to fetch groups.', details: err.message });
     }
   });
 }
@@ -187,6 +217,83 @@ export async function kuralRoutes(fastify: FastifyInstance) {
       return reply.code(200).send(conversation);
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to start direct message.', details: err.message });
+    }
+  });
+
+  fastify.post('/groups', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { name, members = [], workspaceId } = request.body as any;
+      const currentEmail = normalizeEmail(request.user?.email || '');
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+
+      if (!name) return reply.code(400).send({ error: 'Group name is required.' });
+
+      const participantEmails = [...new Set([currentEmail, ...members.map(normalizeEmail)])];
+
+      const conversation = await KuralConversation.create({
+        workspaceId: activeWorkspaceId,
+        type: 'channel',
+        name,
+        participantEmails,
+        createdByEmail: currentEmail
+      });
+
+      return reply.code(201).send(conversation);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to create group.', details: err.message });
+    }
+  });
+
+  fastify.get('/search', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { email } = request.query as any;
+      if (!email) return reply.code(400).send({ error: 'Email query parameter is required.' });
+
+      const user = await User.findOne({ email: normalizeEmail(email) }).select('name email avatarUrl');
+      if (!user) return reply.code(404).send({ error: 'User not found.' });
+
+      return reply.code(200).send(user);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to search user.', details: err.message });
+    }
+  });
+
+  fastify.get('/:workspaceId/stories', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { workspaceId } = request.params as any;
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+      
+      const stories = await Story.find({ workspaceId: activeWorkspaceId })
+        .sort({ createdAt: -1 })
+        .limit(50);
+        
+      return reply.code(200).send(stories);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to fetch stories.', details: err.message });
+    }
+  });
+
+  fastify.post('/:workspaceId/stories', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { workspaceId } = request.params as any;
+      const { content } = request.body as any;
+      if (!content) return reply.code(400).send({ error: 'Content is required.' });
+
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+      const currentUser = await User.findById(request.user?.id);
+      
+      const story = await Story.create({
+        workspaceId: activeWorkspaceId,
+        userId: request.user?.id,
+        userEmail: normalizeEmail(request.user?.email || ''),
+        userName: request.user?.name || 'User',
+        userAvatar: currentUser?.avatarUrl,
+        content
+      });
+
+      return reply.code(201).send(story);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to post story.', details: err.message });
     }
   });
 
