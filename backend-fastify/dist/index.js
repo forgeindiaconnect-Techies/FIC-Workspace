@@ -5,6 +5,13 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
@@ -22,13 +29,77 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// src/models/Transcript.ts
+var import_mongoose8, TranscriptSchema, Transcript;
+var init_Transcript = __esm({
+  "src/models/Transcript.ts"() {
+    "use strict";
+    import_mongoose8 = require("mongoose");
+    TranscriptSchema = new import_mongoose8.Schema({
+      meetingId: { type: String, required: true, index: true },
+      userId: { type: String, required: true },
+      speakerName: { type: String, required: true },
+      text: { type: String, required: true },
+      timestamp: { type: Date, default: Date.now },
+      createdAt: { type: Date, default: Date.now }
+    });
+    Transcript = (0, import_mongoose8.model)("Transcript", TranscriptSchema);
+  }
+});
+
+// src/services/transcription.ts
+var transcription_exports = {};
+__export(transcription_exports, {
+  transcribeChunk: () => transcribeChunk
+});
+async function transcribeChunk(meetingId, userId, speakerName, filePath) {
+  if (!process.env.GROQ_API_KEY) {
+    console.warn("[Transcription] GROQ_API_KEY is not set. Skipping transcription.");
+    return null;
+  }
+  try {
+    const transcription = await groq.audio.transcriptions.create({
+      file: import_fs.default.createReadStream(filePath),
+      model: "whisper-large-v3",
+      prompt: "Meeting conversation. Transcribe accurately.",
+      response_format: "json",
+      language: "en"
+    });
+    const text = transcription.text.trim();
+    if (text) {
+      await Transcript.create({
+        meetingId,
+        userId,
+        speakerName,
+        text,
+        timestamp: /* @__PURE__ */ new Date()
+      });
+      return text;
+    }
+    return null;
+  } catch (error) {
+    console.error("[Transcription] Failed to transcribe chunk:", error.message);
+    return null;
+  }
+}
+var import_fs, import_groq_sdk, groq;
+var init_transcription = __esm({
+  "src/services/transcription.ts"() {
+    "use strict";
+    import_fs = __toESM(require("fs"));
+    import_groq_sdk = __toESM(require("groq-sdk"));
+    init_Transcript();
+    groq = new import_groq_sdk.default({ apiKey: process.env.GROQ_API_KEY });
+  }
+});
+
 // src/index.ts
 var import_fastify = __toESM(require("fastify"));
 var import_cors = __toESM(require("@fastify/cors"));
 var import_websocket = __toESM(require("@fastify/websocket"));
 var import_dotenv2 = __toESM(require("dotenv"));
-var import_fs2 = __toESM(require("fs"));
-var import_path2 = __toESM(require("path"));
+var import_fs4 = __toESM(require("fs"));
+var import_path3 = __toESM(require("path"));
 
 // src/routes/auth.ts
 var import_bcrypt = __toESM(require("bcrypt"));
@@ -531,7 +602,7 @@ async function authRoutes(fastify2) {
 
 // src/routes/meetings.ts
 var import_bcrypt2 = __toESM(require("bcrypt"));
-var import_mongoose8 = require("mongoose");
+var import_mongoose10 = require("mongoose");
 
 // src/models/Meeting.ts
 var import_mongoose5 = require("mongoose");
@@ -545,6 +616,7 @@ var MeetingSchema = new import_mongoose5.Schema({
   status: { type: String, enum: ["scheduled", "live", "ended"], default: "scheduled" },
   recordingEnabled: { type: Boolean, default: false },
   participantIds: [{ type: import_mongoose5.Schema.Types.ObjectId, ref: "User" }],
+  aiEnabled: { type: Boolean, default: false },
   aiSummary: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
@@ -576,6 +648,312 @@ var RecordingSchema = new import_mongoose7.Schema({
 });
 var Recording = (0, import_mongoose7.model)("Recording", RecordingSchema);
 
+// src/services/aiBot.ts
+var import_ws = __toESM(require("ws"));
+var import_fs2 = __toESM(require("fs"));
+var import_path = __toESM(require("path"));
+var import_os = __toESM(require("os"));
+var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
+init_transcription();
+
+// src/services/summarizer.ts
+var import_groq_sdk2 = __toESM(require("groq-sdk"));
+init_Transcript();
+
+// src/models/Mail.ts
+var import_mongoose9 = __toESM(require("mongoose"));
+var mailSchema = new import_mongoose9.default.Schema({
+  workspaceId: { type: String, required: true, default: "antigraviity-hq" },
+  ownerEmail: { type: String, required: true },
+  // The user who owns this specific copy of the email
+  folder: { type: String, enum: ["inbox", "sent", "drafts", "trash", "archive"], default: "inbox" },
+  senderName: { type: String, required: true },
+  senderEmail: { type: String, required: true },
+  recipientEmails: [{ type: String, required: true }],
+  subject: { type: String, default: "(No Subject)" },
+  body: { type: String, default: "" },
+  isRead: { type: Boolean, default: false },
+  isStarred: { type: Boolean, default: false },
+  attachments: [{
+    name: String,
+    url: String,
+    size: Number,
+    type: String
+  }],
+  sentAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+mailSchema.pre("save", function(next) {
+  this.updatedAt = /* @__PURE__ */ new Date();
+  next();
+});
+var Mail = import_mongoose9.default.model("Mail", mailSchema);
+
+// src/services/summarizer.ts
+var groq2 = new import_groq_sdk2.default({ apiKey: process.env.GROQ_API_KEY });
+async function dispatchSummaryMail(meeting, summaryHtml) {
+  try {
+    const participantDocs = await Participant.find({ meetingId: meeting._id }).distinct("userId");
+    const allUserIds = [.../* @__PURE__ */ new Set([...participantDocs.map((id) => id.toString()), meeting.hostId?.toString()])].filter(Boolean);
+    const users = await User.find({
+      _id: { $in: allUserIds },
+      email: { $ne: "ai-assistant@nexus.app" }
+      // exclude the bot itself
+    });
+    if (users.length === 0) {
+      console.warn("[Summarizer] No human participants found \u2014 skipping mail dispatch.");
+      return;
+    }
+    const recipientEmails = users.map((u) => u.email);
+    const mailDoc = {
+      workspaceId: "antigraviity-hq",
+      senderName: "Nexus AI Assistant",
+      senderEmail: "ai-assistant@nexus.app",
+      recipientEmails,
+      subject: `\u{1F4CB} Meeting Summary: ${meeting.title}`,
+      body: summaryHtml,
+      isRead: false,
+      isStarred: false,
+      sentAt: /* @__PURE__ */ new Date()
+    };
+    await Mail.create({ ...mailDoc, ownerEmail: "ai-assistant@nexus.app", folder: "sent" });
+    for (const email of recipientEmails) {
+      await Mail.create({ ...mailDoc, ownerEmail: email, folder: "inbox" });
+    }
+    console.log(`[Summarizer] \u2705 Summary mail dispatched to ${recipientEmails.length} participant(s): ${recipientEmails.join(", ")}`);
+  } catch (err) {
+    console.error("[Summarizer] Mail dispatch failed:", err.message);
+  }
+}
+async function summarizeMeeting(meetingId) {
+  console.log(`[Summarizer] Starting summarization for meeting ${meetingId}`);
+  const meeting = await Meeting.findById(meetingId);
+  if (!meeting) {
+    console.warn("[Summarizer] Meeting not found:", meetingId);
+    return null;
+  }
+  if (meeting.aiSummary) {
+    console.log("[Summarizer] Summary already exists, skipping.");
+    return meeting.aiSummary;
+  }
+  const transcripts = await Transcript.find({ meetingId }).sort({ timestamp: 1 });
+  const hasTranscripts = transcripts && transcripts.length > 0;
+  let summaryHtml;
+  if (!hasTranscripts || !process.env.GROQ_API_KEY) {
+    console.log(`[Summarizer] No transcripts found (or no API key). Sending completion notification.`);
+    const duration = meeting.scheduledAt ? Math.round((Date.now() - new Date(meeting.scheduledAt).getTime()) / 6e4) : 0;
+    summaryHtml = `
+<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;border-radius:12px">
+  <div style="background:linear-gradient(135deg,#1e40af,#7c3aed);padding:24px;border-radius:8px;margin-bottom:20px">
+    <h1 style="color:#fff;margin:0;font-size:22px">\u{1F4CB} Meeting Completed</h1>
+    <p style="color:#bfdbfe;margin:8px 0 0">${meeting.title}</p>
+  </div>
+  <div style="background:#fff;padding:20px;border-radius:8px;border:1px solid #e2e8f0">
+    <h2 style="color:#1e293b;margin-top:0">Meeting Details</h2>
+    <ul style="color:#475569;line-height:1.8">
+      <li><strong>Title:</strong> ${meeting.title}</li>
+      <li><strong>Duration:</strong> ~${duration} minutes</li>
+      <li><strong>Date:</strong> ${(/* @__PURE__ */ new Date()).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</li>
+      <li><strong>Status:</strong> Completed</li>
+    </ul>
+    <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px;margin-top:16px;border-radius:4px">
+      <p style="margin:0;color:#92400e;font-size:14px">
+        <strong>Note:</strong> No audio transcript was captured for this meeting. 
+        To receive full AI-generated summaries, ensure your microphone is active and AI Assistant is enabled when the meeting starts.
+      </p>
+    </div>
+  </div>
+  <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:16px">Sent by Nexus AI Assistant</p>
+</div>`;
+  } else {
+    const fullText = transcripts.map((t) => `[${t.timestamp.toISOString()}] ${t.speakerName}: ${t.text}`).join("\n");
+    console.log(`[Summarizer] Summarizing ${transcripts.length} transcript entries (${fullText.length} chars)...`);
+    const prompt = `You are an expert Executive Assistant. Summarize the following meeting transcript.
+Your response MUST be formatted in clean HTML suitable for an email body.
+Do NOT use markdown. Use bold tags, lists, and headers (h2, h3).
+Include the following sections exactly:
+<h2>Executive Summary</h2>
+(Brief 2-3 sentences overview)
+
+<h2>Main Topics</h2>
+<ul><li>Topic 1</li></ul>
+
+<h2>Key Decisions</h2>
+<ul><li>Decision 1</li></ul>
+
+<h2>Action Items</h2>
+<ul><li>[Owner Name] Task description (Deadline if any)</li></ul>
+
+<h2>Pending Topics & Follow-ups</h2>
+<ul><li>Follow-up 1</li></ul>
+
+Here is the meeting transcript:
+${fullText}`;
+    try {
+      const chatCompletion = await groq2.chat.completions.create({
+        messages: [{ role: "user", content: prompt }],
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.2,
+        max_tokens: 2e3
+      });
+      summaryHtml = chatCompletion.choices[0]?.message?.content || "";
+      console.log(`[Summarizer] AI summary generated (${summaryHtml.length} chars).`);
+    } catch (err) {
+      console.error("[Summarizer] Groq API failed:", err.message);
+      return null;
+    }
+  }
+  if (summaryHtml) {
+    await Meeting.findByIdAndUpdate(meetingId, { aiSummary: summaryHtml });
+    await dispatchSummaryMail(meeting, summaryHtml);
+  }
+  return summaryHtml;
+}
+
+// src/services/aiBot.ts
+var JWT_SECRET = process.env.JWT_SECRET || "nexus-jwt-secret-key";
+var activeBots = /* @__PURE__ */ new Map();
+async function mintAIBotToken() {
+  try {
+    const aiUser = await User.findOne({ email: "ai-assistant@nexus.app" });
+    if (!aiUser) {
+      console.error("[AIBot] ai-assistant@nexus.app user not found in DB. Run seed first.");
+      return null;
+    }
+    const token = import_jsonwebtoken3.default.sign(
+      { userId: aiUser._id, email: aiUser.email, name: aiUser.name, role: "ai-bot", workspaceId: "antigraviity-hq" },
+      JWT_SECRET,
+      { expiresIn: "6h" }
+    );
+    return { token, userId: aiUser._id.toString() };
+  } catch (err) {
+    console.error("[AIBot] Failed to mint bot token:", err.message);
+    return null;
+  }
+}
+async function launchAIBot(meetingId, joinCode, _frontendUrl) {
+  if (activeBots.has(meetingId)) {
+    console.log(`[AIBot] Bot already active for meeting ${meetingId}`);
+    return;
+  }
+  console.log(`[AIBot] Launching direct-WS bot for meeting ${meetingId} (code: ${joinCode})`);
+  const auth = await mintAIBotToken();
+  if (!auth) {
+    console.error("[AIBot] Cannot launch bot \u2014 no valid token.");
+    return;
+  }
+  const renderUrl = process.env.RENDER_EXTERNAL_URL || "";
+  const backendWsUrl = process.env.BACKEND_WS_URL || (renderUrl ? renderUrl.replace(/^https:/, "wss:").replace(/^http:/, "ws:") : `ws://localhost:${process.env.PORT || 3001}`);
+  const wsUrl = `${backendWsUrl}/ws/webrtc`;
+  console.log(`[AIBot] Connecting to signaling server at ${wsUrl}`);
+  let ws;
+  try {
+    ws = new import_ws.default(wsUrl);
+  } catch (err) {
+    console.error("[AIBot] Failed to create WebSocket:", err.message);
+    return;
+  }
+  activeBots.set(meetingId, { ws, meetingId, userId: auth.userId });
+  ws.on("open", () => {
+    console.log(`[AIBot] WS open. Sending join for meeting ${meetingId}...`);
+    ws.send(JSON.stringify({
+      type: "join",
+      data: {
+        meetingId,
+        token: auth.token
+      }
+    }));
+  });
+  ws.on("message", (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+      console.log(`[AIBot] Signaling message: ${msg.type}`);
+      if (msg.type === "joined") {
+        console.log(`[AIBot] \u2705 Successfully joined room ${meetingId} as peer ${msg.peerId}`);
+        Participant.findOneAndUpdate(
+          { meetingId, userId: auth.userId },
+          { joinedAt: /* @__PURE__ */ new Date(), $unset: { leftAt: "" } },
+          { upsert: true }
+        ).catch(() => {
+        });
+      }
+      if (msg.type === "error") {
+        console.error(`[AIBot] Signaling error: ${msg.message}`);
+      }
+    } catch (e) {
+    }
+  });
+  ws.on("close", (code, reason) => {
+    console.log(`[AIBot] WS closed for meeting ${meetingId}: code=${code}`);
+    activeBots.delete(meetingId);
+  });
+  ws.on("error", (err) => {
+    console.error(`[AIBot] WS error for meeting ${meetingId}:`, err.message);
+    activeBots.delete(meetingId);
+  });
+}
+async function stopAIBot(meetingId) {
+  const bot = activeBots.get(meetingId);
+  if (bot) {
+    console.log(`[AIBot] Stopping bot for meeting ${meetingId}`);
+    try {
+      bot.ws.send(JSON.stringify({ type: "leave", data: {} }));
+      bot.ws.close();
+    } catch (e) {
+    }
+    activeBots.delete(meetingId);
+  }
+  console.log(`[AIBot] Triggering summarization for ${meetingId}`);
+  await summarizeMeeting(meetingId);
+}
+function handleAudioSocket(ws) {
+  let currentMeetingId = "";
+  let currentUserId = "";
+  let currentSpeakerName = "";
+  ws.on("message", async (message, isBinary) => {
+    if (!isBinary) {
+      try {
+        const meta = JSON.parse(message.toString());
+        if (meta.type === "metadata") {
+          currentMeetingId = meta.meetingId;
+          currentUserId = meta.userId;
+          currentSpeakerName = meta.speakerName;
+          console.log(`[AudioSocket] Registered metadata: meeting=${currentMeetingId}, speaker=${currentSpeakerName}`);
+        }
+      } catch (e) {
+      }
+    } else {
+      if (!currentMeetingId || !currentUserId) {
+        console.warn("[AudioSocket] Received audio chunk before metadata, ignoring.");
+        return;
+      }
+      const tmpDir = import_os.default.tmpdir();
+      const fileName = `chunk_${currentMeetingId}_${currentUserId}_${Date.now()}.webm`;
+      const filePath = import_path.default.join(tmpDir, fileName);
+      try {
+        import_fs2.default.writeFileSync(filePath, message);
+        const text = await transcribeChunk(currentMeetingId, currentUserId, currentSpeakerName, filePath);
+        if (text) {
+          console.log(`[AudioSocket] Transcribed: "${text.slice(0, 60)}..."`);
+        }
+      } catch (e) {
+        console.error("[AudioSocket] Error processing chunk:", e.message);
+      } finally {
+        try {
+          import_fs2.default.unlinkSync(filePath);
+        } catch {
+        }
+      }
+    }
+  });
+  ws.on("close", () => {
+    console.log(`[AudioSocket] Connection closed for meeting ${currentMeetingId}`);
+  });
+  ws.on("error", (err) => {
+    console.error("[AudioSocket] Error:", err.message);
+  });
+}
+
 // src/routes/meetings.ts
 async function meetingRoutes(fastify2) {
   async function generate9DigitJoinCode() {
@@ -601,7 +979,7 @@ async function meetingRoutes(fastify2) {
   }
   async function resolveMeetingIdentifier(idOrCode) {
     const value = String(idOrCode || "").trim();
-    if (import_mongoose8.Types.ObjectId.isValid(value)) {
+    if (import_mongoose10.Types.ObjectId.isValid(value)) {
       return Meeting.findById(value);
     }
     return Meeting.findOne({ joinCode: normalizeJoinCode(value) });
@@ -619,18 +997,18 @@ async function meetingRoutes(fastify2) {
       }
       const meeting = await Meeting.create({
         title,
-        hostId: new import_mongoose8.Types.ObjectId(request.user.id),
+        hostId: new import_mongoose10.Types.ObjectId(request.user.id),
         joinCode,
         passcodeHash,
         scheduledAt: scheduledAt ? new Date(scheduledAt) : /* @__PURE__ */ new Date(),
         durationMinutes: durationMinutes || 60,
         recordingEnabled: !!recordingEnabled,
         status: "scheduled",
-        participantIds: [new import_mongoose8.Types.ObjectId(request.user.id)]
+        participantIds: [new import_mongoose10.Types.ObjectId(request.user.id)]
       });
       await Participant.create({
         meetingId: meeting._id,
-        userId: new import_mongoose8.Types.ObjectId(request.user.id),
+        userId: new import_mongoose10.Types.ObjectId(request.user.id),
         role: "host",
         joinedAt: /* @__PURE__ */ new Date(),
         audioMuted: false,
@@ -680,13 +1058,13 @@ async function meetingRoutes(fastify2) {
       if (!meeting && persistentRoomTitles[cleanCode]) {
         meeting = await Meeting.create({
           title: persistentRoomTitles[cleanCode],
-          hostId: new import_mongoose8.Types.ObjectId(request.user.id),
+          hostId: new import_mongoose10.Types.ObjectId(request.user.id),
           joinCode: cleanCode,
           scheduledAt: /* @__PURE__ */ new Date(),
           durationMinutes: 9999,
           // Persistent room has unlimited duration
           status: "live",
-          participantIds: [new import_mongoose8.Types.ObjectId(request.user.id)]
+          participantIds: [new import_mongoose10.Types.ObjectId(request.user.id)]
         });
       }
       if (!meeting) {
@@ -704,7 +1082,7 @@ async function meetingRoutes(fastify2) {
           return reply.code(401).send({ error: "Invalid meeting passcode." });
         }
       }
-      const userId = new import_mongoose8.Types.ObjectId(request.user.id);
+      const userId = new import_mongoose10.Types.ObjectId(request.user.id);
       const hostId = meeting.hostId._id?.toString?.() || meeting.hostId.toString();
       await Participant.findOneAndUpdate(
         { meetingId: meeting._id, userId },
@@ -752,7 +1130,7 @@ async function meetingRoutes(fastify2) {
   fastify2.get("/:id", { preHandler: authenticate }, async (request, reply) => {
     try {
       const { id } = request.params;
-      if (!import_mongoose8.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose10.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid meeting ID format." });
       }
       const meeting = await Meeting.findById(id).populate("hostId", "name email avatarUrl");
@@ -775,7 +1153,7 @@ async function meetingRoutes(fastify2) {
     try {
       const { id } = request.params;
       const { title, scheduledAt, durationMinutes, recordingEnabled } = request.body;
-      if (!import_mongoose8.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose10.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid meeting ID." });
       }
       const meeting = await Meeting.findById(id);
@@ -842,6 +1220,55 @@ async function meetingRoutes(fastify2) {
       return reply.code(500).send({ error: "Failed to boot meeting session.", details: err.message });
     }
   });
+  fastify2.post("/:id/start-ai", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const { frontendUrl } = request.body;
+      const meeting = await Meeting.findById(id);
+      if (!meeting) return reply.code(404).send({ error: "Meeting room not found." });
+      if (meeting.aiEnabled) {
+        return reply.code(200).send({ success: true, message: "AI Assistant already active" });
+      }
+      meeting.aiEnabled = true;
+      await meeting.save();
+      launchAIBot(meeting._id.toString(), meeting.joinCode, frontendUrl || process.env.WEB_APP_URL || "http://localhost:3000");
+      return reply.code(200).send({ success: true, message: "AI Assistant launched" });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to start AI Assistant.", details: err.message });
+    }
+  });
+  fastify2.post("/:id/audio-chunk", {
+    preHandler: authenticate,
+    config: { rawBody: true }
+  }, async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const speakerName = request.headers["x-speaker-name"] || request.user.name || "User";
+      const userId = request.user.id;
+      const contentType = request.headers["content-type"] || "audio/m4a";
+      const rawBody = request.rawBody || request.body;
+      if (!rawBody || !Buffer.isBuffer(rawBody) || rawBody.length < 512) {
+        return reply.code(400).send({ error: "No valid audio data received." });
+      }
+      const ext = contentType.includes("webm") ? "webm" : "m4a";
+      const os2 = await import("os");
+      const fsMod = await import("fs");
+      const pathMod = await import("path");
+      const { transcribeChunk: transcribeChunk2 } = await Promise.resolve().then(() => (init_transcription(), transcription_exports));
+      const fileName = `chunk_${id}_${userId}_${Date.now()}.${ext}`;
+      const filePath = pathMod.join(os2.tmpdir(), fileName);
+      fsMod.writeFileSync(filePath, rawBody);
+      console.log(`[AudioChunk] Saved ${rawBody.length} bytes \u2192 ${filePath}`);
+      const text = await transcribeChunk2(id, userId, speakerName, filePath);
+      try {
+        fsMod.unlinkSync(filePath);
+      } catch {
+      }
+      return reply.code(200).send({ success: true, text: text || "" });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to process audio chunk.", details: err.message });
+    }
+  });
   fastify2.post("/:id/end", { preHandler: authenticate }, async (request, reply) => {
     try {
       const { id } = request.params;
@@ -877,6 +1304,9 @@ async function meetingRoutes(fastify2) {
         { meetingId: meeting._id, leftAt: { $exists: false } },
         { leftAt: /* @__PURE__ */ new Date() }
       );
+      if (meeting.aiEnabled) {
+        await stopAIBot(meeting._id.toString());
+      }
       let recordingDoc = null;
       if (meeting.recordingEnabled) {
         const durationSeconds = Math.floor((Date.now() - meeting.scheduledAt.getTime()) / 1e3);
@@ -909,21 +1339,32 @@ async function meetingRoutes(fastify2) {
       await Participant.findOneAndUpdate(
         {
           meetingId: meeting._id,
-          userId: new import_mongoose8.Types.ObjectId(request.user.id),
+          userId: new import_mongoose10.Types.ObjectId(request.user.id),
           leftAt: { $exists: false }
         },
         { leftAt: /* @__PURE__ */ new Date() },
         { new: true }
       );
-      const activeParticipantCount = await Participant.countDocuments({
+      const aiBotUser = await User.findOne({ email: "ai-assistant@nexus.app" });
+      const query = {
         meetingId: meeting._id,
         leftAt: { $exists: false }
-      });
-      return reply.code(200).send({
-        success: true,
-        meetingId: meeting._id,
-        activeParticipantCount
-      });
+      };
+      if (aiBotUser) {
+        query.userId = { $ne: aiBotUser._id };
+      }
+      const activeParticipantCount = await Participant.countDocuments(query);
+      if (activeParticipantCount === 0) {
+        meeting.status = "ended";
+        await meeting.save();
+        if (meeting.aiEnabled) {
+          await stopAIBot(meeting._id.toString());
+        } else {
+          summarizeMeeting(meeting._id.toString()).catch(() => {
+          });
+        }
+      }
+      return reply.code(200).send({ success: true, message: "Left meeting successfully", activeParticipantCount });
     } catch (err) {
       return reply.code(500).send({ error: "Failed to leave meeting.", details: err.message });
     }
@@ -932,7 +1373,7 @@ async function meetingRoutes(fastify2) {
     try {
       const { page = 1, limit = 10 } = request.query;
       const skip = (parseInt(page) - 1) * parseInt(limit);
-      const userId = new import_mongoose8.Types.ObjectId(request.user.id);
+      const userId = new import_mongoose10.Types.ObjectId(request.user.id);
       const meetings = await Meeting.find({
         $or: [
           { hostId: userId },
@@ -991,7 +1432,7 @@ async function meetingRoutes(fastify2) {
   fastify2.post("/:id/summarize", { preHandler: authenticate }, async (request, reply) => {
     try {
       const { id } = request.params;
-      if (!import_mongoose8.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose10.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid meeting ID format." });
       }
       const meeting = await Meeting.findById(id);
@@ -1004,109 +1445,23 @@ async function meetingRoutes(fastify2) {
       if (meeting.aiSummary) {
         return reply.code(200).send({ summary: meeting.aiSummary });
       }
-      const simulatedTranscript = `
-        Host: Welcome everyone to the Q3 planning sync. We need to finalize the roadmap.
-        Sarah: I've prepared the front-end milestones. We'll be migrating the dashboard to React Native next week.
-        Host: Excellent. What's the timeline on the backend API alignment?
-        Michael: I'll have the Fastify endpoints ready by Thursday. We're prioritizing WebSockets.
-        Host: Great. Let's make sure Sarah and Michael sync up on the WebSocket payload structures.
-        Sarah: Will do. I'll schedule a brief 15-minute sync with Michael tomorrow.
-        Host: Perfect. That wraps up our primary agenda. Thanks everyone.
-      `;
-      const prompt = `
-        Analyze the following meeting transcript and generate a highly professional, beautifully formatted markdown Executive Summary.
-        Include:
-        - A brief 2-sentence Executive Overview.
-        - Key Decisions Made (bullet points).
-        - Action Items (with assigned owners).
-        
-        Transcript:
-        ${simulatedTranscript}
-      `;
-      let generatedSummary = "";
-      const groqKey = process.env.GROQ_API_KEY;
-      const geminiKey = process.env.GEMINI_API_KEY;
-      if (groqKey) {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "llama3-8b-8192",
-            messages: [{ role: "user", content: prompt }]
-          })
-        });
-        const data = await response.json();
-        generatedSummary = data.choices?.[0]?.message?.content || "";
-      } else if (geminiKey) {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }]
-          })
-        });
-        const data = await response.json();
-        generatedSummary = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      } else {
-        generatedSummary = `### \u{1F4DD} Executive Overview
-The team convened for the Q3 planning sync to finalize the product roadmap. The primary focus was on aligning front-end migration milestones with backend API deliverables to ensure a seamless transition.
-
-### \u{1F3AF} Key Decisions Made
-* **Frontend Migration:** The dashboard will be migrated to React Native starting next week.
-* **Backend Priorities:** Fastify API endpoints, with a specific focus on WebSockets, will be completed by Thursday.
-
-### \u{1F680} Action Items
-* **[Sarah]** - Execute the dashboard React Native migration.
-* **[Michael]** - Deliver the Fastify API endpoints (WebSockets) by Thursday.
-* **[Sarah & Michael]** - Conduct a 15-minute sync tomorrow to finalize WebSocket payload structures.`;
-      }
-      meeting.aiSummary = generatedSummary;
-      await meeting.save();
-      return reply.code(200).send({ summary: meeting.aiSummary });
+      const summaryHtml = await summarizeMeeting(meeting._id.toString());
+      return reply.code(200).send({ summary: summaryHtml });
     } catch (err) {
       return reply.code(500).send({ error: "Failed to generate AI summary.", details: err.message });
     }
   });
 }
 
-// src/models/Mail.ts
-var import_mongoose9 = __toESM(require("mongoose"));
-var mailSchema = new import_mongoose9.default.Schema({
-  workspaceId: { type: String, required: true, default: "antigraviity-hq" },
-  ownerEmail: { type: String, required: true },
-  // The user who owns this specific copy of the email
-  folder: { type: String, enum: ["inbox", "sent", "drafts", "trash", "archive"], default: "inbox" },
-  senderName: { type: String, required: true },
-  senderEmail: { type: String, required: true },
-  recipientEmails: [{ type: String, required: true }],
-  subject: { type: String, default: "(No Subject)" },
-  body: { type: String, default: "" },
-  isRead: { type: Boolean, default: false },
-  isStarred: { type: Boolean, default: false },
-  attachments: [{
-    name: String,
-    url: String,
-    size: Number,
-    type: String
-  }],
-  sentAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
-mailSchema.pre("save", function(next) {
-  this.updatedAt = /* @__PURE__ */ new Date();
-  next();
-});
-var Mail = import_mongoose9.default.model("Mail", mailSchema);
-
 // src/services/mailSockets.ts
-var import_fs = __toESM(require("fs"));
-var import_path = __toESM(require("path"));
+var import_fs3 = __toESM(require("fs"));
+var import_path2 = __toESM(require("path"));
 var activeMailSockets = /* @__PURE__ */ new Map();
 function handleMailSocket(socket, req) {
-  const logFile = import_path.default.join(__dirname, "../../socket_debug.log");
+  const logFile = import_path2.default.join(__dirname, "../../socket_debug.log");
   const log = (msg) => {
     try {
-      import_fs.default.appendFileSync(logFile, `[${(/* @__PURE__ */ new Date()).toISOString()}] ${msg}
+      import_fs3.default.appendFileSync(logFile, `[${(/* @__PURE__ */ new Date()).toISOString()}] ${msg}
 `);
     } catch (e) {
     }
@@ -1337,14 +1692,41 @@ Important: Provide ONLY the final generated email body text. Do not include intr
       return reply.code(500).send({ error: "Failed to generate suggestion", details: err.message });
     }
   });
+  fastify2.post("/export-pdf", async (request, reply) => {
+    try {
+      const { html } = request.body;
+      if (!html) {
+        return reply.code(400).send({ error: "HTML content is required" });
+      }
+      const puppeteer = require("puppeteer");
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+      });
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "networkidle0" });
+      const pdfBuffer = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "20px", right: "20px", bottom: "20px", left: "20px" }
+      });
+      await browser.close();
+      reply.header("Content-Type", "application/pdf");
+      reply.header("Content-Disposition", 'attachment; filename="export.pdf"');
+      return reply.send(pdfBuffer);
+    } catch (err) {
+      console.error("PDF Export Error:", err);
+      return reply.code(500).send({ error: "Failed to generate PDF", details: err.message });
+    }
+  });
 }
 
 // src/routes/kural.ts
-var import_mongoose12 = require("mongoose");
+var import_mongoose13 = require("mongoose");
 
 // src/models/KuralConversation.ts
-var import_mongoose10 = require("mongoose");
-var KuralConversationSchema = new import_mongoose10.Schema({
+var import_mongoose11 = require("mongoose");
+var KuralConversationSchema = new import_mongoose11.Schema({
   workspaceId: { type: String, required: true, index: true },
   type: { type: String, enum: ["direct", "channel"], default: "direct" },
   name: { type: String },
@@ -1361,12 +1743,12 @@ KuralConversationSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var KuralConversation = (0, import_mongoose10.model)("KuralConversation", KuralConversationSchema);
+var KuralConversation = (0, import_mongoose11.model)("KuralConversation", KuralConversationSchema);
 
 // src/models/KuralMessage.ts
-var import_mongoose11 = require("mongoose");
-var KuralMessageSchema = new import_mongoose11.Schema({
-  conversationId: { type: import_mongoose11.Schema.Types.ObjectId, ref: "KuralConversation", required: true, index: true },
+var import_mongoose12 = require("mongoose");
+var KuralMessageSchema = new import_mongoose12.Schema({
+  conversationId: { type: import_mongoose12.Schema.Types.ObjectId, ref: "KuralConversation", required: true, index: true },
   workspaceId: { type: String, required: true, index: true },
   senderEmail: { type: String, required: true, lowercase: true, trim: true },
   senderName: { type: String, required: true },
@@ -1374,7 +1756,7 @@ var KuralMessageSchema = new import_mongoose11.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 KuralMessageSchema.index({ conversationId: 1, createdAt: 1 });
-var KuralMessage = (0, import_mongoose11.model)("KuralMessage", KuralMessageSchema);
+var KuralMessage = (0, import_mongoose12.model)("KuralMessage", KuralMessageSchema);
 
 // src/routes/kural.ts
 var defaultWorkspaceId = "antigraviity-hq";
@@ -1443,7 +1825,7 @@ async function kuralRoutes(fastify2) {
   fastify2.get("/:workspaceId/:channelId", async (request, reply) => {
     try {
       const { workspaceId, channelId } = request.params;
-      if (!import_mongoose12.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose13.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
@@ -1473,7 +1855,7 @@ async function kuralRoutes(fastify2) {
     try {
       const { workspaceId, channelId } = request.params;
       const content = String(request.body.content || "").trim();
-      if (!import_mongoose12.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose13.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       if (!content) {
@@ -1529,7 +1911,7 @@ async function kuralRoutes(fastify2) {
   fastify2.delete("/delete-conversation/:channelId", async (request, reply) => {
     try {
       const { channelId } = request.params;
-      if (!import_mongoose12.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose13.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
@@ -1609,8 +1991,8 @@ async function memberRoutes(fastify2) {
 }
 
 // src/models/Task.ts
-var import_mongoose13 = require("mongoose");
-var TaskSchema = new import_mongoose13.Schema({
+var import_mongoose14 = require("mongoose");
+var TaskSchema = new import_mongoose14.Schema({
   workspaceId: { type: String, required: true, index: true },
   title: { type: String, required: true },
   description: { type: String },
@@ -1637,7 +2019,7 @@ TaskSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var Task = (0, import_mongoose13.model)("Task", TaskSchema);
+var Task = (0, import_mongoose14.model)("Task", TaskSchema);
 
 // src/routes/tasks.ts
 var defaultWorkspaceId3 = "antigraviity-hq";
@@ -1717,8 +2099,8 @@ async function taskRoutes(fastify2) {
 }
 
 // src/models/Document.ts
-var import_mongoose14 = require("mongoose");
-var DocumentSchema = new import_mongoose14.Schema({
+var import_mongoose15 = require("mongoose");
+var DocumentSchema = new import_mongoose15.Schema({
   workspaceId: { type: String, required: true, index: true },
   title: { type: String, required: true },
   type: {
@@ -1738,7 +2120,7 @@ DocumentSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var WorkspaceDocument = (0, import_mongoose14.model)("WorkspaceDocument", DocumentSchema);
+var WorkspaceDocument = (0, import_mongoose15.model)("WorkspaceDocument", DocumentSchema);
 
 // src/routes/docs.ts
 var defaultWorkspaceId4 = "antigraviity-hq";
@@ -1813,12 +2195,12 @@ async function docsRoutes(fastify2) {
 }
 
 // src/services/webrtc.ts
-var import_ws = require("ws");
-var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
-var JWT_SECRET = process.env.JWT_SECRET || "nexus-jwt-secret-key";
+var import_ws2 = require("ws");
+var import_jsonwebtoken4 = __toESM(require("jsonwebtoken"));
+var JWT_SECRET2 = process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var rooms = /* @__PURE__ */ new Map();
 function send(ws, payload) {
-  if (ws.readyState === import_ws.WebSocket.OPEN) {
+  if (ws.readyState === import_ws2.WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
   }
 }
@@ -1827,7 +2209,7 @@ function broadcastToRoom(meetingId, excludePeerId, payload) {
   if (!room) return;
   const raw = JSON.stringify(payload);
   for (const [pid, peer] of room.entries()) {
-    if (pid !== excludePeerId && peer.socket.readyState === import_ws.WebSocket.OPEN) {
+    if (pid !== excludePeerId && peer.socket.readyState === import_ws2.WebSocket.OPEN) {
       peer.socket.send(raw);
     }
   }
@@ -1851,7 +2233,7 @@ function handleWebRtcSignalling(ws) {
       }
       let decoded;
       try {
-        decoded = import_jsonwebtoken3.default.verify(token, JWT_SECRET);
+        decoded = import_jsonwebtoken4.default.verify(token, JWT_SECRET2);
       } catch {
         return send(ws, { type: "error", message: "Invalid token" });
       }
@@ -1965,25 +2347,38 @@ var import_bcrypt4 = __toESM(require("bcrypt"));
 var DEFAULT_EMAIL = "admin@antigraviity.com";
 var DEFAULT_PASSWORD = "password123";
 async function ensureDefaultUser() {
-  const existing = await User.findOne({ email: DEFAULT_EMAIL });
-  if (existing) {
-    return;
-  }
   const salt = await import_bcrypt4.default.genSalt(12);
-  const passwordHash = await import_bcrypt4.default.hash(DEFAULT_PASSWORD, salt);
-  await User.create({
-    name: "Nexus Administrator",
-    email: DEFAULT_EMAIL,
-    passwordHash,
-    avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent("Nexus Administrator")}`,
-    mfaEnabled: false,
-    role: "company-admin",
-    workspaceId: "antigraviity-hq"
-  });
+  const existing = await User.findOne({ email: DEFAULT_EMAIL });
+  if (!existing) {
+    const passwordHash = await import_bcrypt4.default.hash(DEFAULT_PASSWORD, salt);
+    await User.create({
+      name: "Nexus Administrator",
+      email: DEFAULT_EMAIL,
+      passwordHash,
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent("Nexus Administrator")}`,
+      mfaEnabled: false,
+      role: "company-admin",
+      workspaceId: "antigraviity-hq"
+    });
+  }
+  const AI_EMAIL = "ai-assistant@nexus.app";
+  const aiExisting = await User.findOne({ email: AI_EMAIL });
+  if (!aiExisting) {
+    const aiPasswordHash = await import_bcrypt4.default.hash("AI_SECURE_PASSWORD_123!@#", salt);
+    await User.create({
+      name: "Nexus AI Assistant",
+      email: AI_EMAIL,
+      passwordHash: aiPasswordHash,
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=nexusai`,
+      mfaEnabled: false,
+      role: "company-admin",
+      workspaceId: "antigraviity-hq"
+    });
+  }
 }
 
 // src/index.ts
-import_dotenv2.default.config({ path: import_path2.default.join(__dirname, "../.env") });
+import_dotenv2.default.config({ path: import_path3.default.join(__dirname, "../.env") });
 import_dotenv2.default.config();
 var PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 var MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/nexus-zoom";
@@ -2041,13 +2436,13 @@ async function bootstrap() {
   await server.register(import_cors.default, {
     origin: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Cache-Control", "Pragma"]
+    allowedHeaders: ["Content-Type", "Authorization", "Cache-Control", "Pragma", "x-speaker-name"]
   });
   server.addHook("onRequest", async (request, reply) => {
     if (!ENABLE_SOCKET_FILE_LOGS) return;
     try {
-      const logFile = import_path2.default.join(__dirname, "../../socket_debug.log");
-      import_fs2.default.appendFileSync(logFile, `[${(/* @__PURE__ */ new Date()).toISOString()}] [onRequest Hook] URL: "${request.url}", Method: "${request.method}", IP: "${request.ip}", Headers: ${JSON.stringify(request.headers)}
+      const logFile = import_path3.default.join(__dirname, "../../socket_debug.log");
+      import_fs4.default.appendFileSync(logFile, `[${(/* @__PURE__ */ new Date()).toISOString()}] [onRequest Hook] URL: "${request.url}", Method: "${request.method}", IP: "${request.ip}", Headers: ${JSON.stringify(request.headers)}
 `);
     } catch (e) {
       console.error("Failed to write to socket_debug.log inside onRequest hook:", e);
@@ -2056,15 +2451,19 @@ async function bootstrap() {
   server.addHook("onResponse", async (request, reply) => {
     if (!ENABLE_SOCKET_FILE_LOGS) return;
     try {
-      const logFile = import_path2.default.join(__dirname, "../../socket_debug.log");
+      const logFile = import_path3.default.join(__dirname, "../../socket_debug.log");
       const entry = `[${(/* @__PURE__ */ new Date()).toISOString()}] [onResponse Hook] URL: "${request.url}", Method: "${request.method}", Status: "${reply.statusCode}", ResponseTimeMs: "${reply.getResponseTime ? reply.getResponseTime() : "n/a"}"
 `;
-      import_fs2.default.appendFileSync(logFile, entry);
+      import_fs4.default.appendFileSync(logFile, entry);
     } catch (e) {
       console.error("Failed to write to socket_debug.log inside onResponse hook:", e);
     }
   });
   await server.register(import_websocket.default);
+  server.addContentTypeParser("audio/m4a", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
+  server.addContentTypeParser("audio/webm", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
+  server.addContentTypeParser("audio/mp4", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
+  server.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
   await server.register(authRoutes, { prefix: "/api/auth" });
   await server.register(meetingRoutes, { prefix: "/api/meetings" });
   await server.register(mailRoutes, { prefix: "/api/mail" });
@@ -2101,6 +2500,10 @@ async function bootstrap() {
     server.log.info("New secure Mail Socket connection initiated.");
     const ws = connection.socket || connection;
     handleMailSocket(ws, req);
+  });
+  server.get("/ws/audio", { websocket: true }, (connection, req) => {
+    const ws = connection.socket || connection;
+    handleAudioSocket(ws);
   });
   server.get("/health", async () => {
     const connected = isMongoConnected();

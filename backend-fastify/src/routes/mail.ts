@@ -240,4 +240,34 @@ Important: Provide ONLY the final generated email body text. Do not include intr
       return reply.code(500).send({ error: 'Failed to generate suggestion', details: err.message });
     }
   });
+
+  // 9. Export HTML to PDF
+  fastify.post('/export-pdf', async (request: any, reply) => {
+    try {
+      const { html } = request.body;
+      if (!html) {
+        return reply.code(400).send({ error: 'HTML content is required' });
+      }
+      const puppeteer = require('puppeteer');
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      });
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
+      });
+      await browser.close();
+
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', 'attachment; filename="export.pdf"');
+      return reply.send(pdfBuffer);
+    } catch (err: any) {
+      console.error('PDF Export Error:', err);
+      return reply.code(500).send({ error: 'Failed to generate PDF', details: err.message });
+    }
+  });
 }
