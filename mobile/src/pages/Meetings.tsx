@@ -107,6 +107,8 @@ export default function Meetings() {
   const remotePeerKeyRef = React.useRef<Map<string, string>>(new Map());
   const iceCandidateBufferRef = React.useRef<Map<string, any[]>>(new Map());
   const createPeerConnectionRef = React.useRef<any>(null);
+  const shouldInitiateOfferRef = React.useRef<(peerId: string) => boolean>(() => true);
+  const sendSignalRef = React.useRef<(type: string, data: any) => void>(() => {});
   const localStreamRef = React.useRef<any>(null);
   const intentionalCloseRef = React.useRef(false);
 
@@ -374,7 +376,9 @@ export default function Meetings() {
 
   React.useEffect(() => {
     createPeerConnectionRef.current = createPeerConnection;
-  }, [createPeerConnection]);
+    shouldInitiateOfferRef.current = shouldInitiateOffer;
+    sendSignalRef.current = sendSignal;
+  }, [createPeerConnection, shouldInitiateOffer, sendSignal]);
 
   const syncRoomParticipants = React.useCallback(async (room: any) => {
     const meetingId = room?.signalingId || room?.id || room?.roomId;
@@ -488,9 +492,11 @@ export default function Meetings() {
                 return { id, peerId: p.peerId, userId: p.userId, name: p.name };
               });
             mergeRemotePeers(peers);
+            const initiateOffer = shouldInitiateOfferRef.current;
+            const createPC = createPeerConnectionRef.current;
             peers.forEach((peer: RemotePeer) => {
-              if (peer.peerId && shouldInitiateOffer(peer.peerId)) {
-                createPeerConnection(peer.peerId, peer, true).catch((err) => console.warn('[WebRTC] Offer failed:', err));
+              if (peer.peerId && initiateOffer(peer.peerId) && createPC) {
+                createPC(peer.peerId, peer, true).catch((err: any) => console.warn('[WebRTC] Offer failed:', err));
               }
             });
             console.log('[Signaling] Joined room. Existing peers:', peers.length);
@@ -510,9 +516,11 @@ export default function Meetings() {
             if (msg.peerId) remotePeerKeyRef.current.set(msg.peerId, id);
             if (String(msg.userId || '') !== localUserId) {
               setRemotePeers(prev => [...prev.filter(p => p.id !== id), { id, peerId: msg.peerId, userId: msg.userId, name: msg.name }]);
-              if (msg.peerId && shouldInitiateOffer(msg.peerId)) {
-                const createPC = createPeerConnectionRef.current || createPeerConnection;
-                createPC(msg.peerId, { id, peerId: msg.peerId, userId: msg.userId, name: msg.name }, true).catch((err: any) => console.warn('[WebRTC] Offer failed:', err));
+              if (msg.peerId && shouldInitiateOfferRef.current(msg.peerId)) {
+                const createPC = createPeerConnectionRef.current;
+                if (createPC) {
+                  createPC(msg.peerId, { id, peerId: msg.peerId, userId: msg.userId, name: msg.name }, true).catch((err: any) => console.warn('[WebRTC] Offer failed:', err));
+                }
               }
             }
             console.log('[Signaling] Peer joined:', msg.name);
@@ -538,7 +546,8 @@ export default function Meetings() {
               peerId: fromPeerId,
               name: 'Participant',
             };
-            createPeerConnection(fromPeerId, peer, false).then(async (pc) => {
+            const createPC = createPeerConnectionRef.current;
+            (createPC ? createPC(fromPeerId, peer, false) : createPeerConnection(fromPeerId, peer, false)).then(async (pc: any) => {
               if (!pc) return;
               const RTCSdpClass = getRTCSessionDescriptionClass();
               const desc = RTCSdpClass ? new RTCSdpClass(msg.sdp) : msg.sdp;
@@ -556,7 +565,8 @@ export default function Meetings() {
               try {
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
-                sendSignal('answer', { targetPeerId: fromPeerId, sdp: answer });
+                const signal = sendSignalRef.current;
+                signal('answer', { targetPeerId: fromPeerId, sdp: answer });
               } catch (err) {
                 console.warn(`[WebRTC] createAnswer/setLocal failed for ${fromPeerId}:`, err);
               }

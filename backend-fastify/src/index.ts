@@ -131,6 +131,23 @@ async function bootstrap() {
   await server.register(taskRoutes, { prefix: '/api/tasks' });
   await server.register(docsRoutes, { prefix: '/api/docs' });
 
+  // 3b. ICE / TURN server config endpoint (public — returns STUN + optional TURN)
+  server.get('/api/meet/ice-servers', async () => {
+    const servers: Array<{ urls: string | string[]; username?: string; credential?: string }> = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ];
+    const turnUrl = process.env.TURN_URL;
+    if (turnUrl) {
+      servers.push({
+        urls: turnUrl,
+        username: process.env.TURN_USERNAME || '',
+        credential: process.env.TURN_CREDENTIAL || '',
+      });
+    }
+    return servers;
+  });
+
   // 4. ATTACH WEBRTC SIGNALLING & MAIL SOCKET CHANNELS
   server.get('/ws/webrtc', { websocket: true }, (connection: any, req: any) => {
     server.log.info('New secure WebRTC client socket handshake initiated.');

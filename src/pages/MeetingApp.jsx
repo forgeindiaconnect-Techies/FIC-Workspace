@@ -1,9 +1,8 @@
 import { Buffer } from 'buffer';
 import process from 'process';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import io from 'socket.io-client';
-import { getApiUrl, getSocketUrl } from '../api';
+import { getApiUrl } from '../api';
 import MeetingLayout from '../components/MeetingLayout';
 import StarRating from '../components/StarRating';
 import { 
@@ -123,17 +122,43 @@ const MeetingApp = () => {
   const [roomLocked, setRoomLocked] = useState(false);
   
   // Refs
-  const socketRef = useRef();
+  const wsRef = useRef(null);
+  const peerIdRef = useRef(null);
+  const meetingIdRef = useRef(null);
+  const intentionalCloseRef = useRef(false);
   const userVideo = useRef();
   const peersRef = useRef([]);
   const streamRef = useRef();
   const screenStreamRef = useRef();
   const candidateQueue = useRef(new Map());
+  const iceCandidateBufferRef = useRef(new Map());
   
   const audioContextRef = useRef();
   const audioDestinationRef = useRef();
   const mediaRecorderRef = useRef();
   const recordedChunksRef = useRef([]);
+
+  const sendWs = useCallback((type, data) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type, data }));
+    }
+  }, []);
+
+  const shouldInitiateOffer = useCallback((remotePeerId) => {
+    const myId = peerIdRef.current;
+    if (!myId || !remotePeerId) return true;
+    return myId.localeCompare(remotePeerId) > 0;
+  }, []);
+
+  const buildWsUrl = () => {
+    const API_URL = getApiUrl('/');
+    let wsBase = API_URL;
+    if (wsBase.startsWith('https://')) wsBase = wsBase.replace('https://', 'wss://');
+    else if (wsBase.startsWith('http://')) wsBase = wsBase.replace('http://', 'ws://');
+    else wsBase = `wss://${wsBase}`;
+    wsBase = wsBase.replace(/\/+$/, '');
+    return `${wsBase}/ws/webrtc`;
+  };
 
   const copyMeetingInvite = () => {
     const inviteLink = `${window.location.origin}/w/${workspaceId}/meet/room/${id}?pwd=${password}&intent=join`;
@@ -187,15 +212,39 @@ const MeetingApp = () => {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const createPeerConnection = async (userID, stream, name) => {
+  const createPeerConnection = async (targetPeerId, stream, name) => {
     const pc = new RTCPeerConnection({ iceServers });
     pc.onicecandidate = (event) => {
-      if (event.candidate) socketRef.current.emit("ice-candidate", { to: userID, candidate: event.candidate });
+      if (event.candidate) sendWs('ice-candidate', { targetPeerId, candidate: event.candidate });
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[ICE] state for ${targetPeerId}: ${pc.iceConnectionState}`);
+      if (pc.iceConnectionState === 'failed') {
+        console.warn(`[ICE] Connection failed for ${targetPeerId}, attempting ICE restart...`);
+        setTimeout(async () => {
+          try {
+            const newOffer = await pc.createOffer({ iceRestart: true });
+            await pc.setLocalDescription(newOffer);
+            sendWs('offer', { targetPeerId, sdp: newOffer });
+          } catch (err) {
+            console.warn(`[ICE] Restart failed for ${targetPeerId}:`, err);
+          }
+        }, 1000);
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      console.log(`[PC] connection state for ${targetPeerId}: ${state}`);
+      if (state === 'connected' || state === 'disconnected' || state === 'failed') {
+        setPeers(prev => prev.map(p => p.peerID === targetPeerId ? { ...p, connectionState: state } : p));
+      }
     };
     
     pc.ontrack = (event) => {
       const remoteStream = event.streams[0];
-      setPeers(prev => prev.map(p => p.peerID === userID ? { ...p, stream: remoteStream } : p));
+      setPeers(prev => prev.map(p => p.peerID === targetPeerId ? { ...p, stream: remoteStream } : p));
       
       // Setup Audio Routing
       if (audioContextRef.current && audioDestinationRef.current) {
@@ -209,7 +258,7 @@ const MeetingApp = () => {
 
       // Auto-add to active speakers if they are sending audio
       if (remoteStream.getAudioTracks().length > 0) {
-         setActiveSpeakers(prev => [...new Set([...prev, userID])].slice(-4));
+         setActiveSpeakers(prev => [...new Set([...prev, targetPeerId])].slice(-4));
       }
     };
 
@@ -228,7 +277,11 @@ const MeetingApp = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
-    if (socketRef.current) socketRef.current.disconnect();
+    intentionalCloseRef.current = true;
+    if (wsRef.current) {
+      sendWs('leave', {});
+      wsRef.current.close();
+    }
     if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
   };
 
@@ -262,32 +315,203 @@ const MeetingApp = () => {
     }
   };
 
-  const handleJoinCall = () => {
-    console.log(`📡 [CLIENT] Attempting to join call: ID=${id}, Intent=${location.state?.intent || 'join'}`);
-    if (socketRef.current?.connected) {
-      const queryParams = new URLSearchParams(window.location.search);
-      const intent = location.state?.intent || queryParams.get('intent') || 'join';
-      const cleanRoomId = id.trim().replace(/-/g, '').toUpperCase();
-      
-      setIsVerifying(true);
-      console.log(`📡 [CLIENT] Emitting join room: ${cleanRoomId} with intent ${intent}`);
-      socketRef.current.emit("join room", cleanRoomId, password, intent, { name: auth.user, email: auth.email });
-    } else {
-      console.error("❌ [CLIENT] Socket not connected!");
-      setRoomError("Signaling server not connected. Please refresh the page.");
+  const connectSignaling = useCallback((signalingRoomId, token) => {
+    intentionalCloseRef.current = false;
+    const wsUrl = buildWsUrl();
+    console.log('[Signaling] Connecting to:', wsUrl, 'room:', signalingRoomId);
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log('[Signaling] Connected, joining room:', signalingRoomId);
+      meetingIdRef.current = signalingRoomId;
+      ws.send(JSON.stringify({
+        type: 'join',
+        data: { token, meetingId: signalingRoomId }
+      }));
+    };
+
+    ws.onmessage = async (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'joined') {
+          peerIdRef.current = msg.peerId;
+          setRoomError(null);
+          setIsVerifying(false);
+          setAppState('in-call');
+          const peers = (msg.existingPeers || []).map(p => ({
+            peerId: p.peerId,
+            userId: p.userId,
+            name: p.name,
+          }));
+          // Initiate offers with peers whose ID sorts higher (avoid SDP glare)
+          for (const peer of peers) {
+            if (shouldInitiateOffer(peer.peerId)) {
+              const pc = await createPeerConnection(peer.peerId, streamRef.current, peer.name);
+              if (pc) {
+                peersRef.current.push({ peerID: peer.peerId, pc });
+                setPeers(prev => [...prev, { peerID: peer.peerId, pc, stream: null, name: peer.name }]);
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                sendWs('offer', { targetPeerId: peer.peerId, sdp: offer });
+              }
+            } else {
+              // The other peer will send the offer — just register the peer
+              setPeers(prev => [...prev, { peerID: peer.peerId, pc: null, stream: null, name: peer.name }]);
+            }
+          }
+        }
+        if (msg.type === 'peer-joined') {
+          if (msg.peerId === peerIdRef.current) return;
+          if (peersRef.current.find(p => p.peerID === msg.peerId)) return;
+          setPeers(prev => [...prev, { peerID: msg.peerId, pc: null, stream: null, name: msg.name || 'Participant' }]);
+          if (shouldInitiateOffer(msg.peerId)) {
+            const pc = await createPeerConnection(msg.peerId, streamRef.current, msg.name || 'Participant');
+            if (pc) {
+              peersRef.current.push({ peerID: msg.peerId, pc });
+              setPeers(prev => prev.map(p => p.peerID === msg.peerId ? { ...p, pc } : p));
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              sendWs('offer', { targetPeerId: msg.peerId, sdp: offer });
+            }
+          }
+        }
+        if (msg.type === 'offer') {
+          const fromPeerId = msg.fromPeerId;
+          let pc = peersRef.current.find(p => p.peerID === fromPeerId)?.pc;
+          if (!pc) {
+            pc = await createPeerConnection(fromPeerId, streamRef.current, 'Participant');
+            peersRef.current.push({ peerID: fromPeerId, pc });
+            setPeers(prev => [...prev, { peerID: fromPeerId, pc, stream: null, name: 'Participant' }]);
+          }
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+          } catch (err) {
+            console.warn('[WebRTC] setRemoteDescription (offer) failed:', err);
+            return;
+          }
+          const buffered = iceCandidateBufferRef.current.get(fromPeerId) || [];
+          iceCandidateBufferRef.current.delete(fromPeerId);
+          for (const c of buffered) {
+            try { await pc.addIceCandidate(c); } catch (e) {}
+          }
+          try {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            sendWs('answer', { targetPeerId: fromPeerId, sdp: answer });
+          } catch (err) {
+            console.warn('[WebRTC] createAnswer/setLocal failed:', err);
+          }
+        }
+        if (msg.type === 'answer') {
+          const fromPeerId = msg.fromPeerId;
+          const pc = peersRef.current.find(p => p.peerID === fromPeerId)?.pc;
+          if (pc) {
+            try {
+              await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+            } catch (err) {
+              console.warn('[WebRTC] setRemoteDescription (answer) failed:', err);
+              return;
+            }
+            const buffered = iceCandidateBufferRef.current.get(fromPeerId) || [];
+            iceCandidateBufferRef.current.delete(fromPeerId);
+            for (const c of buffered) {
+              try { await pc.addIceCandidate(c); } catch (e) {}
+            }
+          }
+        }
+        if (msg.type === 'ice-candidate') {
+          const fromPeerId = msg.fromPeerId;
+          const item = peersRef.current.find(p => p.peerID === fromPeerId);
+          const pc = item?.pc;
+          if (pc && pc.remoteDescription) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch (e) {}
+          } else {
+            const buf = iceCandidateBufferRef.current.get(fromPeerId) || [];
+            buf.push(msg.candidate);
+            iceCandidateBufferRef.current.set(fromPeerId, buf);
+          }
+        }
+        if (msg.type === 'peer-left') {
+          const pid = msg.peerId;
+          const peerObj = peersRef.current.find(p => p.peerID === pid);
+          if (peerObj?.pc) try { peerObj.pc.close(); } catch {}
+          peersRef.current = peersRef.current.filter(p => p.peerID !== pid);
+          setPeers(prev => prev.filter(p => p.peerID !== pid));
+        }
+        if (msg.type === 'error') {
+          console.warn('[Signaling] Server error:', msg.message);
+          setRoomError(msg.message);
+          setIsVerifying(false);
+        }
+      } catch (err) {
+        console.warn('[Signaling] Parse error:', err);
+      }
+    };
+
+    ws.onerror = (e) => {
+      console.warn('[Signaling] WS error:', e?.message || e);
+      setRoomError('Signaling server connection failed.');
+      setIsVerifying(false);
+    };
+
+    ws.onclose = (e) => {
+      console.log('[Signaling] WS closed. Code:', e?.code);
+      peerIdRef.current = null;
+      if (!intentionalCloseRef.current && appState === 'in-call') {
+        console.log('[Signaling] Unexpected close, will reconnect...');
+        setTimeout(() => {
+          if (meetingIdRef.current) {
+            const token = localStorage.getItem('token');
+            if (token) connectSignaling(meetingIdRef.current, token);
+          }
+        }, 3000);
+      }
+    };
+  }, [appState, createPeerConnection, sendWs, shouldInitiateOffer]);
+
+  const handleJoinCall = async () => {
+    console.log(`📡 [CLIENT] Attempting to join call: ID=${id}`);
+    setIsVerifying(true);
+    setRoomError(null);
+
+    const cleanCode = id.trim().replace(/-/g, '').toUpperCase();
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+      setRoomError('Authentication token not found. Please log in again.');
+      setIsVerifying(false);
+      return;
+    }
+
+    try {
+      // Resolve meeting via REST to get MongoDB _id
+      const query = password ? `?passcode=${encodeURIComponent(password)}` : '';
+      const res = await fetch(getApiUrl(`/api/meetings/join/${encodeURIComponent(cleanCode)}${query}`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to resolve meeting');
+      }
+      const signalingRoomId = data._id || data.meetingId;
+      if (!signalingRoomId) {
+        throw new Error('Meeting resolved but no valid signaling ID returned.');
+      }
+      setMeetingMetadata(data);
+
+      // Connect WebSocket signaling with the MongoDB _id
+      connectSignaling(signalingRoomId, token);
+    } catch (err) {
+      console.error('[Join] Failed:', err);
+      setRoomError(err.message || 'Could not join meeting.');
+      setIsVerifying(false);
     }
   };
 
   const sendChatMessage = () => {
     if (!chatInput.trim()) return;
-    const roomID = `${workspaceId}-${code}`.toUpperCase();
     const msg = { user: auth.user, text: chatInput, time: new Date().toLocaleTimeString() };
-    socketRef.current.emit("send room message", { 
-      roomID, 
-      workspaceId,
-      senderEmail: auth.email,
-      message: msg 
-    });
     setMeetingMessages(prev => [...prev, msg]);
     setChatInput('');
   };
@@ -345,146 +569,6 @@ const MeetingApp = () => {
           setPermissionError(err.name);
         });
     }
-  }, [appState]);
-  // Handle Registration / Metadata Fetching
-  useEffect(() => {
-    const queryParams = new URLSearchParams(window.location.search);
-    const intent = queryParams.get('intent') || 'join';
-    const cleanRoomId = id.trim().replace(/-/g, '').toUpperCase();
-
-    if (intent === 'create') {
-      // Register meeting in DB
-      fetch(getApiUrl('/api/meetings/register'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspaceId,
-          title: 'Nexus Sync',
-          host: auth.user,
-          hostEmail: auth.email,
-          roomId: cleanRoomId,
-          password: password
-        })
-      })
-      .then(res => res.json())
-      .then(data => setMeetingMetadata(data))
-      .catch(err => console.error("Registration failed:", err));
-    } else {
-      // Fetch existing meeting details
-      fetch(getApiUrl(`/api/meetings?workspaceId=${workspaceId}`))
-        .then(res => res.json())
-        .then(data => {
-          const mtg = data.find(m => m.roomId === cleanRoomId);
-          if (mtg) setMeetingMetadata(mtg);
-        })
-        .catch(err => console.error("Metadata fetch failed:", err));
-    }
-  }, [id, workspaceId]);
-
-  useEffect(() => {
-    if (socketRef.current?.connected) return;
-    socketRef.current = io(getSocketUrl(), { 
-      transports: ['websocket', 'polling'],
-      reconnection: true
-    });
-    const cleanRoomId = id.trim().replace(/-/g, '').toUpperCase();
-    socketRef.current.on("connect", () => {
-       console.log("📡 [SOCKET] Connected to signaling server");
-    });
-    socketRef.current.on("password status", ({ success, isFirst, waiting, error }) => {
-      if (!success) {
-        setRoomError(error);
-        setIsVerifying(false);
-        setAppState('lobby');
-      } else {
-        setRoomError(null);
-        if (waiting) {
-           setIsWaiting(true);
-        } else {
-           if (isFirst) setIsHost(true);
-           setAppState('in-call');
-           // Initiate peer discovery after joining
-           socketRef.current.emit("request users", cleanRoomId);
-        }
-        setIsVerifying(false);
-      }
-    });
-
-    socketRef.current.on("waiting-user", (user) => {
-       setWaitingQueue(prev => [...prev, user]);
-    });
-
-    socketRef.current.on("admitted", () => {
-       setIsWaiting(false);
-       setAppState('in-call');
-    });
-
-    socketRef.current.on("room-security-update", ({ isLocked }) => {
-       setRoomLocked(isLocked);
-    });
-    socketRef.current.on("all users", async users => {
-      for (const userID of users) {
-        if (peersRef.current.find(p => p.peerID === userID)) continue;
-        const pc = await createPeerConnection(userID, streamRef.current);
-        peersRef.current.push({ peerID: userID, pc });
-        setPeers(prev => [...prev, { peerID: userID, pc, stream: null, name: 'Guest' }]);
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socketRef.current.emit("sending signal", { 
-          userToSignal: userID, 
-          callerID: socketRef.current.id, 
-          signal: offer,
-          name: auth.user 
-        });
-      }
-    });
-    socketRef.current.on("user joined", async payload => {
-      if (peersRef.current.find(p => p.peerID === payload.callerID)) return;
-      const pc = await createPeerConnection(payload.callerID, streamRef.current);
-      peersRef.current.push({ peerID: payload.callerID, pc });
-      setPeers(prev => [...prev, { peerID: payload.callerID, pc, stream: null, name: payload.name || 'Guest' }]);
-      await pc.setRemoteDescription(new RTCSessionDescription(payload.signal));
-      const queued = candidateQueue.current.get(payload.callerID) || [];
-      for (const candidate of queued) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {}
-      }
-      candidateQueue.current.delete(payload.callerID);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socketRef.current.emit("returning signal", { 
-        signal: answer, 
-        callerID: payload.callerID,
-        name: auth.user 
-      });
-    });
-    socketRef.current.on("receiving returned signal", async payload => {
-      const item = peersRef.current.find(p => p.peerID === payload.id);
-      if (item) {
-        setPeers(prev => prev.map(p => p.peerID === payload.id ? { ...p, name: payload.name || p.name } : p));
-        await item.pc.setRemoteDescription(new RTCSessionDescription(payload.signal));
-        const queued = candidateQueue.current.get(payload.id) || [];
-        for (const candidate of queued) {
-          try { await item.pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {}
-        }
-        candidateQueue.current.delete(payload.id);
-      }
-    });
-    socketRef.current.on("ice-candidate", async payload => {
-      const item = peersRef.current.find(p => p.peerID === payload.from);
-      if (item && item.pc.remoteDescription) {
-        try { await item.pc.addIceCandidate(new RTCIceCandidate(payload.candidate)); } catch (e) {}
-      } else {
-        if (!candidateQueue.current.has(payload.from)) candidateQueue.current.set(payload.from, []);
-        candidateQueue.current.get(payload.from).push(payload.candidate);
-      }
-    });
-    socketRef.current.on("user left", id => {
-       const peerObj = peersRef.current.find(p => p.peerID === id);
-       if (peerObj) peerObj.pc.close();
-       peersRef.current = peersRef.current.filter(p => p.peerID !== id);
-       setPeers(prev => prev.filter(p => p.peerID !== id));
-    });
-    socketRef.current.on("room message", msg => setMeetingMessages(prev => [...prev, msg]));
   }, [appState]);
 
   return (
@@ -737,14 +821,10 @@ const MeetingApp = () => {
                                <p className="text-[10px] text-zinc-500">Block new entries</p>
                             </div>
                          </div>
-                         <button 
-                            onClick={() => {
-                               const newLock = !roomLocked;
-                               setRoomLocked(newLock);
-                               socketRef.current.emit("toggle-lock", { roomID: id, isLocked: newLock });
-                            }}
-                            className={`w-10 h-6 rounded-full transition-all relative ${roomLocked ? 'bg-indigo-600' : 'bg-zinc-800'}`}
-                         >
+                          <button 
+                             onClick={() => setRoomLocked(p => !p)}
+                             className={`w-10 h-6 rounded-full transition-all relative ${roomLocked ? 'bg-indigo-600' : 'bg-zinc-800'}`}
+                          >
                             <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${roomLocked ? 'right-1' : 'left-1'}`} />
                          </button>
                       </div>
@@ -761,13 +841,10 @@ const MeetingApp = () => {
                                      <p className="text-[10px] font-bold text-white">{user.name}</p>
                                   </div>
                                   <div className="flex items-center gap-1">
-                                     <button 
-                                        onClick={() => {
-                                           socketRef.current.emit("admit-user", { roomID: id, userId: user.id });
-                                           setWaitingQueue(q => q.filter(u => u.id !== user.id));
-                                        }}
-                                        className="px-2 py-1 bg-emerald-500 text-white text-[8px] font-black uppercase rounded-lg"
-                                     >Admit</button>
+                                      <button 
+                                         onClick={() => setWaitingQueue(q => q.filter(u => u.id !== user.id))}
+                                         className="px-2 py-1 bg-emerald-500 text-white text-[8px] font-black uppercase rounded-lg"
+                                      >Admit</button>
                                   </div>
                                </div>
                             ))}
