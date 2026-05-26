@@ -328,7 +328,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 5b. START AI BOT (Host only)
+  // 5b. START AI BOT (any authenticated participant can enable)
   fastify.post('/:id/start-ai', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as any;
@@ -337,19 +337,57 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       const meeting = await Meeting.findById(id);
       if (!meeting) return reply.code(404).send({ error: 'Meeting room not found.' });
 
-      if (meeting.hostId.toString() !== request.user!.id) {
-        return reply.code(403).send({ error: 'Forbidden: Only the host can enable AI.' });
+      // Already launched — don't double-start
+      if (meeting.aiEnabled) {
+        return reply.code(200).send({ success: true, message: 'AI Assistant already active' });
       }
 
       meeting.aiEnabled = true;
       await meeting.save();
 
-      // Launch headless bot
+      // Launch direct-WS bot (no browser needed)
       launchAIBot(meeting._id.toString(), meeting.joinCode, frontendUrl || process.env.WEB_APP_URL || 'http://localhost:3000');
 
       return reply.code(200).send({ success: true, message: 'AI Assistant launched' });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to start AI Assistant.', details: err.message });
+    }
+  });
+
+  // 5c. UPLOAD AUDIO CHUNK FROM MOBILE (expo-av recording — raw binary body)
+  fastify.post('/:id/audio-chunk', {
+    preHandler: authenticate,
+    config: { rawBody: true }
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as any;
+      const speakerName = (request.headers['x-speaker-name'] as string) || request.user!.name || 'User';
+      const userId = request.user!.id;
+      const contentType = request.headers['content-type'] || 'audio/m4a';
+
+      const rawBody = (request as any).rawBody || (request.body as Buffer);
+      if (!rawBody || !Buffer.isBuffer(rawBody) || rawBody.length < 512) {
+        return reply.code(400).send({ error: 'No valid audio data received.' });
+      }
+
+      const ext = contentType.includes('webm') ? 'webm' : 'm4a';
+      const os = await import('os');
+      const fsMod = await import('fs');
+      const pathMod = await import('path');
+      const { transcribeChunk } = await import('../services/transcription');
+
+      const fileName = `chunk_${id}_${userId}_${Date.now()}.${ext}`;
+      const filePath = pathMod.join(os.tmpdir(), fileName);
+      fsMod.writeFileSync(filePath, rawBody);
+
+      console.log(`[AudioChunk] Saved ${rawBody.length} bytes → ${filePath}`);
+
+      const text = await transcribeChunk(id, userId, speakerName, filePath);
+      try { fsMod.unlinkSync(filePath); } catch {}
+
+      return reply.code(200).send({ success: true, text: text || '' });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to process audio chunk.', details: err.message });
     }
   });
 
@@ -455,11 +493,16 @@ export async function meetingRoutes(fastify: FastifyInstance) {
 
       const activeParticipantCount = await Participant.countDocuments(query);
 
-      if (activeParticipantCount === 0 && meeting.aiEnabled) {
-        // Everyone (except possibly the bot) has left, terminate bot and trigger summary
+      if (activeParticipantCount === 0) {
+        // Everyone (except possibly the bot) has left — end meeting and trigger summary
         meeting.status = 'ended';
         await meeting.save();
-        await stopAIBot(meeting._id.toString());
+        if (meeting.aiEnabled) {
+          await stopAIBot(meeting._id.toString());
+        } else {
+          // Even without AI bot, trigger summarization if there are any transcripts
+          summarizeMeeting(meeting._id.toString()).catch(() => {});
+        }
       }
 
       return reply.code(200).send({ success: true, message: 'Left meeting successfully', activeParticipantCount });

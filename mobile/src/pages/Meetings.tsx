@@ -228,6 +228,77 @@ export default function Meetings() {
     }
   }, [aiAssistantActive, localStream]);
 
+  // MOBILE AUDIO RECORDING — uses expo-av to record and upload chunks for AI transcription
+  const mobileRecordingRef = React.useRef<Audio.Recording | null>(null);
+  const mobileUploadTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  React.useEffect(() => {
+    if (Platform.OS === 'web') return; // Web uses MediaRecorder approach above
+    if (!aiAssistantActive || !activeRoom) return;
+
+    let stopped = false;
+    const meetingId = activeRoom.id || activeRoom.signalingId;
+    const speakerName = user?.name || 'User';
+
+    const startRecording = async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+          interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        });
+
+        const recording = new Audio.Recording();
+        await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+        await recording.startAsync();
+        mobileRecordingRef.current = recording;
+        console.log('[MobileAudio] Recording started for meeting', meetingId);
+      } catch (err) {
+        console.warn('[MobileAudio] Failed to start recording:', err);
+      }
+    };
+
+    const flushChunk = async () => {
+      if (stopped || isMutedRef.current || !mobileRecordingRef.current) return;
+      try {
+        // Stop current segment and upload it
+        await mobileRecordingRef.current.stopAndUnloadAsync();
+        const uri = mobileRecordingRef.current.getURI();
+        mobileRecordingRef.current = null;
+
+        if (uri && meetingId) {
+          console.log('[MobileAudio] Uploading chunk from', uri);
+          api.meetings.uploadAudioChunk(meetingId, uri, speakerName)
+            .then(res => console.log('[MobileAudio] Chunk transcribed:', res?.text?.slice(0, 60)))
+            .catch(e => console.warn('[MobileAudio] Upload failed:', e.message));
+        }
+
+        // Immediately start next recording segment
+        if (!stopped) {
+          await startRecording();
+        }
+      } catch (e: any) {
+        console.warn('[MobileAudio] Flush error:', e.message);
+        if (!stopped) await startRecording();
+      }
+    };
+
+    startRecording();
+    // Upload a chunk every 30 seconds
+    mobileUploadTimerRef.current = setInterval(flushChunk, 30000);
+
+    return () => {
+      stopped = true;
+      if (mobileUploadTimerRef.current) {
+        clearInterval(mobileUploadTimerRef.current);
+        mobileUploadTimerRef.current = null;
+      }
+      // Final flush on cleanup
+      flushChunk().catch(() => {});
+    };
+  }, [aiAssistantActive, activeRoom]);
+
   React.useEffect(() => {
     if (Platform.OS === 'web') {
       (window as any).isAIBot = false;

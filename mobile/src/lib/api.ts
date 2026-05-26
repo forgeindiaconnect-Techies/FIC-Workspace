@@ -538,6 +538,27 @@ export const api = {
         body: JSON.stringify({ frontendUrl }),
       });
     },
+    async uploadAudioChunk(meetingId: string, fileUri: string, speakerName: string) {
+      const { token } = getSession();
+      // Read file as base64, then convert to binary buffer
+      let body: Blob | null = null;
+      try {
+        const response = await fetch(fileUri);
+        body = await response.blob();
+      } catch (e) {
+        console.warn('[API] Could not read audio file:', e);
+        return { success: false };
+      }
+      return fetch(`${API_URL}/api/meetings/${meetingId}/audio-chunk`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'audio/m4a',
+          'x-speaker-name': speakerName,
+        },
+        body,
+      }).then(r => r.json()).catch(e => ({ success: false, error: e.message }));
+    },
     async getParticipants(meetingId: string) {
       return request(`/api/meetings/${meetingId}/participants`);
     },

@@ -94,7 +94,7 @@ async function bootstrap() {
   await server.register(cors, {
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'x-speaker-name'],
   });
 
   server.addHook('onRequest', async (request, reply) => {
@@ -121,6 +121,12 @@ async function bootstrap() {
 
   // Fastify Websocket plugin integration
   await server.register(websocket);
+
+  // Accept raw binary bodies for mobile audio chunk uploads
+  server.addContentTypeParser('audio/m4a', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+  server.addContentTypeParser('audio/webm', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+  server.addContentTypeParser('audio/mp4', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+  server.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
 
   // 3. REGISTER REST API MODULES
   await server.register(authRoutes, { prefix: '/api/auth' });
