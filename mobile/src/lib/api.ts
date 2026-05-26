@@ -316,7 +316,11 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
   await waitForSession();
   const { token } = getSession();
   const headers = new Headers(options.headers || {});
-  headers.set('Content-Type', 'application/json');
+  
+  if (options.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
   applyNoCacheHeaders(headers);
   
   if (token) {
