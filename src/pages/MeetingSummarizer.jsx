@@ -47,6 +47,7 @@ const MeetingSummarizer = () => {
 
       const transcribeRes = await fetch(getApiUrl('/api/meet/transcribe'), {
         method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
         body: formData,
       });
 
@@ -61,7 +62,10 @@ const MeetingSummarizer = () => {
       setStage('summarizing');
       const summarizeRes = await fetch(getApiUrl('/api/meet/summarize'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({ 
           transcript: transcribeData.transcript,
           meetingTitle: "Meeting #" + meetingId 

@@ -41,7 +41,9 @@ const MeetingHome = () => {
 
   const fetchMeetings = async () => {
     try {
-      const res = await fetch(getApiUrl(`/api/meetings?workspaceId=${workspaceId}`));
+      const res = await fetch(getApiUrl(`/api/meetings?workspaceId=${workspaceId}`), {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
       if (res.ok) {
         const data = await res.json();
         setMeetings(data.filter(m => m.status !== 'Ended'));
@@ -99,7 +101,8 @@ const MeetingHome = () => {
         const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
 
         const res = await fetch(getApiUrl(`/api/meeting-logic/validate?workspaceId=${finalWorkspaceId}&roomId=${finalCode}&password=${finalPwd}`), {
-            signal: controller.signal
+            signal: controller.signal,
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
         
         clearTimeout(timeoutId);
@@ -134,7 +137,10 @@ const MeetingHome = () => {
        // Pre-register meeting to avoid race conditions with other participants joining
        await fetch(getApiUrl('/api/meetings/register'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
           body: JSON.stringify({
              workspaceId,
              title: 'Instant Meeting',
@@ -176,7 +182,10 @@ const MeetingHome = () => {
     try {
       const res = await fetch(getApiUrl('/api/meetings/create'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify(meetingData)
       });
       if (res.ok) {

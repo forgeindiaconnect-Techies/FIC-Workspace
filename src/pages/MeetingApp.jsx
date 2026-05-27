@@ -533,7 +533,9 @@ const MeetingApp = () => {
       
       // Fetch chat history
       const roomID = `${workspaceId}-${code}`.toUpperCase();
-      fetch(getApiUrl(`/api/chat/${workspaceId}/${roomID}`))
+      fetch(getApiUrl(`/api/chat/${workspaceId}/${roomID}`), {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      })
         .then(res => res.json())
         .then(data => {
           const history = data.map(m => ({

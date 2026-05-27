@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { getApiUrl } from '../api';
 import MeetingLayout from '../components/MeetingLayout';
 import { 
   ChevronDown, BarChart2, Calendar, 
@@ -15,7 +16,9 @@ export const MeetingAnalytics = () => {
   const [selectedMeeting, setSelectedMeeting] = useState(null);
 
   useEffect(() => {
-    fetch(`/api/meetings?workspaceId=${workspaceId}`)
+    fetch(getApiUrl(`/api/meetings?workspaceId=${workspaceId}`), {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    })
       .then(res => res.json())
       .then(data => {
         setMeetings(Array.isArray(data) ? data : []);
