@@ -54,30 +54,36 @@ const LoginPage = () => {
         setIsRegistering(false);
         setError('Workspace created! Please sign in.');
       } else {
-        let authData = data;
+        const normalizedAuthData = {
+          token: data.accessToken || data.token,
+          role: data.user?.role || data.role,
+          user: data.user?.name || data.user,
+          email: data.user?.email || data.email,
+          workspaceId: data.user?.workspaceId || data.workspaceId
+        };
 
-        localStorage.setItem('token', authData.token);
+        localStorage.setItem('token', normalizedAuthData.token);
         localStorage.setItem('auth', JSON.stringify({
-          role: authData.role,
-          user: authData.user,
-          email: authData.email,
-          workspaceId: authData.workspaceId
+          role: normalizedAuthData.role,
+          user: normalizedAuthData.user,
+          email: normalizedAuthData.email,
+          workspaceId: normalizedAuthData.workspaceId
         }));
 
         const params = new URLSearchParams(location.search);
         const targetApp = params.get('app') || 'dashboard';
 
-        if (authData.role === 'super-admin') {
+        if (normalizedAuthData.role === 'super-admin') {
           navigate('/super-admin');
-        } else if (authData.role === 'company-admin') {
-          navigate(`/w/${authData.workspaceId}/dashboard`);
+        } else if (normalizedAuthData.role === 'company-admin') {
+          navigate(`/w/${normalizedAuthData.workspaceId}/dashboard`);
         } else {
           // Role-specific redirection
-          if (email.includes('dev')) navigate(`/w/${authData.workspaceId}/dev`);
-          else if (email.includes('test')) navigate(`/w/${authData.workspaceId}/test`);
-          else if (email.includes('manager')) navigate(`/w/${authData.workspaceId}/mgr`);
-          else if (email.includes('lead')) navigate(`/w/${authData.workspaceId}/lead`);
-          else navigate(targetApp === 'dashboard' ? `/w/${authData.workspaceId}/dashboard` : `/w/${authData.workspaceId}/${targetApp}`);
+          if (email.includes('dev')) navigate(`/w/${normalizedAuthData.workspaceId}/dev`);
+          else if (email.includes('test')) navigate(`/w/${normalizedAuthData.workspaceId}/test`);
+          else if (email.includes('manager')) navigate(`/w/${normalizedAuthData.workspaceId}/mgr`);
+          else if (email.includes('lead')) navigate(`/w/${normalizedAuthData.workspaceId}/lead`);
+          else navigate(targetApp === 'dashboard' ? `/w/${normalizedAuthData.workspaceId}/dashboard` : `/w/${normalizedAuthData.workspaceId}/${targetApp}`);
         }
       }
     } catch (err) {
