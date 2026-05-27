@@ -17,26 +17,36 @@ import {
   Settings, 
   TrendingUp,
   Clock,
-  ShieldCheck
+  ShieldCheck,
+  Users
 } from 'lucide-react-native';
 import { useNavigate } from '../lib/router';
-
-
+import { getSession } from '../lib/api';
 
 const apps = [
   { id: 'meetings', icon: Video, label: 'Meetings', color: '#2563eb', description: 'Video conferencing' },
   { id: 'mail', icon: Mail, label: 'Mail', color: '#4f46e5', description: 'Internal & external mail' },
   { id: 'chat', icon: MessageSquare, label: 'Kural', color: '#10b981', description: 'Enterprise messaging' },
   { id: 'tasks', icon: CheckSquare, label: 'Tasks', color: '#059669', description: 'Project management' },
-  { id: 'files', icon: FileText, label: 'Files', color: '#d97706', description: 'Vault & documents' },
-  { id: 'security', icon: ShieldCheck, label: 'Security', color: '#1e293b', description: 'E2E encryption logs' },
 ];
 
 export default function Home() {
   const navigate = useNavigate();
   const { width } = useWindowDimensions();
+  const { user } = getSession();
   const isMobile = width < 768;
   const styles = React.useMemo(() => getStyles(width, isMobile), [width, isMobile]);
+
+  const displayedApps = React.useMemo(() => {
+    const list = [...apps];
+    if (user?.email === 'admin@fic.com' || user?.role === 'company-admin') {
+      list.push({ id: 'team', icon: Users, label: 'Team', color: '#7c3aed', description: 'Workspace members' });
+    }
+    if (user?.role === 'super-admin') {
+      list.push({ id: 'superadmin', icon: ShieldCheck, label: 'Subscribed Users', color: '#dc2626', description: 'Manage Subscriptions' });
+    }
+    return list;
+  }, [user]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -54,7 +64,7 @@ export default function Home() {
 
       {/* App Grid */}
       <View style={styles.grid}>
-        {apps.map((app) => (
+        {displayedApps.map((app) => (
           <TouchableOpacity
             key={app.id}
             onPress={() => navigate(`/${app.id}`)}

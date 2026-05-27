@@ -61,7 +61,7 @@ export async function taskRoutes(fastify: FastifyInstance) {
       const { id } = request.params as any;
       const body = request.body as any;
 
-      const allowedFields = ['title', 'description', 'status', 'priority', 'assigneeEmail', 'assigneeName', 'dueDate'];
+      const allowedFields = ['title', 'description', 'status', 'priority', 'assigneeEmail', 'assigneeName', 'dueDate', 'feedback'];
       const update: any = { updatedAt: new Date() };
 
       for (const field of allowedFields) {

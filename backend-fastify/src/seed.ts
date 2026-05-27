@@ -13,7 +13,7 @@ async function seed() {
     await ensureDefaultUser();
     console.log('=======================================================');
     console.log('Default admin account is ready.');
-    console.log('Email    : admin@antigraviity.com');
+    console.log('Email    : admin@fic.com');
     console.log('Password : password123');
     console.log('=======================================================');
   } catch (err: any) {

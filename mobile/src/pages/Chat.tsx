@@ -5,13 +5,14 @@ import {
   TouchableOpacity, View, Image, useWindowDimensions,
 } from 'react-native';
 import {
-  CheckCheck, ChevronLeft, Mic, MicOff, Phone, PhoneOff,
-  Plus, Search, Send, Shield, Users, Video, X, UserPlus,
+  CheckCheck, ChevronLeft, Mic, MicOff, PhoneOff,
+  Plus, Search, Send, Shield, Users, X, UserPlus,
   MessageSquare, MoreVertical, Paperclip, Camera, Hash,
   Bell, Star, Smile, Edit, Edit3, Edit2
 } from 'lucide-react-native';
-import { api, getSession, getSocketUrl } from '../lib/api';
+import { api, getSession, SOCKET_URL } from '../lib/api';
 import { getRTCPeerConnectionClass, getMediaDevices, getIceServers, RTCView } from '../lib/webrtc';
+import { callManager } from '../lib/callManager';
 
 
 
@@ -24,6 +25,21 @@ const formatTime = (v?: string | Date) => {
   if (!v) return '';
   const d = new Date(v);
   return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const uniqueMessages = (items: any[]) => {
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const m of items || []) {
+    const idKey = m?.id ? `id:${m.id}` : '';
+    const fp =
+      idKey ||
+      `fp:${String(m?.user || '').toLowerCase()}|${String(m?.time || '')}|${String(m?.text || '')}`;
+    if (seen.has(fp)) continue;
+    seen.add(fp);
+    out.push(m);
+  }
+  return out;
 };
 
 /* --- avatar colors ------------------------------------------ */
@@ -52,10 +68,8 @@ export default function Chat() {
   const [createGroupModal, setCreateGroupModal] = React.useState(false);
   const [storyModal, setStoryModal] = React.useState<any>(null);
   const [audioCallModal, setAudioCallModal] = React.useState(false);
-  const [callActive, setCallActive] = React.useState(false);
-  const [callMuted, setCallMuted] = React.useState(false);
-  const [callDuration, setCallDuration] = React.useState(0);
   const [plusMenu, setPlusMenu] = React.useState(false);
+  const [chatOptionsOpen, setChatOptionsOpen] = React.useState(false);
 
   /* add member form */
   const [newName, setNewName] = React.useState('');
@@ -69,80 +83,68 @@ export default function Chat() {
 
   const { user } = getSession();
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
-  const email = user?.email || 'admin@antigraviity.com';
+  const email = user?.email || 'admin@fic.com';
 
-  /* -- call logic & WebRTC -- */
-  const wsRef = React.useRef<any>(null);
-  const pcRef = React.useRef<any>(null);
-  const localStreamRef = React.useRef<any>(null);
-  const remoteStreamRef = React.useRef<any>(null);
+  /* -- call logic via callManager (separate from Meetings /ws/webrtc) -- */
+  const [callState, setCallState] = React.useState<'idle'|'calling'|'connected'|'ended'>('idle');
+  const [callDuration, setCallDuration] = React.useState(0);
+  const [callMuted, setCallMuted] = React.useState(false);
 
   React.useEffect(() => {
     let t: any;
-    if (callActive) { t = setInterval(() => setCallDuration(p => p + 1), 1000); }
-    else { setCallDuration(0); }
+    if (callState === 'connected') {
+      t = setInterval(() => setCallDuration(p => p + 1), 1000);
+    } else {
+      setCallDuration(0);
+    }
     return () => clearInterval(t);
-  }, [callActive]);
+  }, [callState]);
+
+  // Sync callManager state into local React state for the in-chat active call UI
+  React.useEffect(() => {
+    callManager.onStateChange = (s) => {
+      setCallState(s as any);
+      if (s === 'calling' || s === 'connected') setAudioCallModal(true);
+      if (s === 'idle' || s === 'ended') setAudioCallModal(false);
+    };
+    return () => { callManager.onStateChange = null; };
+  }, []);
 
   const startCall = async () => {
-    if (!selectedChat) return;
-    setAudioCallModal(true); setCallActive(true);
+    if (!selectedChat || !user) return;
     
-    // Connect WebRTC signaling socket
-    const ws = new WebSocket(getSocketUrl() + '/ws/webrtc');
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'join', data: { meetingId: selectedChat.id, token: getSession().token } }));
-    };
-
-    ws.onmessage = async (e) => {
-      const msg = JSON.parse(e.data);
-      const PC = getRTCPeerConnectionClass();
-      if (!PC) return; // WebRTC not supported
-
-      if (msg.type === 'joined') {
-        const pc = new PC({ iceServers: getIceServers() });
-        pcRef.current = pc;
-
-        // Add local audio
-        try {
-          const stream = await getMediaDevices().getUserMedia({ audio: true });
-          localStreamRef.current = stream;
-          stream.getTracks().forEach((t: any) => pc.addTrack(t, stream));
-        } catch (err) { console.log('Mic failed', err); }
-
-        pc.onicecandidate = (ev: any) => {
-          if (ev.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', data: { toPeerId: null, candidate: ev.candidate } }));
-        };
-
-        pc.ontrack = (ev: any) => { remoteStreamRef.current = ev.streams[0]; };
-
-        if (msg.existingPeers.length > 0) {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          ws.send(JSON.stringify({ type: 'offer', data: { toPeerId: msg.existingPeers[0].peerId, description: pc.localDescription } }));
-        }
-      } else if (msg.type === 'offer') {
-        const pc = pcRef.current;
-        if (!pc) return;
-        await pc.setRemoteDescription(msg.data.description);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify({ type: 'answer', data: { toPeerId: msg.fromPeerId, description: pc.localDescription } }));
-      } else if (msg.type === 'answer') {
-        await pcRef.current?.setRemoteDescription(msg.data.description);
-      } else if (msg.type === 'ice-candidate') {
-        await pcRef.current?.addIceCandidate(msg.data.candidate);
+    try {
+      const success = await callManager.startCall(
+        selectedChat.email,
+        selectedChat.name,
+        user.name || email
+      );
+      
+      if (success) {
+        setAudioCallModal(true);
+        setCallState('calling');
+      } else {
+        Alert.alert('Call Failed', 'Unable to initiate call. User may be offline or not reachable.');
+        setCallState('idle');
       }
-    };
+    } catch (err) {
+      console.error('[Chat] startCall error', err);
+      Alert.alert('Call Error', 'An error occurred while trying to call.');
+      setCallState('idle');
+    }
   };
 
   const endCall = () => {
-    wsRef.current?.close();
-    pcRef.current?.close();
-    localStreamRef.current?.getTracks().forEach((t: any) => t.stop());
-    setAudioCallModal(false); setCallActive(false);
+    const success = callManager.hangUp();
+    if (success) {
+      setAudioCallModal(false);
+      setCallState('idle');
+    }
+  };
+
+  const toggleMute = () => {
+    const muted = callManager.toggleMute();
+    setCallMuted(!!muted);
   };
 
   const fmtCall = (s: number) =>
@@ -179,12 +181,11 @@ export default function Chat() {
       const sMapped = Array.isArray(storiesData) ? storiesData.map((s: any) => ({
         id: s._id, name: s.userName, avatar: s.userAvatar || avatarFor(s.userName), color: colorFor(s.userId), isOwn: s.userId === user?.id, image: s.content
       })) : [];
-      // Always prepend the "Update" self button
-      setStories([{ id: 'my', name: 'Update', avatar: 'ME', color: '#006b5e', isOwn: true }, ...sMapped]);
+      setStories(sMapped);
     } catch {
       setDirectMessages([]);
       setGroupMessages([]);
-      setStories([{ id: 'my', name: 'Update', avatar: 'ME', color: '#006b5e', isOwn: true }]);
+      setStories([]);
     } finally { setLoadingChannels(false); }
   }, [workspaceId, email, user?.id]);
 
@@ -201,7 +202,8 @@ export default function Chat() {
           time: formatTime(m.timestamp), text: m.content,
           self: m.senderEmail === email || m.sender === 'You',
         })) : [];
-        setMessages(mapped.length ? mapped : [{ id: 'init', user: 'Workspace', time: 'Now', text: 'Start your conversation here.', self: false }]);
+        const deduped = uniqueMessages(mapped);
+        setMessages(deduped.length ? deduped : [{ id: 'init', user: 'Workspace', time: 'Now', text: 'Start your conversation here.', self: false }]);
       })
       .catch(() => setMessages([{ id: 'err', user: 'System', time: 'Now', text: 'Failed to load.', self: false }]))
       .finally(() => setLoadingMessages(false));
@@ -218,7 +220,7 @@ export default function Chat() {
     if (!content || !selectedChat) return;
     const oid = String(Date.now());
     const opt = { id: oid, user: 'You', time: formatTime(new Date()), text: content, self: true };
-    setMessages(p => [...p, opt]);
+    setMessages(p => uniqueMessages([...p, opt]));
     setInputVal('');
     setDirectMessages(p => p.map(c => c.id === selectedChat.id ? { ...c, lastMsg: content, time: opt.time } : c));
     try {
@@ -228,6 +230,32 @@ export default function Chat() {
         time: formatTime(saved.timestamp), text: saved.content, self: true,
       } : m));
     } catch (e: any) { Alert.alert('Send failed', e.message); }
+  };
+
+  const handleDeleteChat = async () => {
+    if (!selectedChat?.id) return;
+    setChatOptionsOpen(false);
+    Alert.alert(
+      'Delete chat?',
+      'This will permanently delete this conversation.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.chat.deleteConversation(selectedChat.id);
+              // Keep the chat selectable, but clear its history in UI.
+              setMessages([{ id: 'init', user: 'Workspace', time: 'Now', text: 'Start your conversation here.', self: false }]);
+              await loadChannels();
+            } catch (e: any) {
+              Alert.alert('Delete failed', e?.message || 'Unable to delete this chat.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   /* -- search and add user -- */
@@ -271,7 +299,7 @@ export default function Chat() {
      AUDIO CALL MODAL
   ------------------------------------------------------------ */
   const renderAudioCallModal = () => (
-    <Modal visible={audioCallModal} animationType="slide" transparent onRequestClose={() => { setAudioCallModal(false); setCallActive(false); }}>
+    <Modal visible={audioCallModal} animationType="slide" transparent onRequestClose={endCall}>
       <View style={s.callOverlay}>
         <View style={s.callCard}>
           {/* avatar */}
@@ -279,18 +307,18 @@ export default function Chat() {
             <Text style={s.callAvatarText}>{selectedChat ? (selectedChat.avatar || avatarFor(selectedChat.name)) : 'ME'}</Text>
           </View>
           <Text style={s.callName}>{selectedChat?.name || 'Unknown'}</Text>
-          <Text style={s.callStatus}>{callActive ? fmtCall(callDuration) : 'Calling'}</Text>
+          <Text style={s.callStatus}>{callState === 'connected' ? fmtCall(callDuration) : 'Calling...'}</Text>
 
           {/* wave animation placeholder */}
           <View style={s.callWaveRow}>
             {[1,2,3,4,5,6,7].map(i => (
-              <View key={i} style={[s.callWaveBar, { height: callActive ? 8 + (i % 3) * 14 : 8 }]} />
+              <View key={i} style={[s.callWaveBar, { height: callState === 'connected' ? 8 + (i % 3) * 14 : 8 }]} />
             ))}
           </View>
 
           {/* controls */}
           <View style={s.callControls}>
-            <TouchableOpacity style={[s.callCtrlBtn, callMuted && s.callCtrlRed]} onPress={() => setCallMuted(p => !p)}>
+            <TouchableOpacity style={[s.callCtrlBtn, callMuted && s.callCtrlRed]} onPress={toggleMute}>
               {callMuted ? <MicOff size={22} color="#fff" /> : <Mic size={22} color="#fff" />}
               <Text style={s.callCtrlLabel}>{callMuted ? 'Unmute' : 'Mute'}</Text>
             </TouchableOpacity>
@@ -298,11 +326,6 @@ export default function Chat() {
             <TouchableOpacity style={s.callEndBtn} onPress={endCall}>
               <PhoneOff size={26} color="#fff" />
               <Text style={s.callCtrlLabel}>End</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={s.callCtrlBtn} onPress={() => setCallActive(p => !p)}>
-              <Phone size={22} color="#fff" />
-              <Text style={s.callCtrlLabel}>{callActive ? 'Hold' : 'Answer'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -445,7 +468,6 @@ export default function Chat() {
           {[
             { icon: <UserPlus size={16} color="#2563eb" />, label: 'New Direct Message', action: () => { setAddMemberModal(true); setPlusMenu(false); } },
             { icon: <Users size={16} color="#7c3aed" />, label: 'Create Group', action: () => { setCreateGroupModal(true); setPlusMenu(false); } },
-            { icon: <Camera size={16} color="#0f766e" />, label: 'Add Story', action: () => { setStoryModal(stories[0]); setPlusMenu(false); } },
           ].map(item => (
             <TouchableOpacity key={item.label} style={s.plusMenuItem} onPress={item.action}>
               <View style={s.plusMenuIcon}>{item.icon}</View>
@@ -463,23 +485,23 @@ export default function Chat() {
         </View>
       </View>
 
-      {/* Stories row */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.storiesRow} contentContainerStyle={s.storiesContent}>
-        {stories.map((story, i) => (
-          <TouchableOpacity key={story.id} style={s.storyItem} onPress={() => setStoryModal(story)}>
-            {story.isOwn ? (
-              <View style={s.storyRingOwn}>
-                <View style={s.storyAvatarOwn}>
-                  <Plus size={24} color="#007164" />
+      {/* Stories row (only when there are stories) */}
+      {stories.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.storiesRow} contentContainerStyle={s.storiesContent}>
+          {stories.map((story, i) => (
+            <TouchableOpacity key={story.id} style={s.storyItem} onPress={() => setStoryModal(story)}>
+              {story.image ? (
+                <Image source={{ uri: story.image }} style={s.storyAvatarImg} />
+              ) : (
+                <View style={[s.storyAvatarOwn, { backgroundColor: story.color || colorFor(story.id) }]}>
+                  <Text style={s.storyAvatarSmallText}>{story.avatar || avatarFor(story.name)}</Text>
                 </View>
-              </View>
-            ) : (
-              <Image source={{ uri: story.image }} style={s.storyAvatarImg} />
-            )}
-            <Text style={s.storyName} numberOfLines={1}>{story.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+              )}
+              <Text style={s.storyName} numberOfLines={1}>{story.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       {/* List */}
       {loadingChannels ? (
@@ -577,17 +599,22 @@ export default function Chat() {
             </View>
           </View>
           <View style={s.chatHeaderActions}>
-            <TouchableOpacity style={s.headerActionBtn} onPress={startCall}>
-              <Phone size={18} color="#0f766e" />
-            </TouchableOpacity>
-            <TouchableOpacity style={s.headerActionBtn}>
-              <Video size={18} color="#0f766e" />
-            </TouchableOpacity>
-            <TouchableOpacity style={s.headerActionBtn}>
+            <TouchableOpacity style={s.headerActionBtn} onPress={() => setChatOptionsOpen(true)}>
               <MoreVertical size={18} color="#64748b" />
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Three-dot options */}
+        <Modal visible={chatOptionsOpen} transparent animationType="fade" onRequestClose={() => setChatOptionsOpen(false)}>
+          <TouchableOpacity style={s.optionsOverlay} activeOpacity={1} onPress={() => setChatOptionsOpen(false)}>
+            <View style={s.optionsSheet}>
+              <TouchableOpacity style={s.optionsItem} onPress={handleDeleteChat}>
+                <Text style={[s.optionsLabel, s.optionsDanger]}>Delete chat</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         {/* Messages */}
         {loadingMessages ? (
@@ -830,4 +857,26 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   groupIconPicker: { alignItems: 'center', gap: 8, paddingVertical: 8 },
   groupIconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#7c3aed', alignItems: 'center', justifyContent: 'center' },
   groupIconHint: { fontSize: 12, color: '#94a3b8', fontWeight: '600' },
+
+  /* chat options (three dots) */
+  optionsOverlay: { flex: 1, backgroundColor: 'transparent' },
+  optionsSheet: {
+    position: 'absolute',
+    top: 64,
+    right: 16,
+    minWidth: 180,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  optionsItem: { paddingHorizontal: 14, paddingVertical: 12 },
+  optionsLabel: { fontSize: 14, fontWeight: '800', color: '#0f172a' },
+  optionsDanger: { color: '#dc2626' },
 });

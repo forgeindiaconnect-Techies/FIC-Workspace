@@ -4,12 +4,13 @@ export interface ITask extends Document {
   workspaceId: string;
   title: string;
   description?: string;
-  status: 'todo' | 'in-progress' | 'done';
+  status: 'todo' | 'in-progress' | 'pending_approval' | 'done';
   priority: 'low' | 'medium' | 'high';
   assigneeEmail?: string;
   assigneeName?: string;
   createdByEmail: string;
   dueDate?: Date;
+  feedback?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,9 +21,10 @@ const TaskSchema = new Schema<ITask>({
   description: { type: String },
   status: {
     type: String,
-    enum: ['todo', 'in-progress', 'done'],
+    enum: ['todo', 'in-progress', 'pending_approval', 'done'],
     default: 'todo',
   },
+  feedback: { type: String },
   priority: {
     type: String,
     enum: ['low', 'medium', 'high'],

@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import bcrypt from 'bcrypt';
 import { User } from '../models/User';
+import { Tenant } from '../models/Tenant';
 import { authenticate } from '../middlewares/auth';
 
 const defaultWorkspaceId = 'antigraviity-hq';
@@ -45,6 +46,17 @@ export async function memberRoutes(fastify: FastifyInstance) {
 
       if (!name || !email || !password) {
         return reply.code(400).send({ error: 'Name, email, and password are required.' });
+      }
+
+      // Check max users limit if workspace is tied to a tenant
+      if (workspaceId !== defaultWorkspaceId) {
+        const tenant = await Tenant.findOne({ workspaceId });
+        if (tenant && tenant.maxUsers) {
+          const currentUsers = await User.countDocuments({ workspaceId });
+          if (currentUsers >= tenant.maxUsers) {
+            return reply.code(403).send({ error: `Subscription limit reached (${tenant.maxUsers} users). Please upgrade to add more members.` });
+          }
+        }
       }
 
       const existing = await User.findOne({ email });

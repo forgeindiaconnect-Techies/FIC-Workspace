@@ -1,18 +1,29 @@
-﻿export type AppState = 'meeting' | 'mail' | 'chat' | 'tasks' | 'files';
+export type AppState = 'meeting' | 'mail' | 'chat' | 'tasks';
 
 export interface User {
-  uid: string;
+  id: string;
+  _id?: string;
+  name: string;
   email: string;
-  displayName: string;
-  photoURL?: string;
+  role: string;
+  workspaceId: string;
+  avatarUrl?: string;
+  createdAt?: string;
 }
 
 export interface Task {
-  id: string;
+  _id: string;
+  workspaceId: string;
   title: string;
-  status: 'todo' | 'in-progress' | 'done';
+  description?: string;
+  status: 'todo' | 'in-progress' | 'pending_approval' | 'done';
   priority: 'low' | 'medium' | 'high';
-  createdAt: number;
+  assigneeEmail?: string;
+  assigneeName?: string;
+  createdByEmail: string;
+  dueDate?: string;
+  feedback?: string;
+  createdAt: string;
 }
 
 export interface Message {

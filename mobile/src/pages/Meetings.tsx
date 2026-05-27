@@ -31,20 +31,9 @@ import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions 
 
 
 
-const MOCK_MEETINGS = [
-  { id: '1', title: 'Product Sync', time: '10:00 AM', duration: '45m', attendees: 5, color: '#2563eb', status: 'scheduled' },
-  { id: '2', title: 'Design Review', time: '1:30 PM', duration: '1h', attendees: 3, color: '#7c3aed', status: 'scheduled' },
-  { id: '3', title: 'Client Workshop', time: '4:00 PM', duration: '30m', attendees: 8, color: '#f97316', status: 'live' },
-];
-const MOCK_HISTORY = [
-  { id: 'h1', title: 'Q3 Planning Sync', time: 'Yesterday', duration: '1h 15m', attendees: 8, color: '#64748b', status: 'ended' },
-  { id: 'h2', title: 'Sprint Retrospective', time: 'Mon', duration: '45m', attendees: 6, color: '#64748b', status: 'ended' },
-];
-const ROOMS = [
-  { id: 'NEXUS-BOARDROOM', title: 'General Boardroom', tag: 'BR', members: 4, color: '#2563eb' },
-  { id: 'NEXUS-ENG', title: 'Developer Sandbox', tag: 'DS', members: 2, color: '#0f766e' },
-  { id: 'NEXUS-DESIGN', title: 'UX Design Workshop', tag: 'UX', members: 0, color: '#7c3aed' },
-];
+const MOCK_MEETINGS: any[] = [];
+const MOCK_HISTORY: any[] = [];
+const ROOMS: any[] = [];
 
 const fmtDur = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;

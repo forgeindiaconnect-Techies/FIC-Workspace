@@ -306,7 +306,7 @@ export default function Mail() {
                     <Text style={[styles.mailTime, !email.isRead && activeFolder !== 'sent' && styles.boldText]}>{displayDate}</Text>
                   </View>
                   <Text style={[styles.mailSubject, !email.isRead && activeFolder !== 'sent' && styles.boldText]} numberOfLines={1}>{email.subject}</Text>
-                  <Text style={styles.mailPreview} numberOfLines={1}>{email.body.replace(/\n/g, ' ')}</Text>
+                  <Text style={styles.mailPreview} numberOfLines={1}>{email.body.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()}</Text>
                 </TouchableOpacity>
               )
             })}

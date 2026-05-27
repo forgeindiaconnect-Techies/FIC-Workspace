@@ -17,7 +17,9 @@ import { channelRoutes, kuralRoutes } from './routes/kural';
 import { memberRoutes } from './routes/members';
 import { taskRoutes } from './routes/tasks';
 import { docsRoutes } from './routes/docs';
+import { superadminRoutes } from './routes/superadmin';
 import { handleWebRtcSignalling } from './services/webrtc';
+import { handleCallSignaling } from './services/callSignaling';
 import { handleMailSocket } from './services/mailSockets';
 import { handleAudioSocket } from './services/aiBot';
 import { ensureDefaultUser } from './utils/seedDefaultUser';
@@ -137,6 +139,7 @@ async function bootstrap() {
   await server.register(memberRoutes, { prefix: '/api/members' });
   await server.register(taskRoutes, { prefix: '/api/tasks' });
   await server.register(docsRoutes, { prefix: '/api/docs' });
+  await server.register(superadminRoutes, { prefix: '/api/superadmin' });
 
   // 3b. ICE / TURN server config endpoint (public — returns STUN + Metered TURN via REST API)
   server.get('/api/meet/ice-servers', async () => {
@@ -178,6 +181,13 @@ async function bootstrap() {
   server.get('/ws/audio', { websocket: true }, (connection: any, req: any) => {
     const ws = connection.socket || connection;
     handleAudioSocket(ws);
+  });
+
+  // 4b. 1-to-1 VOICE CALL SIGNALING (Chat module — completely separate from /ws/webrtc)
+  server.get('/ws/calls', { websocket: true }, (connection: any, req: any) => {
+    server.log.info('New voice call signaling connection.');
+    const ws = connection.socket || connection;
+    handleCallSignaling(ws);
   });
 
   // Status check endpoint

@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { 
   View, 
   Text, 
@@ -8,8 +8,9 @@ import {
   ActivityIndicator 
 } from 'react-native';
 import { useNavigate } from '../lib/router';
-import { Mail, Lock, LogIn, User, UserPlus, Github, Chrome, Settings, Server } from 'lucide-react-native';
-import { api, setCustomServerUrl, getCustomServerUrl, useCloudServer, checkBackendHealth, PRODUCTION_API_URL } from '../lib/api';
+import { Mail, Lock, LogIn, User, UserPlus, Github, Chrome, Settings, Server, CreditCard, Building, Globe } from 'lucide-react-native';
+import { api, setCustomServerUrl, getCustomServerUrl, useCloudServer, checkBackendHealth, PRODUCTION_API_URL, getSession, getSocketUrl } from '../lib/api';
+import { callManager } from '../lib/callManager';
 
 type AuthMode = 'login' | 'signup';
 
@@ -21,6 +22,9 @@ export default function Login() {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
+  const [organisationName, setOrganisationName] = React.useState('');
+  const [subscriptionTier, setSubscriptionTier] = React.useState('starter');
+  const [showPayment, setShowPayment] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [showSettings, setShowSettings] = React.useState(false);
   const [customUrl, setCustomUrl] = React.useState('');
@@ -30,13 +34,19 @@ export default function Login() {
     (async () => {
       // Always use cloud server unless explicitly set to local via env var
       // This ensures Expo Go on physical devices connects to production, not LAN
-      await useCloudServer();
+      // await useCloudServer();
       setCustomUrl(getCustomServerUrl());
       const health = await checkBackendHealth();
       if (!health.ok) {
         setServerStatus(health.message || 'Server unavailable');
       } else {
         setServerStatus(null);
+      }
+
+      // If a session token already exists, keep call signaling in sync.
+      const { token } = getSession();
+      if (token) {
+        callManager.init(getSocketUrl(), token);
       }
     })();
   }, []);
@@ -45,6 +55,10 @@ export default function Login() {
     try {
       await setCustomServerUrl(customUrl);
       setError(null);
+      const { token } = getSession();
+      if (token) {
+        callManager.init(getSocketUrl(), token);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to update server URL');
     }
@@ -57,6 +71,10 @@ export default function Login() {
       setError(null);
       const health = await checkBackendHealth();
       setServerStatus(health.ok ? null : (health.message || 'Server unavailable'));
+      const { token } = getSession();
+      if (token) {
+        callManager.init(getSocketUrl(), token);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to reset server URL');
     }
@@ -75,8 +93,8 @@ export default function Login() {
     }
 
     if (mode === 'signup') {
-      if (!name.trim()) {
-        setError('Please enter your full name');
+      if (!name.trim() || !organisationName.trim()) {
+        setError('Please enter all required fields');
         return;
       }
       if (password.length < 6) {
@@ -87,32 +105,65 @@ export default function Login() {
         setError('Passwords do not match');
         return;
       }
+      setShowPayment(true);
+      return;
     }
 
     setLoading(true);
     setError(null);
     try {
-      if (mode === 'signup') {
-        await api.auth.signup(name.trim(), email.trim(), password);
-      } else {
-        const result = await api.auth.login(email, password);
-        if (result.mfaRequired) {
-          setLoading(false);
-          setError('MFA is required for this account. Complete MFA verification in the web app first.');
-          return;
-        }
+      const result = await api.auth.login(email, password);
+      if (result.mfaRequired) {
+        setLoading(false);
+        setError('MFA is required for this account. Complete MFA verification in the web app first.');
+        return;
+      }
+      const { token } = getSession();
+      if (token) {
+        callManager.init(getSocketUrl(), token);
       }
       setLoading(false);
       navigate('/home');
     } catch (err: any) {
       setLoading(false);
-      const message = err.message || (mode === 'signup' ? 'Sign up failed' : 'Invalid credentials');
-      const hint = message.includes('503') || message.toLowerCase().includes('database')
-        ? ' Fix MONGO_URI on Render  encode @ in password as %40.'
-        : message.toLowerCase().includes('invalid') || message.includes('401')
-          ? ` Use cloud server: ${PRODUCTION_API_URL}`
-          : '';
-      setError(message + hint);
+      const message = err.message || 'Invalid credentials';
+      setError(message);
+    }
+  };
+
+  const handlePaymentComplete = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await api.auth.signupSubscription(name.trim(), organisationName.trim(), email.trim(), password, subscriptionTier);
+      const { token } = getSession();
+      if (token) {
+        callManager.init(getSocketUrl(), token);
+      }
+      setLoading(false);
+      setShowPayment(false);
+      navigate('/home');
+    } catch (err: any) {
+      setLoading(false);
+      setShowPayment(false);
+      setError(err.message || 'Subscription failed');
+    }
+  };
+
+  const handleViewDemo = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await api.auth.login('demo@fic.com', 'password123');
+      const { token } = getSession();
+      if (token) {
+        callManager.init(getSocketUrl(), token);
+      }
+      setLoading(false);
+      navigate('/home');
+    } catch (err: any) {
+      setLoading(false);
+      setError('Demo login failed. Make sure the backend is seeded.');
     }
   };
 
@@ -130,25 +181,42 @@ export default function Login() {
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.serverUrlText}>Server: {getCustomServerUrl()}</Text>
+
           {serverStatus && <Text style={styles.warnText}>{serverStatus}</Text>}
           {error && <Text style={styles.errorText}>{error}</Text>}
 
           {mode === 'signup' && (
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Full Name</Text>
-              <View style={styles.inputWrapper}>
-                <User size={18} color="#64748b" style={styles.inputIcon} />
-                <TextInput
-                  placeholder="Your name"
-                  placeholderTextColor="#475569"
-                  style={styles.input}
-                  value={name}
-                  onChangeText={setName}
-                  autoCapitalize="words"
-                />
+            <>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Full Name</Text>
+                <View style={styles.inputWrapper}>
+                  <User size={18} color="#64748b" style={styles.inputIcon} />
+                  <TextInput
+                    placeholder="Your name"
+                    placeholderTextColor="#475569"
+                    style={styles.input}
+                    value={name}
+                    onChangeText={setName}
+                    autoCapitalize="words"
+                  />
+                </View>
               </View>
-            </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Organisation Name</Text>
+                <View style={styles.inputWrapper}>
+                  <Building size={18} color="#64748b" style={styles.inputIcon} />
+                  <TextInput
+                    placeholder="Company Inc."
+                    placeholderTextColor="#475569"
+                    style={styles.input}
+                    value={organisationName}
+                    onChangeText={setOrganisationName}
+                    autoCapitalize="words"
+                  />
+                </View>
+              </View>
+            </>
           )}
 
           <View style={styles.inputGroup}>
@@ -223,80 +291,69 @@ export default function Login() {
             ) : (
               <View style={styles.btnContent}>
                 {mode === 'signup' ? (
-                  <UserPlus size={18} color="#fff" />
+                  <CreditCard size={18} color="#fff" />
                 ) : (
                   <LogIn size={18} color="#fff" />
                 )}
-                <Text style={styles.btnText}>{mode === 'signup' ? 'Sign Up' : 'Sign In'}</Text>
+                <Text style={styles.btnText}>{mode === 'signup' ? 'Continue to Payment' : 'Sign In'}</Text>
               </View>
             )}
           </TouchableOpacity>
+
+          <View style={styles.signUpRow}>
+            <Text style={styles.footerText}>
+              {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+            </Text>
+            <TouchableOpacity onPress={() => switchMode(mode === 'login' ? 'signup' : 'login')}>
+              <Text style={styles.signUpText}>
+                {mode === 'login' ? 'Sign up' : 'Sign in'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          <TouchableOpacity onPress={handleViewDemo} style={{alignItems: 'center', marginTop: 10}}>
+            <Text style={styles.signUpText}>View Demo</Text>
+          </TouchableOpacity>
         </View>
 
-        {mode === 'login' && (
-          <>
-            <View style={styles.dividerRow}>
-              <View style={styles.line} />
-              <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
-              <View style={styles.line} />
-            </View>
+        {showPayment && (
+          <View style={styles.paymentModalOverlay}>
+            <View style={styles.paymentModal}>
+              <CreditCard size={48} color="#2563eb" style={{ marginBottom: 16 }} />
+              <Text style={styles.paymentTitle}>Complete Subscription</Text>
+              
+              <View style={{ width: '100%', marginVertical: 16, gap: 8 }}>
+                <TouchableOpacity 
+                  style={[styles.tierOption, subscriptionTier === 'starter' && styles.tierActive]} 
+                  onPress={() => setSubscriptionTier('starter')}>
+                  <Text style={[styles.tierName, subscriptionTier === 'starter' && styles.tierTextActive]}>Starter (1-20 users)</Text>
+                  <Text style={[styles.tierPrice, subscriptionTier === 'starter' && styles.tierTextActive]}>Rs.99 / mo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.tierOption, subscriptionTier === 'pro' && styles.tierActive]} 
+                  onPress={() => setSubscriptionTier('pro')}>
+                  <Text style={[styles.tierName, subscriptionTier === 'pro' && styles.tierTextActive]}>Pro (21-40 users)</Text>
+                  <Text style={[styles.tierPrice, subscriptionTier === 'pro' && styles.tierTextActive]}>Rs.199 / mo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.tierOption, subscriptionTier === 'enterprise' && styles.tierActive]} 
+                  onPress={() => setSubscriptionTier('enterprise')}>
+                  <Text style={[styles.tierName, subscriptionTier === 'enterprise' && styles.tierTextActive]}>Enterprise (41+ users)</Text>
+                  <Text style={[styles.tierPrice, subscriptionTier === 'enterprise' && styles.tierTextActive]}>Rs.299 / mo</Text>
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.socialRow}>
-              <TouchableOpacity style={styles.socialBtn}>
-                <Chrome size={18} color="#fff" />
-                <Text style={styles.socialBtnText}>Google</Text>
+              <TouchableOpacity style={styles.payBtn} onPress={handlePaymentComplete} disabled={loading}>
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.payBtnText}>Pay Rs.{subscriptionTier === 'starter' ? '99' : subscriptionTier === 'pro' ? '199' : '299'} & Subscribe</Text>}
               </TouchableOpacity>
-              <TouchableOpacity style={styles.socialBtn}>
-                <Github size={18} color="#fff" />
-                <Text style={styles.socialBtnText}>GitHub</Text>
+              <TouchableOpacity style={styles.cancelPayBtn} onPress={() => setShowPayment(false)} disabled={loading}>
+                <Text style={styles.cancelPayText}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </>
+          </View>
         )}
 
-        <TouchableOpacity style={styles.signUpRow} onPress={() => switchMode(mode === 'login' ? 'signup' : 'login')}>
-          <Text style={styles.footerText}>
-            {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-          </Text>
-          <Text style={styles.signUpText}>{mode === 'login' ? 'Sign up' : 'Sign in'}</Text>
-        </TouchableOpacity>
 
-        {/* Server Settings Expandable Panel */}
-        <View style={styles.settingsSection}>
-          <TouchableOpacity 
-            style={styles.settingsHeader} 
-            onPress={() => setShowSettings(!showSettings)}
-          >
-            <Settings size={16} color="#94a3b8" />
-            <Text style={styles.settingsTitle}>Server Settings</Text>
-          </TouchableOpacity>
-
-          {showSettings && (
-            <View style={styles.settingsContent}>
-              <Text style={styles.settingsLabel}>Backend API Endpoint</Text>
-              <View style={styles.settingsInputWrapper}>
-                <Server size={16} color="#64748b" style={styles.inputIcon} />
-                <TextInput 
-                  placeholder="https://workspace-backend-r9f8.onrender.com"
-                  placeholderTextColor="#475569"
-                  style={styles.settingsInput}
-                  value={customUrl}
-                  onChangeText={setCustomUrl}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-              <View style={styles.settingsActions}>
-                <TouchableOpacity style={styles.settingsResetBtn} onPress={handleResetServer}>
-                  <Text style={styles.settingsResetText}>Reset</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.settingsSaveBtn} onPress={handleSaveServer}>
-                  <Text style={styles.settingsSaveText}>Save Endpoint</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </View>
       </View>
     </View>
   );
@@ -562,6 +619,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  tierOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+  },
+  tierActive: {
+    borderColor: '#2563eb',
+    backgroundColor: '#eff6ff',
+  },
+  tierName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  tierPrice: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  tierTextActive: {
+    color: '#2563eb',
+  },
   settingsActions: {
     flexDirection: 'row',
     gap: 8,
@@ -593,6 +676,61 @@ const styles = StyleSheet.create({
   settingsResetText: {
     color: '#cbd5e1',
     fontSize: 13,
+    fontWeight: '700',
+  },
+  paymentModalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+  },
+  paymentModal: {
+    backgroundColor: '#0f172a',
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    width: '90%',
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  paymentTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  paymentDesc: {
+    fontSize: 14,
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  payBtn: {
+    backgroundColor: '#22c55e',
+    width: '100%',
+    height: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  payBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  cancelPayBtn: {
+    width: '100%',
+    height: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelPayText: {
+    color: '#94a3b8',
+    fontSize: 15,
     fontWeight: '700',
   },
 });

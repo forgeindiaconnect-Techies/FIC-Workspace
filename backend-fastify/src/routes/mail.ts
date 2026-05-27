@@ -48,7 +48,12 @@ export async function mailRoutes(fastify: FastifyInstance) {
       const folder = (request.query.folder as string) || 'inbox';
       const ownerEmail = request.user.email;
       
-      const mails = await Mail.find({ ownerEmail, folder }).sort({ sentAt: -1 });
+      const query: any = { ownerEmail };
+      if (folder !== 'all') {
+        query.folder = folder;
+      }
+      
+      const mails = await Mail.find(query).sort({ sentAt: -1 });
       return reply.code(200).send(mails);
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to fetch mail' });

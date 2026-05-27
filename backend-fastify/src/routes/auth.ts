@@ -61,6 +61,82 @@ export async function authRoutes(fastify: FastifyInstance) {
     };
   }
 
+  // 1A. SIGNUP SUBSCRIPTION
+  fastify.post('/signup-subscription', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      if (!isMongoConnected()) {
+        return reply.code(503).send({ error: 'Database is not connected.' });
+      }
+
+      const { name, organisationName, email, password, subscriptionTier } = request.body as any;
+      if (!name || !organisationName || !email || !password) {
+        return reply.code(400).send({ error: 'All fields are required.' });
+      }
+
+      // Determine max users based on tier
+      const tier = subscriptionTier || 'starter';
+      let maxUsers = 20;
+      if (tier === 'pro') maxUsers = 40;
+      if (tier === 'enterprise') maxUsers = 99999;
+
+      if (password.length < 6) {
+        return reply.code(400).send({ error: 'Password must be at least 6 characters.' });
+      }
+
+      const normEmail = email.toLowerCase().trim();
+      
+      const existingUser = await User.findOne({ email: normEmail });
+      const existingTenant = await Tenant.findOne({ adminEmail: normEmail });
+      if (existingUser || existingTenant) {
+        return reply.code(409).send({ error: 'An account with this email already exists.' });
+      }
+
+      const duplicateOrg = await Tenant.findOne({ organisationName });
+      if (duplicateOrg) {
+        return reply.code(409).send({ error: 'Organisation Name already exists.' });
+      }
+
+      const generatedDomain = `${organisationName.toLowerCase().replace(/[^a-z0-9]/gi, '')}.nexus.com`;
+
+      const salt = await bcrypt.genSalt(12);
+      const passwordHash = await bcrypt.hash(password, salt);
+      const workspaceId = `ws-${generatedDomain.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
+
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 30);
+
+      // Create Tenant (which represents the subscription)
+      const tenant = await Tenant.create({
+        name,
+        organisationName,
+        workspaceId,
+        domain: generatedDomain,
+        adminEmail: normEmail,
+        password: passwordHash,
+        paymentStatus: 'active',
+        subscriptionTier: tier,
+        maxUsers: maxUsers,
+        subscriptionExpiryDate: expiryDate
+      });
+
+      // Also create the user to allow standard login
+      const user = await User.create({
+        name: name.trim(),
+        email: normEmail,
+        passwordHash,
+        workspaceId,
+        role: 'company-admin',
+        avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
+        mfaEnabled: false,
+      });
+
+      const tokenBundle = await issueTokens(user);
+      return reply.code(201).send(tokenBundle);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to create subscription.', details: err.message });
+    }
+  });
+
   // 1. SIGNUP
   fastify.post('/signup', async (request: FastifyRequest, reply: FastifyReply) => {
     try {

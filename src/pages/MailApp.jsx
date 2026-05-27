@@ -20,9 +20,23 @@ const MailApp = () => {
 
   const fetchMails = async () => {
     try {
-      const response = await fetch(`${API_URL}/mail/${workspaceId}?email=${currentUserEmail}`);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/mail?folder=all`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       const data = await response.json();
-      if (response.ok) setThreads(data);
+      if (response.ok) {
+        const mappedData = data.map(m => ({
+          ...m,
+          recipient: m.recipientEmails?.[0] || '',
+          sender: m.senderName || m.senderEmail,
+          content: m.body,
+          timestamp: m.sentAt,
+          isDeleted: m.folder === 'trash',
+          isDraft: m.folder === 'drafts'
+        }));
+        setThreads(mappedData);
+      }
     } catch (err) {
       console.error('Failed to fetch mails:', err);
     } finally {
@@ -53,17 +67,17 @@ const MailApp = () => {
     setSending(true);
 
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/mail/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
-          workspaceId,
-          sender: auth.user || 'User',
-          senderEmail: currentUserEmail,
-          recipient: newMail.to,
+          to: newMail.to.split(',').map(e => e.trim()),
           subject: newMail.subject,
-          content: newMail.message,
-          isDraft: false
+          body: newMail.message
         })
       });
 
@@ -81,14 +95,28 @@ const MailApp = () => {
 
   const updateMail = async (id, updates) => {
     try {
-      const response = await fetch(`${API_URL}/mail/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      });
+      const token = localStorage.getItem('token');
+      let url = `${API_URL}/mail/${id}`;
+      let method = 'PUT';
+      let body = null;
+      let headers = { 'Authorization': `Bearer ${token}` };
+
+      if (updates.isRead !== undefined) {
+        url += '/read';
+      } else if (updates.isStarred !== undefined) {
+        url += '/star';
+      } else if (updates.isDeleted !== undefined) {
+        url += '/move';
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify({ folder: updates.isDeleted ? 'trash' : 'inbox' });
+      }
+
+      const response = await fetch(url, { method, headers, body });
       if (response.ok) {
-        setThreads(threads.map(t => t._id === id ? { ...t, ...updates } : t));
-        if (selected?._id === id) setSelected({ ...selected, ...updates });
+        fetchMails();
+        if (selected?._id === id) {
+          setSelected({ ...selected, ...updates });
+        }
       }
     } catch (err) {
       console.error('Failed to update mail:', err);

@@ -61,11 +61,9 @@ const forceLocalBackend =
   process.env.EXPO_PUBLIC_USE_LOCAL === 'true' ||
   process.env.EXPO_PUBLIC_USE_LOCAL === '1';
 
-// Default to cloud unless EXPO_PUBLIC_USE_LOCAL or EXPO_PUBLIC_API_URL points at your PC.
-const defaultApiUrl =
-  configuredApiUrl || (forceLocalBackend ? LOCAL_API_URL : PRODUCTION_API_URL);
-const defaultSocketUrl =
-  configuredSocketUrl || (forceLocalBackend ? LOCAL_SOCKET_URL : PRODUCTION_SOCKET_URL);
+// Default to local server for active development since we added new endpoints
+const defaultApiUrl = configuredApiUrl || LOCAL_API_URL;
+const defaultSocketUrl = configuredSocketUrl || LOCAL_SOCKET_URL;
 
 export let API_URL = configuredApiUrl || defaultApiUrl;
 export let SOCKET_URL = configuredSocketUrl || defaultSocketUrl;
@@ -243,11 +241,15 @@ export const initializeSession = async () => {
     }
   } else {
     try {
-      const customUrl = await AsyncStorage.getItem('nexus_custom_api_url');
-      if (customUrl) {
-        API_URL = customUrl;
-        SOCKET_URL = customUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
-      }
+      // Native: default to cloud unless explicitly forced local.
+      // const savedUrl = await AsyncStorage.getItem('nexus_custom_api_url');
+      // if (savedUrl) {
+      //   API_URL = stripTrailingSlash(savedUrl);
+      //   SOCKET_URL = API_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+      // }
+      
+      API_URL = forceLocalBackend || configuredApiUrl ? LOCAL_API_URL : LOCAL_API_URL; // Temporarily forced local
+      SOCKET_URL = forceLocalBackend || configuredSocketUrl ? LOCAL_SOCKET_URL : LOCAL_SOCKET_URL;
 
       const token = await AsyncStorage.getItem('nexus_token');
       const refreshToken = await AsyncStorage.getItem('nexus_refresh_token');
@@ -439,6 +441,17 @@ export const api = {
       const data = await request('/api/auth/signup', {
         method: 'POST',
         body: JSON.stringify({ name, email, password }),
+      });
+      const token = data.token || data.accessToken;
+      if (token) {
+        setSession(token, data.user, data.refreshToken);
+      }
+      return data;
+    },
+    async signupSubscription(name: string, organisationName: string, email: string, password: string, subscriptionTier: string) {
+      const data = await request('/api/auth/signup-subscription', {
+        method: 'POST',
+        body: JSON.stringify({ name, organisationName, email, password, subscriptionTier }),
       });
       const token = data.token || data.accessToken;
       if (token) {
@@ -707,6 +720,13 @@ export const api = {
       return request(`/api/tasks/${id}`, {
         method: 'DELETE',
       });
+    }
+  },
+
+  // Super Admin Module
+  superadmin: {
+    async getTenants() {
+      return request('/api/superadmin/tenants');
     }
   }
 };

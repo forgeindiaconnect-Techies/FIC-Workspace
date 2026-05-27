@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "1c235059-2326-4897-a8ae-6ba74f8029fc"
+      }
+    },
+    "android": {
+      "package": "com.elangom123.dominators"
+    }
+  }
+}

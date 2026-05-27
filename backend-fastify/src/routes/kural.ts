@@ -341,9 +341,13 @@ export async function kuralRoutes(fastify: FastifyInstance) {
       }
 
       await KuralMessage.deleteMany({ conversationId: conversation._id });
-      await conversation.deleteOne();
+      // Don't delete the conversation document itself: the channels listing endpoint
+      // may auto-create missing direct conversations. Instead, clear history.
+      conversation.lastMessageContent = 'Start a secure Kural conversation';
+      conversation.lastMessageTime = undefined;
+      await conversation.save();
 
-      return reply.code(200).send({ message: 'Kural conversation deleted.' });
+      return reply.code(200).send({ message: 'Kural conversation cleared.' });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to delete Kural conversation.', details: err.message });
     }

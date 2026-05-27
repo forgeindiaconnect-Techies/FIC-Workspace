@@ -1,13 +1,20 @@
 ﻿import React from 'react';
-import { View, StyleSheet, Platform, StatusBar } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, Platform, StatusBar, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomNav, TopBar } from './layout';
 import { Outlet, useLocation } from '../lib/router';
+import { getScreenType, getContentPadding, getBottomNavHeight } from '../lib/responsive';
 
 export default function AppLayout() {
   const location = useLocation();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const pageTitle = location.pathname.split('/')[1] || 'Workspace';
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  
+  const screenType = getScreenType(width);
+  const contentPadding = getContentPadding(screenType, width);
+  const bottomNavHeight = getBottomNavHeight(width);
 
   React.useEffect(() => {
     const checkFullscreen = () => {
@@ -21,7 +28,7 @@ export default function AppLayout() {
   }, [isFullscreen]);
 
   return (
-    <SafeAreaView style={[styles.safeArea, isFullscreen && styles.safeAreaFullscreen]}>
+    <SafeAreaView style={[styles.safeArea, isFullscreen && styles.safeAreaFullscreen]} edges={isFullscreen ? [] : ['top', 'bottom', 'left', 'right']}>
       <StatusBar 
         translucent 
         backgroundColor="transparent" 
@@ -30,7 +37,15 @@ export default function AppLayout() {
       />
       <View style={styles.container}>
         {!isFullscreen && <TopBar title={pageTitle} />}
-        <View style={[styles.main, isFullscreen && styles.mainFullscreen]}>
+        <View style={[
+          styles.main,
+          isFullscreen && styles.mainFullscreen,
+          !isFullscreen && {
+            paddingHorizontal: contentPadding.horizontal,
+            paddingTop: contentPadding.vertical,
+            paddingBottom: bottomNavHeight + contentPadding.vertical,
+          }
+        ]}>
           <View style={styles.contentWrapper}>
             <Outlet />
           </View>
@@ -54,9 +69,6 @@ const styles = StyleSheet.create({
   },
   main: {
     flex: 1,
-    paddingHorizontal: Platform.OS === 'web' ? 24 : 16,
-    paddingTop: 24,
-    paddingBottom: 100, // Space for BottomNav
   },
   mainFullscreen: {
     paddingHorizontal: 0,

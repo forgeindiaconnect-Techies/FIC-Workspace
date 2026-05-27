@@ -9,9 +9,16 @@ import Meetings from "./pages/Meetings";
 import Mail from "./pages/Mail";
 import Chat from "./pages/Chat";
 import Tasks from "./pages/Tasks";
-import Files from "./pages/Files";
 import Settings from "./pages/Settings";
-import { waitForSession, getSession } from "./lib/api";
+import TeamManagement from "./pages/TeamManagement";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import { waitForSession, getSession, SOCKET_URL } from "./lib/api";
+import { callManager } from "./lib/callManager";
+import IncomingCallOverlay from "./components/IncomingCallOverlay";
+import { registerWebRTCGlobals } from "./lib/webrtc";
+
+// Register react-native-webrtc globals once at startup (native builds only)
+registerWebRTCGlobals();
 
 /**
  * ProtectedRoute  redirects to /login if no valid session token exists.
@@ -32,11 +39,18 @@ export default function App() {
   React.useEffect(() => {
     waitForSession().finally(() => {
       setLoading(false);
+      // Init call signaling after session is ready
+      const { token } = getSession();
+      if (token && SOCKET_URL) {
+        callManager.init(SOCKET_URL, token);
+      }
     });
   }, []);
 
   return (
     <SafeAreaProvider>
+      {/* Global incoming call overlay — appears on any screen */}
+      <IncomingCallOverlay />
   {loading ? (
       <View
         style={{
@@ -69,8 +83,9 @@ export default function App() {
           <Route path="mail" element={<Mail />} />
           <Route path="chat" element={<Chat />} />
           <Route path="tasks" element={<Tasks />} />
-          <Route path="files" element={<Files />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="team" element={<TeamManagement />} />
+          <Route path="superadmin" element={<SuperAdminDashboard />} />
         </Route>
 
         {/* Catch-all  redirect unknown paths to home */}

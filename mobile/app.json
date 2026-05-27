@@ -12,7 +12,8 @@
         "NSCameraUsageDescription": "Nexus needs camera access for video meetings.",
         "NSMicrophoneUsageDescription": "Nexus needs microphone access for audio in meetings.",
         "NSPhotoLibraryUsageDescription": "Nexus needs photo library access to share images."
-      }
+      },
+      "bitcode": false
     },
     "android": {
       "package": "com.nexus.workspace",
@@ -27,7 +28,8 @@
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.WAKE_LOCK"
+        "android.permission.WAKE_LOCK",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ]
     },
     "plugins": [
@@ -55,8 +57,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "56fb8a0e-f73b-4a6f-a2b4-b80b4cc7c5bd"
+        "projectId": "cb4afffa-f8e7-45e1-b22b-f3691360c7d4"
       }
-    }
+    },
+    "owner": "kavipriyaaa"
   }
 }

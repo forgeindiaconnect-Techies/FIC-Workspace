@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import { User } from '../models/User';
 
-const DEFAULT_EMAIL = 'admin@antigraviity.com';
+const DEFAULT_EMAIL = 'admin@fic.com';
 const DEFAULT_PASSWORD = 'password123';
 
 export async function ensureDefaultUser() {
@@ -33,6 +33,38 @@ export async function ensureDefaultUser() {
       mfaEnabled: false,
       role: 'company-admin',
       workspaceId: 'antigraviity-hq',
+    });
+  }
+
+  // Super Admin Seeder
+  const SUPERADMIN_EMAIL = 'superadmin@fic.com';
+  const superAdminExisting = await User.findOne({ email: SUPERADMIN_EMAIL });
+  if (!superAdminExisting) {
+    const saPasswordHash = await bcrypt.hash('password123', salt);
+    await User.create({
+      name: 'Super Admin',
+      email: SUPERADMIN_EMAIL,
+      passwordHash: saPasswordHash,
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=SA`,
+      mfaEnabled: false,
+      role: 'super-admin',
+      workspaceId: 'fic-superadmin',
+    });
+  }
+
+  // Demo User Seeder
+  const DEMO_EMAIL = 'demo@fic.com';
+  const demoExisting = await User.findOne({ email: DEMO_EMAIL });
+  if (!demoExisting) {
+    const demoPasswordHash = await bcrypt.hash('password123', salt);
+    await User.create({
+      name: 'Demo User',
+      email: DEMO_EMAIL,
+      passwordHash: demoPasswordHash,
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=Demo`,
+      mfaEnabled: false,
+      role: 'Member',
+      workspaceId: 'demo-ws',
     });
   }
 }

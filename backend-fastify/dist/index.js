@@ -1830,7 +1830,6 @@ function initials(name) {
 async function ensureDirectConversation(workspaceId, currentEmail, peerEmail) {
   const participants = [currentEmail, peerEmail].map(normalizeEmail).sort();
   let conversation = await KuralConversation.findOne({
-    workspaceId,
     type: "direct",
     participantEmails: { $all: participants, $size: 2 }
   });
@@ -1876,7 +1875,6 @@ async function channelRoutes(fastify2) {
         });
       }
       const conversations = await KuralConversation.find({
-        workspaceId: activeWorkspaceId,
         type: "direct",
         participantEmails: currentEmail
       });
@@ -1944,7 +1942,6 @@ async function kuralRoutes(fastify2) {
       const currentEmail = normalizeEmail(request.user?.email || "");
       const conversation = await KuralConversation.findOne({
         _id: channelId,
-        workspaceId,
         participantEmails: currentEmail
       });
       if (!conversation) {
@@ -1977,7 +1974,6 @@ async function kuralRoutes(fastify2) {
       const currentEmail = normalizeEmail(request.user?.email || "");
       const conversation = await KuralConversation.findOne({
         _id: channelId,
-        workspaceId,
         participantEmails: currentEmail
       });
       if (!conversation) {
@@ -2096,8 +2092,10 @@ async function kuralRoutes(fastify2) {
         return reply.code(404).send({ error: "Kural conversation not found." });
       }
       await KuralMessage.deleteMany({ conversationId: conversation._id });
-      await conversation.deleteOne();
-      return reply.code(200).send({ message: "Kural conversation deleted." });
+      conversation.lastMessageContent = "Start a secure Kural conversation";
+      conversation.lastMessageTime = void 0;
+      await conversation.save();
+      return reply.code(200).send({ message: "Kural conversation cleared." });
     } catch (err) {
       return reply.code(500).send({ error: "Failed to delete Kural conversation.", details: err.message });
     }
@@ -2171,9 +2169,10 @@ var TaskSchema = new import_mongoose15.Schema({
   description: { type: String },
   status: {
     type: String,
-    enum: ["todo", "in-progress", "done"],
+    enum: ["todo", "in-progress", "pending_approval", "done"],
     default: "todo"
   },
+  feedback: { type: String },
   priority: {
     type: String,
     enum: ["low", "medium", "high"],
@@ -2241,7 +2240,7 @@ async function taskRoutes(fastify2) {
     try {
       const { id } = request.params;
       const body = request.body;
-      const allowedFields = ["title", "description", "status", "priority", "assigneeEmail", "assigneeName", "dueDate"];
+      const allowedFields = ["title", "description", "status", "priority", "assigneeEmail", "assigneeName", "dueDate", "feedback"];
       const update = { updatedAt: /* @__PURE__ */ new Date() };
       for (const field of allowedFields) {
         if (body[field] !== void 0) {
@@ -2515,6 +2514,135 @@ async function cleanupPeer(roomId, pid) {
   });
 }
 
+// src/services/callSignaling.ts
+var import_ws3 = require("ws");
+var import_jsonwebtoken5 = __toESM(require("jsonwebtoken"));
+var JWT_SECRET3 = process.env.JWT_SECRET || "nexus-jwt-secure-key-change-in-production";
+var onlineUsers = /* @__PURE__ */ new Map();
+function send2(ws, payload) {
+  if (ws.readyState === import_ws3.WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+  }
+}
+function handleCallSignaling(ws) {
+  let registeredEmail = null;
+  ws.on("message", (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+    const { type, data = {} } = msg;
+    if (type === "register") {
+      const { token } = data;
+      if (!token) return send2(ws, { type: "error", message: "token required" });
+      let decoded;
+      try {
+        decoded = import_jsonwebtoken5.default.verify(token, JWT_SECRET3);
+      } catch {
+        return send2(ws, { type: "error", message: "invalid token" });
+      }
+      const email = (decoded.email || "").toLowerCase().trim();
+      if (!email) return send2(ws, { type: "error", message: "email missing from token" });
+      const existing = onlineUsers.get(email);
+      if (existing && existing !== ws && existing.readyState === import_ws3.WebSocket.OPEN) {
+        try {
+          existing.close();
+        } catch {
+        }
+      }
+      registeredEmail = email;
+      onlineUsers.set(email, ws);
+      console.log(`[CallSignaling] User registered: ${email}`);
+      send2(ws, { type: "registered", email });
+      return;
+    }
+    if (!registeredEmail) {
+      return send2(ws, { type: "error", message: "not registered, send register first" });
+    }
+    if (type === "call_user") {
+      const { targetEmail, offer, callerName } = data;
+      if (!targetEmail || !offer) {
+        return send2(ws, { type: "error", message: "targetEmail and offer required" });
+      }
+      const normalizedTarget = targetEmail.toLowerCase().trim();
+      const targetWs = onlineUsers.get(normalizedTarget);
+      if (!targetWs || targetWs.readyState !== import_ws3.WebSocket.OPEN) {
+        console.log(`[CallSignaling] Target ${normalizedTarget} is offline/unavailable`);
+        return send2(ws, { type: "call_unavailable", targetEmail: normalizedTarget });
+      }
+      console.log(`[CallSignaling] Relaying call from ${registeredEmail} to ${normalizedTarget}`);
+      send2(targetWs, {
+        type: "incoming_call",
+        callerEmail: registeredEmail,
+        callerName: callerName || registeredEmail,
+        offer
+      });
+      return;
+    }
+    if (type === "call_answer") {
+      const { targetEmail, answer } = data;
+      if (!targetEmail || !answer) return;
+      const normalizedTarget = targetEmail.toLowerCase().trim();
+      const targetWs = onlineUsers.get(normalizedTarget);
+      if (targetWs) {
+        console.log(`[CallSignaling] Relaying answer from ${registeredEmail} to ${normalizedTarget}`);
+        send2(targetWs, {
+          type: "call_answered",
+          calleeEmail: registeredEmail,
+          answer
+        });
+      }
+      return;
+    }
+    if (type === "call_declined") {
+      const { targetEmail } = data;
+      const normalizedTarget = (targetEmail || "").toLowerCase().trim();
+      const targetWs = onlineUsers.get(normalizedTarget);
+      if (targetWs) {
+        console.log(`[CallSignaling] Call declined from ${registeredEmail} to ${normalizedTarget}`);
+        send2(targetWs, { type: "call_declined", calleeEmail: registeredEmail });
+      }
+      return;
+    }
+    if (type === "call_ended") {
+      const { targetEmail } = data;
+      const normalizedTarget = (targetEmail || "").toLowerCase().trim();
+      const targetWs = onlineUsers.get(normalizedTarget);
+      if (targetWs) {
+        console.log(`[CallSignaling] Call ended from ${registeredEmail} to ${normalizedTarget}`);
+        send2(targetWs, { type: "call_ended" });
+      }
+      return;
+    }
+    if (type === "ice_candidate") {
+      const { targetEmail, candidate } = data;
+      if (!targetEmail || !candidate) return;
+      const normalizedTarget = targetEmail.toLowerCase().trim();
+      const targetWs = onlineUsers.get(normalizedTarget);
+      if (targetWs) {
+        send2(targetWs, { type: "ice_candidate", fromEmail: registeredEmail, candidate });
+      }
+      return;
+    }
+  });
+  ws.on("close", () => {
+    if (registeredEmail) {
+      if (onlineUsers.get(registeredEmail) === ws) {
+        onlineUsers.delete(registeredEmail);
+        console.log(`[CallSignaling] User disconnected: ${registeredEmail}`);
+      }
+    }
+  });
+  ws.on("error", () => {
+    if (registeredEmail && onlineUsers.get(registeredEmail) === ws) {
+      onlineUsers.delete(registeredEmail);
+      console.log(`[CallSignaling] Error on connection: ${registeredEmail}`);
+    }
+  });
+}
+
 // src/utils/seedDefaultUser.ts
 var import_bcrypt4 = __toESM(require("bcrypt"));
 var DEFAULT_EMAIL = "admin@antigraviity.com";
@@ -2677,6 +2805,11 @@ async function bootstrap() {
   server.get("/ws/audio", { websocket: true }, (connection, req) => {
     const ws = connection.socket || connection;
     handleAudioSocket(ws);
+  });
+  server.get("/ws/calls", { websocket: true }, (connection, req) => {
+    server.log.info("New voice call signaling connection.");
+    const ws = connection.socket || connection;
+    handleCallSignaling(ws);
   });
   server.get("/health", async () => {
     const connected = isMongoConnected();
