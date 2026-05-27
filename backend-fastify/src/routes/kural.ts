@@ -24,7 +24,6 @@ function initials(name: string) {
 async function ensureDirectConversation(workspaceId: string, currentEmail: string, peerEmail: string) {
   const participants = [currentEmail, peerEmail].map(normalizeEmail).sort();
   let conversation = await KuralConversation.findOne({
-    workspaceId,
     type: 'direct',
     participantEmails: { $all: participants, $size: 2 }
   });
@@ -79,7 +78,6 @@ export async function channelRoutes(fastify: FastifyInstance) {
       }
 
       const conversations = await KuralConversation.find({
-        workspaceId: activeWorkspaceId,
         type: 'direct',
         participantEmails: currentEmail
       });
@@ -157,7 +155,6 @@ export async function kuralRoutes(fastify: FastifyInstance) {
       const currentEmail = normalizeEmail(request.user?.email || '');
       const conversation = await KuralConversation.findOne({
         _id: channelId,
-        workspaceId,
         participantEmails: currentEmail
       });
 
@@ -197,7 +194,6 @@ export async function kuralRoutes(fastify: FastifyInstance) {
       const currentEmail = normalizeEmail(request.user?.email || '');
       const conversation = await KuralConversation.findOne({
         _id: channelId,
-        workspaceId,
         participantEmails: currentEmail
       });
 
