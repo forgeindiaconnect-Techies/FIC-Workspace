@@ -356,4 +356,64 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({ error: 'OAuth exchange process failed.', details: err.message });
     }
   });
+
+  // 8. UPDATE PROFILE (Avatar URL)
+  fastify.put('/update-profile', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { avatarUrl } = request.body as any;
+      if (!avatarUrl) {
+        return reply.code(400).send({ error: 'Avatar URL is required.' });
+      }
+
+      const user = await User.findById(request.user!.id);
+      if (!user) return reply.code(404).send({ error: 'User not found.' });
+
+      user.avatarUrl = avatarUrl;
+      await user.save();
+
+      const tokenBundle = await issueTokens(user);
+      return reply.code(200).send(tokenBundle);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to update profile.', details: err.message });
+    }
+  });
+
+  // 9. CHANGE PASSWORD
+  fastify.put('/change-password', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { currentPassword, newPassword } = request.body as any;
+      if (!currentPassword || !newPassword) {
+        return reply.code(400).send({ error: 'Current password and new password are required.' });
+      }
+      if (newPassword.length < 6) {
+        return reply.code(400).send({ error: 'New password must be at least 6 characters.' });
+      }
+
+      const user = await User.findById(request.user!.id);
+      if (!user) return reply.code(404).send({ error: 'User not found.' });
+
+      // Verify current password
+      const activeHash = user.passwordHash || user.password;
+      if (!activeHash) {
+        return reply.code(400).send({ error: 'No password set for this account (e.g. OAuth only).' });
+      }
+
+      const isValid = await bcrypt.compare(currentPassword, activeHash);
+      if (!isValid) {
+        return reply.code(401).send({ error: 'Invalid current password.' });
+      }
+
+      // Hash and save new password
+      const salt = await bcrypt.genSalt(12);
+      const passwordHash = await bcrypt.hash(newPassword, salt);
+
+      user.passwordHash = passwordHash;
+      if (user.password) user.password = undefined; // clear legacy fallback if exists
+      await user.save();
+
+      return reply.code(200).send({ message: 'Password updated successfully.' });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to change password.', details: err.message });
+    }
+  });
 }

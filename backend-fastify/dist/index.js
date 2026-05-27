@@ -598,6 +598,51 @@ async function authRoutes(fastify2) {
       return reply.code(500).send({ error: "OAuth exchange process failed.", details: err.message });
     }
   });
+  fastify2.put("/update-profile", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { avatarUrl } = request.body;
+      if (!avatarUrl) {
+        return reply.code(400).send({ error: "Avatar URL is required." });
+      }
+      const user = await User.findById(request.user.id);
+      if (!user) return reply.code(404).send({ error: "User not found." });
+      user.avatarUrl = avatarUrl;
+      await user.save();
+      const tokenBundle = await issueTokens(user);
+      return reply.code(200).send(tokenBundle);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to update profile.", details: err.message });
+    }
+  });
+  fastify2.put("/change-password", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { currentPassword, newPassword } = request.body;
+      if (!currentPassword || !newPassword) {
+        return reply.code(400).send({ error: "Current password and new password are required." });
+      }
+      if (newPassword.length < 6) {
+        return reply.code(400).send({ error: "New password must be at least 6 characters." });
+      }
+      const user = await User.findById(request.user.id);
+      if (!user) return reply.code(404).send({ error: "User not found." });
+      const activeHash = user.passwordHash || user.password;
+      if (!activeHash) {
+        return reply.code(400).send({ error: "No password set for this account (e.g. OAuth only)." });
+      }
+      const isValid = await import_bcrypt.default.compare(currentPassword, activeHash);
+      if (!isValid) {
+        return reply.code(401).send({ error: "Invalid current password." });
+      }
+      const salt = await import_bcrypt.default.genSalt(12);
+      const passwordHash = await import_bcrypt.default.hash(newPassword, salt);
+      user.passwordHash = passwordHash;
+      if (user.password) user.password = void 0;
+      await user.save();
+      return reply.code(200).send({ message: "Password updated successfully." });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to change password.", details: err.message });
+    }
+  });
 }
 
 // src/routes/meetings.ts
@@ -1722,7 +1767,7 @@ Important: Provide ONLY the final generated email body text. Do not include intr
 }
 
 // src/routes/kural.ts
-var import_mongoose13 = require("mongoose");
+var import_mongoose14 = require("mongoose");
 
 // src/models/KuralConversation.ts
 var import_mongoose11 = require("mongoose");
@@ -1757,6 +1802,22 @@ var KuralMessageSchema = new import_mongoose12.Schema({
 });
 KuralMessageSchema.index({ conversationId: 1, createdAt: 1 });
 var KuralMessage = (0, import_mongoose12.model)("KuralMessage", KuralMessageSchema);
+
+// src/models/Story.ts
+var import_mongoose13 = require("mongoose");
+var StorySchema = new import_mongoose13.Schema({
+  workspaceId: { type: String, required: true, index: true },
+  userId: { type: String, required: true },
+  userEmail: { type: String, required: true },
+  userName: { type: String, required: true },
+  userAvatar: { type: String },
+  content: { type: String, required: true },
+  // For text or image URLs
+  createdAt: { type: Date, default: Date.now, expires: 86400 }
+  // Auto-delete after 24 hours (86400 seconds)
+});
+StorySchema.index({ workspaceId: 1, createdAt: -1 });
+var Story = (0, import_mongoose13.model)("Story", StorySchema);
 
 // src/routes/kural.ts
 var defaultWorkspaceId = "antigraviity-hq";
@@ -1796,11 +1857,11 @@ async function channelRoutes(fastify2) {
       const members = await User.find({
         workspaceId: activeWorkspaceId,
         email: { $ne: currentEmail }
-      }).sort({ name: 1 }).select("name email role avatarUrl workspaceId createdAt");
-      const channels = [];
+      }).select("name email role avatarUrl workspaceId createdAt");
+      const channelsMap = /* @__PURE__ */ new Map();
       for (const member of members) {
         const conversation = await ensureDirectConversation(activeWorkspaceId, currentEmail, member.email);
-        channels.push({
+        channelsMap.set(conversation._id.toString(), {
           _id: conversation._id,
           type: conversation.type,
           displayName: member.name,
@@ -1814,9 +1875,61 @@ async function channelRoutes(fastify2) {
           lastMessageTime: conversation.lastMessageTime || conversation.updatedAt
         });
       }
+      const conversations = await KuralConversation.find({
+        workspaceId: activeWorkspaceId,
+        type: "direct",
+        participantEmails: currentEmail
+      });
+      for (const conversation of conversations) {
+        if (!channelsMap.has(conversation._id.toString())) {
+          const peerEmail = conversation.participantEmails.find((e) => e !== currentEmail) || currentEmail;
+          const peerUser = await User.findOne({ email: peerEmail }).select("name role avatarUrl");
+          channelsMap.set(conversation._id.toString(), {
+            _id: conversation._id,
+            type: conversation.type,
+            displayName: peerUser?.name || peerEmail,
+            name: peerUser?.name || peerEmail,
+            email: peerEmail,
+            avatar: initials(peerUser?.name || peerEmail),
+            role: peerUser?.role || "Member",
+            workspaceId: activeWorkspaceId,
+            isOnline: true,
+            lastMessageContent: conversation.lastMessageContent || "Start a secure Kural conversation",
+            lastMessageTime: conversation.lastMessageTime || conversation.updatedAt
+          });
+        }
+      }
+      const channels = Array.from(channelsMap.values()).sort((a, b) => {
+        return new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime();
+      });
       return reply.code(200).send(channels);
     } catch (err) {
       return reply.code(500).send({ error: "Failed to fetch Kural channels.", details: err.message });
+    }
+  });
+  fastify2.get("/:workspaceId/groups", async (request, reply) => {
+    try {
+      const { workspaceId } = request.params;
+      const currentEmail = normalizeEmail(request.query.email || request.user?.email);
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+      const groups = await KuralConversation.find({
+        workspaceId: activeWorkspaceId,
+        type: "channel",
+        participantEmails: currentEmail
+      }).sort({ updatedAt: -1 });
+      return reply.code(200).send(groups.map((g) => ({
+        _id: g._id,
+        type: g.type,
+        name: g.name,
+        displayName: g.name,
+        participantEmails: g.participantEmails,
+        lastMessageContent: g.lastMessageContent,
+        lastMessageTime: g.lastMessageTime || g.updatedAt,
+        unread: 0,
+        isOnline: true
+      })));
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to fetch groups.", details: err.message });
     }
   });
 }
@@ -1825,7 +1938,7 @@ async function kuralRoutes(fastify2) {
   fastify2.get("/:workspaceId/:channelId", async (request, reply) => {
     try {
       const { workspaceId, channelId } = request.params;
-      if (!import_mongoose13.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose14.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
@@ -1855,7 +1968,7 @@ async function kuralRoutes(fastify2) {
     try {
       const { workspaceId, channelId } = request.params;
       const content = String(request.body.content || "").trim();
-      if (!import_mongoose13.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose14.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       if (!content) {
@@ -1897,7 +2010,7 @@ async function kuralRoutes(fastify2) {
     try {
       const { members = [], createdBy, workspaceId } = request.body;
       const currentEmail = normalizeEmail(createdBy || request.user?.email || "");
-      const peerEmail = normalizeEmail(members.find((email) => normalizeEmail(email) !== currentEmail));
+      const peerEmail = normalizeEmail(members.find((email) => normalizeEmail(email) !== currentEmail) || members[0] || currentEmail);
       const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
       if (!currentEmail || !peerEmail) {
         return reply.code(400).send({ error: "Two participant emails are required to start a direct message." });
@@ -1908,10 +2021,70 @@ async function kuralRoutes(fastify2) {
       return reply.code(500).send({ error: "Failed to start direct message.", details: err.message });
     }
   });
+  fastify2.post("/groups", async (request, reply) => {
+    try {
+      const { name, members = [], workspaceId } = request.body;
+      const currentEmail = normalizeEmail(request.user?.email || "");
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+      if (!name) return reply.code(400).send({ error: "Group name is required." });
+      const participantEmails = [.../* @__PURE__ */ new Set([currentEmail, ...members.map(normalizeEmail)])];
+      const conversation = await KuralConversation.create({
+        workspaceId: activeWorkspaceId,
+        type: "channel",
+        name,
+        participantEmails,
+        createdByEmail: currentEmail
+      });
+      return reply.code(201).send(conversation);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to create group.", details: err.message });
+    }
+  });
+  fastify2.get("/search", async (request, reply) => {
+    try {
+      const { email } = request.query;
+      if (!email) return reply.code(400).send({ error: "Email query parameter is required." });
+      const user = await User.findOne({ email: normalizeEmail(email) }).select("name email avatarUrl");
+      if (!user) return reply.code(404).send({ error: "User not found." });
+      return reply.code(200).send(user);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to search user.", details: err.message });
+    }
+  });
+  fastify2.get("/:workspaceId/stories", async (request, reply) => {
+    try {
+      const { workspaceId } = request.params;
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+      const stories = await Story.find({ workspaceId: activeWorkspaceId }).sort({ createdAt: -1 }).limit(50);
+      return reply.code(200).send(stories);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to fetch stories.", details: err.message });
+    }
+  });
+  fastify2.post("/:workspaceId/stories", async (request, reply) => {
+    try {
+      const { workspaceId } = request.params;
+      const { content } = request.body;
+      if (!content) return reply.code(400).send({ error: "Content is required." });
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+      const currentUser = await User.findById(request.user?.id);
+      const story = await Story.create({
+        workspaceId: activeWorkspaceId,
+        userId: request.user?.id,
+        userEmail: normalizeEmail(request.user?.email || ""),
+        userName: request.user?.name || "User",
+        userAvatar: currentUser?.avatarUrl,
+        content
+      });
+      return reply.code(201).send(story);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to post story.", details: err.message });
+    }
+  });
   fastify2.delete("/delete-conversation/:channelId", async (request, reply) => {
     try {
       const { channelId } = request.params;
-      if (!import_mongoose13.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose14.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
@@ -1991,8 +2164,8 @@ async function memberRoutes(fastify2) {
 }
 
 // src/models/Task.ts
-var import_mongoose14 = require("mongoose");
-var TaskSchema = new import_mongoose14.Schema({
+var import_mongoose15 = require("mongoose");
+var TaskSchema = new import_mongoose15.Schema({
   workspaceId: { type: String, required: true, index: true },
   title: { type: String, required: true },
   description: { type: String },
@@ -2019,7 +2192,7 @@ TaskSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var Task = (0, import_mongoose14.model)("Task", TaskSchema);
+var Task = (0, import_mongoose15.model)("Task", TaskSchema);
 
 // src/routes/tasks.ts
 var defaultWorkspaceId3 = "antigraviity-hq";
@@ -2099,8 +2272,8 @@ async function taskRoutes(fastify2) {
 }
 
 // src/models/Document.ts
-var import_mongoose15 = require("mongoose");
-var DocumentSchema = new import_mongoose15.Schema({
+var import_mongoose16 = require("mongoose");
+var DocumentSchema = new import_mongoose16.Schema({
   workspaceId: { type: String, required: true, index: true },
   title: { type: String, required: true },
   type: {
@@ -2120,7 +2293,7 @@ DocumentSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var WorkspaceDocument = (0, import_mongoose15.model)("WorkspaceDocument", DocumentSchema);
+var WorkspaceDocument = (0, import_mongoose16.model)("WorkspaceDocument", DocumentSchema);
 
 // src/routes/docs.ts
 var defaultWorkspaceId4 = "antigraviity-hq";

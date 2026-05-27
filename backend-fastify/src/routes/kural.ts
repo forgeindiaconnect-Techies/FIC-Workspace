@@ -57,14 +57,13 @@ export async function channelRoutes(fastify: FastifyInstance) {
       const members = await User.find({
         workspaceId: activeWorkspaceId,
         email: { $ne: currentEmail }
-      })
-        .sort({ name: 1 })
-        .select('name email role avatarUrl workspaceId createdAt');
+      }).select('name email role avatarUrl workspaceId createdAt');
 
-      const channels = [];
+      const channelsMap = new Map();
+
       for (const member of members) {
         const conversation = await ensureDirectConversation(activeWorkspaceId, currentEmail, member.email);
-        channels.push({
+        channelsMap.set(conversation._id.toString(), {
           _id: conversation._id,
           type: conversation.type,
           displayName: member.name,
@@ -78,6 +77,36 @@ export async function channelRoutes(fastify: FastifyInstance) {
           lastMessageTime: conversation.lastMessageTime || conversation.updatedAt
         });
       }
+
+      const conversations = await KuralConversation.find({
+        workspaceId: activeWorkspaceId,
+        type: 'direct',
+        participantEmails: currentEmail
+      });
+
+      for (const conversation of conversations) {
+        if (!channelsMap.has(conversation._id.toString())) {
+          const peerEmail = conversation.participantEmails.find(e => e !== currentEmail) || currentEmail;
+          const peerUser = await User.findOne({ email: peerEmail }).select('name role avatarUrl');
+          channelsMap.set(conversation._id.toString(), {
+            _id: conversation._id,
+            type: conversation.type,
+            displayName: peerUser?.name || peerEmail,
+            name: peerUser?.name || peerEmail,
+            email: peerEmail,
+            avatar: initials(peerUser?.name || peerEmail),
+            role: peerUser?.role || 'Member',
+            workspaceId: activeWorkspaceId,
+            isOnline: true,
+            lastMessageContent: conversation.lastMessageContent || 'Start a secure Kural conversation',
+            lastMessageTime: conversation.lastMessageTime || conversation.updatedAt
+          });
+        }
+      }
+
+      const channels = Array.from(channelsMap.values()).sort((a, b) => {
+        return new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime();
+      });
 
       return reply.code(200).send(channels);
     } catch (err: any) {
@@ -206,7 +235,8 @@ export async function kuralRoutes(fastify: FastifyInstance) {
     try {
       const { members = [], createdBy, workspaceId } = request.body as any;
       const currentEmail = normalizeEmail(createdBy || request.user?.email || '');
-      const peerEmail = normalizeEmail(members.find((email: string) => normalizeEmail(email) !== currentEmail));
+      // Fallback to currentEmail if they are chatting with themselves
+      const peerEmail = normalizeEmail(members.find((email: string) => normalizeEmail(email) !== currentEmail) || members[0] || currentEmail);
       const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
 
       if (!currentEmail || !peerEmail) {

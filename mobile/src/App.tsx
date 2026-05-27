@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { View, ActivityIndicator } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { BrowserRouter, Routes, Route, Navigate } from "./lib/router";
@@ -10,6 +10,7 @@ import Mail from "./pages/Mail";
 import Chat from "./pages/Chat";
 import Tasks from "./pages/Tasks";
 import Files from "./pages/Files";
+import Settings from "./pages/Settings";
 import { waitForSession, getSession } from "./lib/api";
 
 /**
@@ -69,6 +70,7 @@ export default function App() {
           <Route path="chat" element={<Chat />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="files" element={<Files />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
 
         {/* Catch-all  redirect unknown paths to home */}

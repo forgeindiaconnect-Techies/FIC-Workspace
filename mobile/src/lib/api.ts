@@ -446,6 +446,22 @@ export const api = {
       }
       return data;
     },
+    async updateProfile(avatarUrl: string) {
+      const data = await request('/api/auth/update-profile', {
+        method: 'PUT',
+        body: JSON.stringify({ avatarUrl }),
+      });
+      if (data.accessToken) {
+        setSession(data.accessToken, data.user, data.refreshToken);
+      }
+      return data;
+    },
+    async changePassword(currentPassword: string, newPassword: string) {
+      return request('/api/auth/change-password', {
+        method: 'PUT',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+    },
     async registerTenant(tenantData: any) {
       return request('/api/auth/register-tenant', {
         method: 'POST',
@@ -666,6 +682,30 @@ export const api = {
       return request('/api/members/add', {
         method: 'POST',
         body: JSON.stringify(memberData),
+      });
+    }
+  },
+
+  // Tasks Module
+  tasks: {
+    async getTasks(workspaceId: string) {
+      return request(`/api/tasks/${workspaceId}`);
+    },
+    async createTask(taskData: any) {
+      return request('/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify(taskData),
+      });
+    },
+    async updateTask(id: string, updateData: any) {
+      return request(`/api/tasks/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updateData),
+      });
+    },
+    async deleteTask(id: string) {
+      return request(`/api/tasks/${id}`, {
+        method: 'DELETE',
       });
     }
   }

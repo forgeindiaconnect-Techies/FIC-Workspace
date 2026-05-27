@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { 
   View, 
   Text, 
@@ -6,7 +6,10 @@ import {
   TouchableOpacity, 
   Dimensions, 
   Platform,
-  StatusBar
+  StatusBar,
+  Modal,
+  TouchableWithoutFeedback,
+  Image
 } from "react-native";
 import { 
   Home as HomeIcon,
@@ -16,7 +19,8 @@ import {
   CheckSquare, 
   FileText,
   User as UserIcon,
-  LayoutGrid
+  Settings,
+  LogOut
 } from "lucide-react-native";
 import { useNavigate, useLocation } from "../lib/router";
 
@@ -64,28 +68,23 @@ export function BottomNav() {
   );
 }
 
-import { clearSession } from "../lib/api";
+import { clearSession, getSession } from "../lib/api";
 import { Alert } from "react-native";
 
 export function TopBar({ title }: { title: string }) {
   const navigate = useNavigate();
+  const { user } = getSession();
+  const [showMenu, setShowMenu] = React.useState(false);
 
-  const handleProfilePress = () => {
-    Alert.alert(
-      "Account Menu",
-      "Would you like to sign out of Nexus Workspace?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Logout", 
-          style: "destructive", 
-          onPress: () => {
-            clearSession();
-            navigate('/login');
-          } 
-        }
-      ]
-    );
+  const handleLogout = () => {
+    setShowMenu(false);
+    clearSession();
+    navigate('/login');
+  };
+
+  const handleSettings = () => {
+    setShowMenu(false);
+    navigate('/settings');
   };
 
   return (
@@ -98,13 +97,36 @@ export function TopBar({ title }: { title: string }) {
       </View>
       
       <View style={styles.topActions}>
-        <TouchableOpacity style={styles.topButton}>
-          <LayoutGrid size={20} color="#64748b" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.profileBox} onPress={handleProfilePress}>
-          <UserIcon size={18} color="#64748b" />
+        <TouchableOpacity style={styles.profileBox} onPress={() => setShowMenu(true)}>
+          {user?.avatarUrl ? (
+            <Image source={{ uri: user.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+          ) : (
+            <UserIcon size={18} color="#64748b" />
+          )}
         </TouchableOpacity>
       </View>
+
+      {showMenu && (
+        <Modal transparent visible={showMenu} onRequestClose={() => setShowMenu(false)} animationType="fade">
+          <TouchableWithoutFeedback onPress={() => setShowMenu(false)}>
+            <View style={styles.menuOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.dropdownMenu}>
+                  <TouchableOpacity style={styles.menuItem} onPress={handleSettings}>
+                    <Settings size={18} color="#475569" />
+                    <Text style={styles.menuItemText}>Settings</Text>
+                  </TouchableOpacity>
+                  <View style={styles.menuDivider} />
+                  <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
+                    <LogOut size={18} color="#ef4444" />
+                    <Text style={[styles.menuItemText, { color: '#ef4444' }]}>Logout</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -203,5 +225,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: Platform.OS === 'android' ? 64 + (StatusBar.currentHeight || 24) : (Platform.OS === 'ios' ? 88 : 64),
+    right: 24,
+    width: 200,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  menuItemText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#f1f5f9',
+    marginVertical: 4,
   },
 });
