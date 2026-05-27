@@ -1,5 +1,4 @@
-import { Buffer } from 'buffer';
-import process from 'process';
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { getApiUrl } from '../api';
