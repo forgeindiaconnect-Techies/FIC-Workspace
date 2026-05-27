@@ -30,10 +30,10 @@ const MailApp = () => {
       const auth = JSON.parse(localStorage.getItem('auth') || '{}');
       
       // Update in DB
-      await fetch(getApiUrl(`/api/mail/${mailId}`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: targetFolder })
+      await fetch(getApiUrl(`/api/mail/${mailId}/move`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        body: JSON.stringify({ folder: targetFolder.toLowerCase() })
       });
       
       queryClient.invalidateQueries(['mails', auth.workspaceId, auth.email]);

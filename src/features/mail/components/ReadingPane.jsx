@@ -24,17 +24,30 @@ const ReadingPane = () => {
   const { data: mail, isLoading: isMailLoading } = useQuery({
     queryKey: ['mail', selectedId],
     queryFn: async () => {
-      const res = await fetch(getApiUrl(`/api/mail/${auth.workspaceId}?email=${auth.email}`));
-      const mails = await res.json();
-      const selected = mails.find(m => m._id === selectedId);
+      const token = localStorage.getItem('token');
+      const res = await fetch(getApiUrl(`/api/mail?folder=all`), {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      const mails = Array.isArray(data) ? data : [];
+      let selected = mails.find(m => m._id === selectedId);
       
-      // Auto-mark as read
-      if (selected && !selected.isRead) {
-        fetch(getApiUrl(`/api/mail/${selected._id}`), {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ isRead: true })
-        }).then(() => queryClient.invalidateQueries(['mails']));
+      if (selected) {
+        selected = {
+          ...selected,
+          recipient: selected.recipientEmails?.[0] || '',
+          sender: selected.senderName || selected.senderEmail || 'Unknown',
+          content: selected.body || '',
+          timestamp: selected.sentAt || new Date().toISOString(),
+          hasAttachments: selected.attachments?.length > 0
+        };
+        // Auto-mark as read
+        if (!selected.isRead) {
+          fetch(getApiUrl(`/api/mail/${selected._id}/read`), {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}` }
+          }).then(() => queryClient.invalidateQueries(['mails']));
+        }
       }
       return selected;
     },
@@ -44,9 +57,10 @@ const ReadingPane = () => {
   // AI Summary Mutation
   const summaryMutation = useMutation({
     mutationFn: async (content) => {
+      const token = localStorage.getItem('token');
       const res = await fetch(getApiUrl('/api/mail/summarize'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ content })
       });
       return res.json();
@@ -56,9 +70,10 @@ const ReadingPane = () => {
   // AI Smart Reply Mutation
   const smartReplyMutation = useMutation({
     mutationFn: async ({ content, sender }) => {
+      const token = localStorage.getItem('token');
       const res = await fetch(getApiUrl('/api/mail/smart-reply'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ content, sender })
       });
       return res.json();
@@ -68,11 +83,27 @@ const ReadingPane = () => {
   // Mail Update Mutation
   const updateMailMutation = useMutation({
     mutationFn: async (updates) => {
-      const res = await fetch(getApiUrl(`/api/mail/${selectedId}`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      });
+      const token = localStorage.getItem('token');
+      let url = getApiUrl(`/api/mail/${selectedId}`);
+      let method = 'PUT';
+      let body = null;
+      let headers = { 'Authorization': `Bearer ${token}` };
+
+      if (updates.isRead !== undefined) {
+        url += '/read';
+      } else if (updates.isStarred !== undefined) {
+        url += '/star';
+      } else if (updates.isDeleted !== undefined) {
+        url += '/move';
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify({ folder: updates.isDeleted ? 'trash' : 'inbox' });
+      } else if (updates.label === 'Archive') {
+        url += '/move';
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify({ folder: 'archive' });
+      }
+
+      const res = await fetch(url, { method, headers, body });
       return res.json();
     },
     onSuccess: () => {

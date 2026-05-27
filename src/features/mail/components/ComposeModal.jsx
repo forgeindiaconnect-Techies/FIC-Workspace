@@ -60,9 +60,10 @@ const ComposeModal = () => {
 
   const fetchSmartCompose = async (currentText) => {
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch(getApiUrl('/api/mail/smart-compose'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ currentText, context: 'Professional email' })
       });
       const data = await res.json();
@@ -83,27 +84,24 @@ const ComposeModal = () => {
     if (!content && !subject && !to) return;
 
     const draftData = {
-      workspaceId: auth.workspaceId || 'demo',
-      sender: auth.user || 'Admin',
-      senderEmail: auth.email || 'admin@forgeindia.com',
-      recipient: to,
+      to: to.split(',').map(e => e.trim()),
       subject: subject || '(No Subject)',
-      content,
+      body: content,
       isDraft: true,
-      timestamp: new Date().toISOString()
     };
 
     try {
+      const token = localStorage.getItem('token');
       if (draftId) {
         await fetch(getApiUrl(`/api/mail/${draftId}`), {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(draftData)
         });
       } else {
         const res = await fetch(getApiUrl('/api/mail/send'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(draftData)
         });
         const data = await res.json();
@@ -123,11 +121,12 @@ const ComposeModal = () => {
 
   const sendMutation = useMutation({
     mutationFn: async (mailData) => {
+      const token = localStorage.getItem('token');
       const endpoint = draftId ? getApiUrl(`/api/mail/${draftId}`) : getApiUrl('/api/mail/send');
       const method = draftId ? 'PATCH' : 'POST';
       const res = await fetch(endpoint, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(mailData)
       });
       return res.json();
@@ -144,14 +143,10 @@ const ComposeModal = () => {
     const content = editor.getHTML();
 
     sendMutation.mutate({
-      workspaceId: auth.workspaceId || 'demo',
-      sender: auth.user || 'Admin',
-      senderEmail: auth.email || 'admin@forgeindia.com',
-      recipient: to,
+      to: to.split(',').map(e => e.trim()),
       subject,
-      content,
+      body: content,
       isDraft: false,
-      timestamp: new Date().toISOString()
     });
   };
 

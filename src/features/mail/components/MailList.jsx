@@ -30,9 +30,22 @@ const MailList = () => {
   const { data: emails = [], isLoading } = useQuery({
     queryKey: ['mails', workspaceId, email, searchQuery],
     queryFn: async () => {
-      const res = await fetch(getApiUrl(`/api/mail/${workspaceId}?email=${email}${searchQuery ? `&q=${searchQuery}` : ''}`));
+      const token = localStorage.getItem('token');
+      const res = await fetch(getApiUrl(`/api/mail?folder=all${searchQuery ? `&q=${searchQuery}` : ''}`), {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       if (!res.ok) throw new Error('Failed to fetch');
-      return res.json();
+      const data = await res.json();
+      return Array.isArray(data) ? data.map(m => ({
+        ...m,
+        recipient: m.recipientEmails?.[0] || '',
+        sender: m.senderName || m.senderEmail || 'Unknown',
+        content: m.body || '',
+        timestamp: m.sentAt || new Date().toISOString(),
+        isDeleted: m.folder === 'trash',
+        isDraft: m.folder === 'drafts',
+        hasAttachments: m.attachments?.length > 0
+      })) : [];
     },
     // Keep previous data while fetching new search results for smoother UI
     placeholderData: (previousData) => previousData,
