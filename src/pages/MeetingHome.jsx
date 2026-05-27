@@ -51,7 +51,7 @@ const MeetingHome = () => {
 
   const fetchMeetings = async () => {
     try {
-      const res = await fetch(getApiUrl(`/api/meetings?workspaceId=${workspaceId}`), {
+      const res = await fetch(getApiUrl(`/api/meetings/history?page=1&limit=20`), {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       if (res.ok) {
@@ -76,7 +76,7 @@ const MeetingHome = () => {
     const password = meetPass || Math.random().toString(36).substring(2, 8).toUpperCase();
     
     try {
-       await fetch(getApiUrl('/api/meetings/register'), {
+       await fetch(getApiUrl('/api/meetings'), {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -129,11 +129,11 @@ const MeetingHome = () => {
 
     try {
         const finalWorkspaceId = workspaceId || 'default';
-        const res = await fetch(getApiUrl(`/api/meeting-logic/validate?workspaceId=${finalWorkspaceId}&roomId=${finalCode}&password=${finalPwd}`), {
+        const res = await fetch(getApiUrl(`/api/meetings/join/${finalCode}?passcode=${finalPwd}`), {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
         const data = await res.json();
-        if (data.valid) {
+        if (data.room || data.id) {
             setJoinModal(false);
             navigate(`/w/${finalWorkspaceId}/meet/room/${finalCode}?pwd=${finalPwd}&intent=join`);
         } else {
@@ -164,7 +164,7 @@ const MeetingHome = () => {
     };
 
     try {
-      const res = await fetch(getApiUrl('/api/meetings/create'), {
+      const res = await fetch(getApiUrl('/api/meetings'), {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -187,7 +187,7 @@ const MeetingHome = () => {
 
   const enterPersistentRoom = async (room) => {
      try {
-       await fetch(getApiUrl('/api/meetings/register'), {
+       await fetch(getApiUrl('/api/meetings'), {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
