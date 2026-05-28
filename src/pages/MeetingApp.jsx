@@ -606,7 +606,7 @@ const MeetingApp = () => {
     setIsVerifying(true);
     setRoomError(null);
 
-    const cleanCode = id.trim().replace(/-/g, '').toUpperCase();
+    const cleanCode = id.trim();
     const token = localStorage.getItem('token');
 
     if (!token) {
