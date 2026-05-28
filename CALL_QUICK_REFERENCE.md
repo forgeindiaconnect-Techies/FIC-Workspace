@@ -66,7 +66,9 @@ Check these in order:
    - Check volume is on
    - Check browser audio permissions
    - Open DevTools → check for audio errors
-
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
 4. **Audio doesn't work:**
    - Check microphone permissions granted
    - Check DevTools for ICE candidate errors

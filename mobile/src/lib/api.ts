@@ -5,6 +5,8 @@ const API_PORT = process.env.EXPO_PUBLIC_API_PORT || '3001';
 const FALLBACK_LAN_IP = '192.168.1.72';
 
 const stripTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+const isPrivateNetworkUrl = (value: string) =>
+  /^https?:\/\/(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/i.test(value);
 
 const normalizeHost = (host?: string | null) => {
   if (!host) return null;
@@ -61,12 +63,19 @@ const forceLocalBackend =
   process.env.EXPO_PUBLIC_USE_LOCAL === 'true' ||
   process.env.EXPO_PUBLIC_USE_LOCAL === '1';
 
-// Default to local server for active development since we added new endpoints
-const defaultApiUrl = configuredApiUrl || LOCAL_API_URL;
-const defaultSocketUrl = configuredSocketUrl || LOCAL_SOCKET_URL;
+const shouldUseConfiguredApiUrl =
+  !!configuredApiUrl &&
+  (forceLocalBackend || !isPrivateNetworkUrl(configuredApiUrl));
+const shouldUseConfiguredSocketUrl =
+  !!configuredSocketUrl &&
+  (forceLocalBackend || !isPrivateNetworkUrl(configuredSocketUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:')));
 
-export let API_URL = configuredApiUrl || defaultApiUrl;
-export let SOCKET_URL = configuredSocketUrl || defaultSocketUrl;
+// Default to the cloud backend. Use a LAN backend only when EXPO_PUBLIC_USE_LOCAL is true.
+const defaultApiUrl = forceLocalBackend ? LOCAL_API_URL : PRODUCTION_API_URL;
+const defaultSocketUrl = forceLocalBackend ? LOCAL_SOCKET_URL : PRODUCTION_SOCKET_URL;
+
+export let API_URL = shouldUseConfiguredApiUrl ? configuredApiUrl : defaultApiUrl;
+export let SOCKET_URL = shouldUseConfiguredSocketUrl ? configuredSocketUrl : defaultSocketUrl;
 
 let sessionInitPromise: Promise<void> | null = null;
 
@@ -248,8 +257,8 @@ export const initializeSession = async () => {
       //   SOCKET_URL = API_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
       // }
       
-      API_URL = forceLocalBackend || configuredApiUrl ? LOCAL_API_URL : LOCAL_API_URL; // Temporarily forced local
-      SOCKET_URL = forceLocalBackend || configuredSocketUrl ? LOCAL_SOCKET_URL : LOCAL_SOCKET_URL;
+      API_URL = shouldUseConfiguredApiUrl ? configuredApiUrl : defaultApiUrl;
+      SOCKET_URL = shouldUseConfiguredSocketUrl ? configuredSocketUrl : defaultSocketUrl;
 
       const token = await AsyncStorage.getItem('nexus_token');
       const refreshToken = await AsyncStorage.getItem('nexus_refresh_token');
@@ -667,12 +676,12 @@ export const api = {
     async getMessages(workspaceId: string, channelId: string) {
       return request(`/api/chat/${workspaceId}/${channelId}`);
     },
-    async sendMessage(workspaceId: string, channelId: string, content: string) {
-      return request(`/api/chat/${workspaceId}/${channelId}/messages`, {
-        method: 'POST',
-        body: JSON.stringify({ content }),
-      });
-    },
+async sendMessage(workspaceId: string, channelId: string, content: string, fileData?: { url: string; type: string; originalName: string }) {
+       return request(`/api/chat/${workspaceId}/${channelId}/messages`, {
+         method: 'POST',
+         body: JSON.stringify({ content, fileUrl: fileData?.url, fileType: fileData?.type, originalName: fileData?.originalName }),
+       });
+     },
     async startDm(members: string[], createdBy: string, workspaceId?: string) {
       return request('/api/chat/start-dm', {
         method: 'POST',
@@ -683,6 +692,29 @@ export const api = {
       return request(`/api/chat/delete-conversation/${channelId}`, {
         method: 'DELETE',
       });
+    },
+    async uploadFile(fileUri: string, mimeType: string, originalName: string) {
+      const { token } = getSession();
+      const response = await fetch(fileUri);
+      const blob = await response.blob();
+      const form = new FormData();
+      form.append('file', blob, originalName);
+      const result = await fetch(`${API_URL}/api/chat/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: form,
+      });
+      const data = await result.json().catch(() => ({}));
+      if (!result.ok) {
+        throw new Error(data?.error || 'File upload failed');
+      }
+      return {
+        ...data,
+        originalName: data?.originalName || originalName || 'Attachment',
+        type: data?.type || mimeType || 'application/octet-stream',
+      };
     }
   },
 

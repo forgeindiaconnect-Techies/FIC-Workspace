@@ -1023,7 +1023,7 @@ export default function Meetings() {
           if (!camResult.granted) {
             Alert.alert(
               'Camera Permission Required',
-              'Please allow camera access in Settings > Apps > Nexus Workspace > Permissions > Camera',
+              'Please allow camera access in Settings > Apps > Forge India Connect > Permissions > Camera',
               [{ text: 'OK' }]
             );
           }
@@ -1034,7 +1034,7 @@ export default function Meetings() {
           if (!micResult.granted) {
             Alert.alert(
               'Microphone Permission Required',
-              'Please allow microphone access in Settings > Apps > Nexus Workspace > Permissions > Microphone',
+              'Please allow microphone access in Settings > Apps > Forge India Connect > Permissions > Microphone',
               [{ text: 'OK' }]
             );
           }
@@ -1793,7 +1793,7 @@ export default function Meetings() {
             if (Platform.OS !== 'web' && !cameraPermission?.granted && !isVideoOff) {
               const result = await requestCameraPermission();
               if (!result.granted) {
-                Alert.alert('Camera Permission', 'Enable camera in Settings > Apps > Nexus Workspace > Permissions');
+                Alert.alert('Camera Permission', 'Enable camera in Settings > Apps > Forge India Connect > Permissions');
                 return;
               }
             }

@@ -4,6 +4,7 @@ import {
   Modal, Platform, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View, Image, useWindowDimensions,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import {
   CheckCheck, ChevronLeft, Mic, MicOff, PhoneOff,
   Plus, Search, Send, Shield, Users, X, UserPlus,
@@ -25,6 +26,14 @@ const formatTime = (v?: string | Date) => {
   if (!v) return '';
   const d = new Date(v);
   return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const getFileLabel = (fileData: { originalName?: string; url?: string } | null | undefined) => {
+  const name = String(fileData?.originalName || '').trim();
+  if (name) return name;
+  const fromUrl = String(fileData?.url || '').split('/').pop() || '';
+  if (fromUrl) return fromUrl;
+  return 'Attachment';
 };
 
 const uniqueMessages = (items: any[]) => {
@@ -62,6 +71,7 @@ export default function Chat() {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [loadingChannels, setLoadingChannels] = React.useState(true);
   const [loadingMessages, setLoadingMessages] = React.useState(false);
+  const [uploadingFile, setUploadingFile] = React.useState(false);
 
   /* modals */
   const [addMemberModal, setAddMemberModal] = React.useState(false);
@@ -150,6 +160,49 @@ export default function Chat() {
   const fmtCall = (s: number) =>
     `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 
+  /* -- file upload -- */
+  const pickDocument = async () => {
+    if (uploadingFile) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    setUploadingFile(true);
+
+    try {
+      const uploadResult = await api.chat.uploadFile(asset.uri, asset.mimeType || 'application/octet-stream', asset.fileName || 'file');
+      setPlusMenu(false);
+      await handleSendWithFile(uploadResult);
+    } catch (e: any) {
+      Alert.alert('Upload failed', e.message || 'Could not upload file');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleSendWithFile = async (fileData: { url: string; type: string; originalName: string }) => {
+    if (!selectedChat) return;
+    const content = '';
+    const oid = String(Date.now());
+    const fileLabel = getFileLabel(fileData);
+    const opt = { id: oid, user: 'You', time: formatTime(new Date()), text: `Sent a file: ${fileLabel}`, self: true, fileUrl: fileData.url, fileType: fileData.type, originalName: fileLabel };
+    setMessages(p => uniqueMessages([...p, opt]));
+    setDirectMessages(p => p.map(c => c.id === selectedChat.id ? { ...c, lastMsg: `Sent a file: ${fileLabel}`, time: opt.time } : c));
+    try {
+      const saved = await api.chat.sendMessage(workspaceId, selectedChat.id, content, fileData);
+      setMessages(p => p.map(m => m.id === oid ? {
+        id: saved._id, user: saved.sender || 'You',
+        time: formatTime(saved.timestamp), text: saved.content || `Sent a file: ${saved.originalName || fileLabel}`, self: true,
+        fileUrl: saved.fileUrl, fileType: saved.fileType, originalName: saved.originalName || fileLabel
+      } : m));
+    } catch (e: any) { Alert.alert('Send failed', e.message); }
+  };
+
   /* -- load channels & stories -- */
   const loadChannels = React.useCallback(async () => {
     setLoadingChannels(true);
@@ -199,8 +252,11 @@ export default function Chat() {
       .then((data: any[]) => {
         const mapped = Array.isArray(data) ? data.map((m: any) => ({
           id: m._id, user: m.sender || m.senderName,
-          time: formatTime(m.timestamp), text: m.content,
+          time: formatTime(m.timestamp), text: m.content || (m.fileUrl ? `Sent a file: ${m.originalName || 'Attachment'}` : ''),
           self: m.senderEmail === email || m.sender === 'You',
+          fileUrl: m.fileUrl,
+          fileType: m.fileType,
+          originalName: m.originalName,
         })) : [];
         const deduped = uniqueMessages(mapped);
         setMessages(deduped.length ? deduped : [{ id: 'init', user: 'Workspace', time: 'Now', text: 'Start your conversation here.', self: false }]);
@@ -637,6 +693,18 @@ export default function Chat() {
                     : <View style={s.msgAvatarSpacer} />
                   )}
                   <View style={[s.bubble, msg.self ? s.bubbleSelf : s.bubbleOther]}>
+                    {msg.fileUrl && (
+                      <View style={s.filePreview}>
+                        {msg.fileType?.startsWith('image/') ? (
+                          <Image source={{ uri: msg.fileUrl }} style={s.fileImage} resizeMode="cover" />
+                        ) : (
+                          <View style={s.fileBox}>
+                            <Paperclip size={16} color="#64748b" />
+                            <Text style={s.fileName} numberOfLines={1}>{msg.fileUrl?.split('/').pop() || 'File'}</Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
                     <Text style={[s.bubbleText, msg.self ? s.bubbleTextSelf : s.bubbleTextOther]}>{msg.text}</Text>
                     <View style={s.bubbleMeta}>
                       <Text style={[s.bubbleTime, msg.self ? s.bubbleTimeSelf : s.bubbleTimeOther]}>{msg.time || 'Now'}</Text>
@@ -649,18 +717,20 @@ export default function Chat() {
           </ScrollView>
         )}
 
-        {/* Input bar */}
-        <View style={s.inputBar}>
-          <TouchableOpacity style={s.inputIconBtn}><Smile size={20} color="#94a3b8" /></TouchableOpacity>
-          <TouchableOpacity style={s.inputIconBtn}><Paperclip size={20} color="#94a3b8" /></TouchableOpacity>
-          <View style={s.inputField}>
-            <TextInput style={s.textInput} placeholder="Type a message" placeholderTextColor="#94a3b8"
-              value={inputVal} onChangeText={setInputVal} multiline />
-          </View>
-          <TouchableOpacity style={[s.sendBtn, !inputVal.trim() && s.sendBtnOff]} onPress={handleSend} disabled={!inputVal.trim()}>
-            <Send size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
+{/* Input bar */}
+         <View style={s.inputBar}>
+           <TouchableOpacity style={s.inputIconBtn}><Smile size={20} color="#94a3b8" /></TouchableOpacity>
+           <TouchableOpacity style={s.inputIconBtn} onPress={pickDocument} disabled={uploadingFile}>
+             {uploadingFile ? <ActivityIndicator size="small" color="#94a3b8" /> : <Paperclip size={20} color="#94a3b8" />}
+           </TouchableOpacity>
+           <View style={s.inputField}>
+             <TextInput style={s.textInput} placeholder="Type a message" placeholderTextColor="#94a3b8"
+               value={inputVal} onChangeText={setInputVal} multiline />
+           </View>
+           <TouchableOpacity style={[s.sendBtn, !inputVal.trim() && s.sendBtnOff]} onPress={handleSend} disabled={!inputVal.trim()}>
+             <Send size={18} color="#fff" />
+           </TouchableOpacity>
+         </View>
       </KeyboardAvoidingView>
     );
   };
@@ -799,6 +869,10 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   bubbleTime: { fontSize: 10, fontWeight: '700' },
   bubbleTimeSelf: { color: 'rgba(255,255,255,0.65)' },
   bubbleTimeOther: { color: '#94a3b8' },
+  filePreview: { marginTop: 8, borderRadius: 12, overflow: 'hidden', maxWidth: '100%' },
+  fileImage: { width: 150, height: 100, borderRadius: 8 },
+  fileBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, gap: 8 },
+  fileName: { fontSize: 12, color: '#475569', flex: 1 },
 
   /* input bar */
   inputBar: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0', gap: 8 },

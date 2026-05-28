@@ -53,7 +53,7 @@ export default function Home() {
       {/* Header Section */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Nexus Workspace</Text>
+          <Text style={styles.title}>Forge India Connect</Text>
           <Text style={styles.subtitle}>Select an application to begin your session.</Text>
         </View>
         <View style={styles.statusBadge}>

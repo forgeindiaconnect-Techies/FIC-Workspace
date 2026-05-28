@@ -10,6 +10,7 @@ import path from 'path';
 dotenv.config({ path: path.join(__dirname, '../.env') });
 dotenv.config();
 
+import multipart from '@fastify/multipart';
 import { authRoutes } from './routes/auth';
 import { meetingRoutes } from './routes/meetings';
 import { mailRoutes } from './routes/mail';
@@ -123,6 +124,15 @@ async function bootstrap() {
 
   // Fastify Websocket plugin integration
   await server.register(websocket);
+
+  // Fastify multipart parser for file uploads (Cloudinary upload support)
+  await server.register(multipart, {
+    attachFieldsToBody: true,
+    limits: {
+      fileSize: 250 * 1024 * 1024,
+      files: 1,
+    },
+  });
 
   // Accept raw binary bodies for mobile audio chunk uploads
   server.addContentTypeParser('audio/m4a', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));

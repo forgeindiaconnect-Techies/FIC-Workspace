@@ -1,4 +1,4 @@
-# Nexus Workspace — Mobile (Expo)
+# Forge India Connect — Mobile (Expo)
 
 React Native app for Android/iOS. **Separate from the Vite web app** in the repo root.
 

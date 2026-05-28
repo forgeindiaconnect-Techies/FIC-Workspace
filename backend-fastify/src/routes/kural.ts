@@ -1,10 +1,19 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Types } from 'mongoose';
+import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 import { User } from '../models/User';
 import { KuralConversation } from '../models/KuralConversation';
 import { KuralMessage } from '../models/KuralMessage';
 import { Story } from '../models/Story';
 import { authenticate } from '../middlewares/auth';
+
+const cloudinaryFolder = process.env.CLOUDINARY_FOLDER || 'chat_uploads';
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '',
+  api_key: process.env.CLOUDINARY_API_KEY || '',
+  api_secret: process.env.CLOUDINARY_API_SECRET || '',
+});
 
 const defaultWorkspaceId = 'antigraviity-hq';
 
@@ -19,6 +28,19 @@ function initials(name: string) {
     .slice(0, 2)
     .map(part => part[0]?.toUpperCase())
     .join('') || 'U';
+}
+
+function resolveUploadName(file: any, uploaded?: UploadApiResponse) {
+  const explicit = String(file?.filename || '').trim();
+  if (explicit) return explicit;
+  const fromCloudinary = String(uploaded?.original_filename || '').trim();
+  if (fromCloudinary) {
+    const fmt = String(uploaded?.format || '').trim();
+    return fmt ? `${fromCloudinary}.${fmt}` : fromCloudinary;
+  }
+  const mime = String(file?.mimetype || '').trim();
+  const ext = mime.includes('/') ? mime.split('/')[1] : 'file';
+  return `upload.${ext || 'file'}`;
 }
 
 async function ensureDirectConversation(workspaceId: string, currentEmail: string, peerEmail: string) {
@@ -42,6 +64,46 @@ async function ensureDirectConversation(workspaceId: string, currentEmail: strin
 
 export async function channelRoutes(fastify: FastifyInstance) {
   fastify.addHook('preValidation', authenticate);
+
+  fastify.post('/upload', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const file = await request.file();
+      if (!file) {
+        return reply.code(400).send({ error: 'Missing file upload.' });
+      }
+
+      const uploadOptions = {
+        folder: cloudinaryFolder,
+        resource_type: file.mimetype?.startsWith('video/') ? 'video' : 'auto',
+        use_filename: true,
+        unique_filename: true,
+        overwrite: false,
+      };
+
+      const result = await new Promise<UploadApiResponse>((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(uploadOptions, (error, uploaded) => {
+          if (error) {
+            return reject(error);
+          }
+          if (!uploaded) {
+            return reject(new Error('Cloudinary upload returned no result.'));
+          }
+          resolve(uploaded);
+        });
+
+        file.file.pipe(uploadStream).on('error', reject);
+      });
+
+      return reply.code(200).send({
+        url: result.secure_url || result.url,
+        type: file.mimetype || 'application/octet-stream',
+        originalName: resolveUploadName(file, result),
+        publicId: result.public_id,
+      });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Cloudinary upload failed.', details: err.message });
+    }
+  });
 
   fastify.get('/:workspaceId', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -145,6 +207,46 @@ export async function channelRoutes(fastify: FastifyInstance) {
 export async function kuralRoutes(fastify: FastifyInstance) {
   fastify.addHook('preValidation', authenticate);
 
+  fastify.post('/upload', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const file = await request.file();
+      if (!file) {
+        return reply.code(400).send({ error: 'Missing file upload.' });
+      }
+
+      const uploadOptions = {
+        folder: cloudinaryFolder,
+        resource_type: file.mimetype?.startsWith('video/') ? 'video' : 'auto',
+        use_filename: true,
+        unique_filename: true,
+        overwrite: false,
+      };
+
+      const result = await new Promise<UploadApiResponse>((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(uploadOptions, (error, uploaded) => {
+          if (error) {
+            return reject(error);
+          }
+          if (!uploaded) {
+            return reject(new Error('Cloudinary upload returned no result.'));
+          }
+          resolve(uploaded);
+        });
+
+        file.file.pipe(uploadStream).on('error', reject);
+      });
+
+      return reply.code(200).send({
+        url: result.secure_url || result.url,
+        type: file.mimetype || 'application/octet-stream',
+        originalName: resolveUploadName(file, result),
+        publicId: result.public_id,
+      });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Cloudinary upload failed.', details: err.message });
+    }
+  });
+
   fastify.get('/:workspaceId/:channelId', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { workspaceId, channelId } = request.params as any;
@@ -173,6 +275,9 @@ export async function kuralRoutes(fastify: FastifyInstance) {
         senderName: message.senderName,
         senderEmail: message.senderEmail,
         content: message.content,
+        fileUrl: message.fileUrl,
+        fileType: message.fileType,
+        originalName: message.originalName,
         timestamp: message.createdAt
       })));
     } catch (err: any) {
@@ -183,12 +288,17 @@ export async function kuralRoutes(fastify: FastifyInstance) {
   fastify.post('/:workspaceId/:channelId/messages', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { workspaceId, channelId } = request.params as any;
-      const content = String((request.body as any).content || '').trim();
+      const body = request.body as any;
+      const content = String(body.content || '').trim();
+      const fileUrl = body.fileUrl || null;
+      const fileType = body.fileType || null;
+      const originalName = String(body.originalName || '').trim() || null;
+      
       if (!Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: 'Invalid Kural channel id.' });
       }
-      if (!content) {
-        return reply.code(400).send({ error: 'Message content is required.' });
+      if (!content && !fileUrl) {
+        return reply.code(400).send({ error: 'Message content or file is required.' });
       }
 
       const currentEmail = normalizeEmail(request.user?.email || '');
@@ -206,10 +316,13 @@ export async function kuralRoutes(fastify: FastifyInstance) {
         workspaceId,
         senderEmail: currentEmail,
         senderName: request.user?.name || currentEmail,
-        content
+        content,
+        fileUrl,
+        fileType,
+        originalName
       });
 
-      conversation.lastMessageContent = content;
+      conversation.lastMessageContent = content || `Sent a file: ${originalName || 'Attachment'}`;
       conversation.lastMessageTime = message.createdAt;
       await conversation.save();
 
@@ -220,6 +333,9 @@ export async function kuralRoutes(fastify: FastifyInstance) {
         senderName: message.senderName,
         senderEmail: message.senderEmail,
         content: message.content,
+        fileUrl: message.fileUrl,
+        fileType: message.fileType,
+        originalName: message.originalName,
         timestamp: message.createdAt
       });
     } catch (err: any) {

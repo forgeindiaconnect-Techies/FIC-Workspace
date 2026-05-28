@@ -100,6 +100,7 @@ var import_websocket = __toESM(require("@fastify/websocket"));
 var import_dotenv2 = __toESM(require("dotenv"));
 var import_fs4 = __toESM(require("fs"));
 var import_path3 = __toESM(require("path"));
+var import_multipart = __toESM(require("@fastify/multipart"));
 
 // src/routes/auth.ts
 var import_bcrypt = __toESM(require("bcrypt"));
@@ -1895,6 +1896,7 @@ Important: Provide ONLY the final generated email body text. Do not include intr
 
 // src/routes/kural.ts
 var import_mongoose14 = require("mongoose");
+var import_cloudinary = require("cloudinary");
 
 // src/models/KuralConversation.ts
 var import_mongoose11 = require("mongoose");
@@ -1925,6 +1927,9 @@ var KuralMessageSchema = new import_mongoose12.Schema({
   senderEmail: { type: String, required: true, lowercase: true, trim: true },
   senderName: { type: String, required: true },
   content: { type: String, required: true },
+  fileUrl: { type: String },
+  fileType: { type: String },
+  originalName: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
 KuralMessageSchema.index({ conversationId: 1, createdAt: 1 });
@@ -1947,12 +1952,30 @@ StorySchema.index({ workspaceId: 1, createdAt: -1 });
 var Story = (0, import_mongoose13.model)("Story", StorySchema);
 
 // src/routes/kural.ts
+var cloudinaryFolder = process.env.CLOUDINARY_FOLDER || "chat_uploads";
+import_cloudinary.v2.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "",
+  api_key: process.env.CLOUDINARY_API_KEY || "",
+  api_secret: process.env.CLOUDINARY_API_SECRET || ""
+});
 var defaultWorkspaceId = "antigraviity-hq";
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 function initials(name) {
   return (name || "User").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "U";
+}
+function resolveUploadName(file, uploaded) {
+  const explicit = String(file?.filename || "").trim();
+  if (explicit) return explicit;
+  const fromCloudinary = String(uploaded?.original_filename || "").trim();
+  if (fromCloudinary) {
+    const fmt = String(uploaded?.format || "").trim();
+    return fmt ? `${fromCloudinary}.${fmt}` : fromCloudinary;
+  }
+  const mime = String(file?.mimetype || "").trim();
+  const ext = mime.includes("/") ? mime.split("/")[1] : "file";
+  return `upload.${ext || "file"}`;
 }
 async function ensureDirectConversation(workspaceId, currentEmail, peerEmail) {
   const participants = [currentEmail, peerEmail].map(normalizeEmail).sort();
@@ -1972,6 +1995,41 @@ async function ensureDirectConversation(workspaceId, currentEmail, peerEmail) {
 }
 async function channelRoutes(fastify2) {
   fastify2.addHook("preValidation", authenticate);
+  fastify2.post("/upload", async (request, reply) => {
+    try {
+      const file = await request.file();
+      if (!file) {
+        return reply.code(400).send({ error: "Missing file upload." });
+      }
+      const uploadOptions = {
+        folder: cloudinaryFolder,
+        resource_type: file.mimetype?.startsWith("video/") ? "video" : "auto",
+        use_filename: true,
+        unique_filename: true,
+        overwrite: false
+      };
+      const result = await new Promise((resolve, reject) => {
+        const uploadStream = import_cloudinary.v2.uploader.upload_stream(uploadOptions, (error, uploaded) => {
+          if (error) {
+            return reject(error);
+          }
+          if (!uploaded) {
+            return reject(new Error("Cloudinary upload returned no result."));
+          }
+          resolve(uploaded);
+        });
+        file.file.pipe(uploadStream).on("error", reject);
+      });
+      return reply.code(200).send({
+        url: result.secure_url || result.url,
+        type: file.mimetype || "application/octet-stream",
+        originalName: resolveUploadName(file, result),
+        publicId: result.public_id
+      });
+    } catch (err) {
+      return reply.code(500).send({ error: "Cloudinary upload failed.", details: err.message });
+    }
+  });
   fastify2.get("/:workspaceId", async (request, reply) => {
     try {
       const { workspaceId } = request.params;
@@ -2060,6 +2118,41 @@ async function channelRoutes(fastify2) {
 }
 async function kuralRoutes(fastify2) {
   fastify2.addHook("preValidation", authenticate);
+  fastify2.post("/upload", async (request, reply) => {
+    try {
+      const file = await request.file();
+      if (!file) {
+        return reply.code(400).send({ error: "Missing file upload." });
+      }
+      const uploadOptions = {
+        folder: cloudinaryFolder,
+        resource_type: file.mimetype?.startsWith("video/") ? "video" : "auto",
+        use_filename: true,
+        unique_filename: true,
+        overwrite: false
+      };
+      const result = await new Promise((resolve, reject) => {
+        const uploadStream = import_cloudinary.v2.uploader.upload_stream(uploadOptions, (error, uploaded) => {
+          if (error) {
+            return reject(error);
+          }
+          if (!uploaded) {
+            return reject(new Error("Cloudinary upload returned no result."));
+          }
+          resolve(uploaded);
+        });
+        file.file.pipe(uploadStream).on("error", reject);
+      });
+      return reply.code(200).send({
+        url: result.secure_url || result.url,
+        type: file.mimetype || "application/octet-stream",
+        originalName: resolveUploadName(file, result),
+        publicId: result.public_id
+      });
+    } catch (err) {
+      return reply.code(500).send({ error: "Cloudinary upload failed.", details: err.message });
+    }
+  });
   fastify2.get("/:workspaceId/:channelId", async (request, reply) => {
     try {
       const { workspaceId, channelId } = request.params;
@@ -2082,6 +2175,9 @@ async function kuralRoutes(fastify2) {
         senderName: message.senderName,
         senderEmail: message.senderEmail,
         content: message.content,
+        fileUrl: message.fileUrl,
+        fileType: message.fileType,
+        originalName: message.originalName,
         timestamp: message.createdAt
       })));
     } catch (err) {
@@ -2091,12 +2187,16 @@ async function kuralRoutes(fastify2) {
   fastify2.post("/:workspaceId/:channelId/messages", async (request, reply) => {
     try {
       const { workspaceId, channelId } = request.params;
-      const content = String(request.body.content || "").trim();
+      const body = request.body;
+      const content = String(body.content || "").trim();
+      const fileUrl = body.fileUrl || null;
+      const fileType = body.fileType || null;
+      const originalName = String(body.originalName || "").trim() || null;
       if (!import_mongoose14.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
-      if (!content) {
-        return reply.code(400).send({ error: "Message content is required." });
+      if (!content && !fileUrl) {
+        return reply.code(400).send({ error: "Message content or file is required." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
       const conversation = await KuralConversation.findOne({
@@ -2111,9 +2211,12 @@ async function kuralRoutes(fastify2) {
         workspaceId,
         senderEmail: currentEmail,
         senderName: request.user?.name || currentEmail,
-        content
+        content,
+        fileUrl,
+        fileType,
+        originalName
       });
-      conversation.lastMessageContent = content;
+      conversation.lastMessageContent = content || `Sent a file: ${originalName || "Attachment"}`;
       conversation.lastMessageTime = message.createdAt;
       await conversation.save();
       return reply.code(201).send({
@@ -2123,6 +2226,9 @@ async function kuralRoutes(fastify2) {
         senderName: message.senderName,
         senderEmail: message.senderEmail,
         content: message.content,
+        fileUrl: message.fileUrl,
+        fileType: message.fileType,
+        originalName: message.originalName,
         timestamp: message.createdAt
       });
     } catch (err) {
@@ -2943,6 +3049,13 @@ async function bootstrap() {
     }
   });
   await server.register(import_websocket.default);
+  await server.register(import_multipart.default, {
+    attachFieldsToBody: true,
+    limits: {
+      fileSize: 250 * 1024 * 1024,
+      files: 1
+    }
+  });
   server.addContentTypeParser("audio/m4a", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
   server.addContentTypeParser("audio/webm", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
   server.addContentTypeParser("audio/mp4", { parseAs: "buffer" }, (_req, body, done) => done(null, body));

@@ -405,6 +405,9 @@ const ChatApp = () => {
     try {
       const res = await fetch(getApiUrl('/api/chat/upload'), {
         method: 'POST',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
         body: formData
       });
       const data = await res.json();
@@ -1193,7 +1196,7 @@ const ChatApp = () => {
                     <div className="absolute bottom-2.5 right-2.5 w-6 h-6 rounded-full bg-emerald-500 border-4 border-white shadow-lg" />
                   </div>
                   <h3 className="font-black text-xl text-gray-900 leading-tight">{getDMName(selected)}</h3>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em] mt-3">Team Member • Nexus HQ</p>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em] mt-3">Team Member • Forge India Connect</p>
                   
                   <div className="mt-10 grid grid-cols-2 gap-4 px-2">
                      <button className="py-3.5 bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 shadow-lg shadow-emerald-100 transition-all active:scale-95">Message</button>
@@ -1383,7 +1386,8 @@ const ChatApp = () => {
         <input 
           type="file" 
           ref={fileInputRef} 
-          className="hidden" 
+          className="hidden"
+          accept="image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf"
           onChange={handleFileUpload}
         />
       </div>

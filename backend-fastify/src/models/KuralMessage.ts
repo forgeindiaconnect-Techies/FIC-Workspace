@@ -6,6 +6,9 @@ export interface IKuralMessage extends Document {
   senderEmail: string;
   senderName: string;
   content: string;
+  fileUrl?: string;
+  fileType?: string;
+  originalName?: string;
   createdAt: Date;
 }
 
@@ -15,6 +18,9 @@ const KuralMessageSchema = new Schema<IKuralMessage>({
   senderEmail: { type: String, required: true, lowercase: true, trim: true },
   senderName: { type: String, required: true },
   content: { type: String, required: true },
+  fileUrl: { type: String },
+  fileType: { type: String },
+  originalName: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
 

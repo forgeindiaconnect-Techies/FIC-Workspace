@@ -1,7 +1,7 @@
 # Mobile App Responsive Design Guide
 
 ## Overview
-This guide explains the responsive design system implemented in the Nexus Workspace mobile app to support all screen sizes and OS versions without overlapping or layout issues.
+This guide explains the responsive design system implemented in the Forge India Connect mobile app to support all screen sizes and OS versions without overlapping or layout issues.
 
 ## Key Components
 
