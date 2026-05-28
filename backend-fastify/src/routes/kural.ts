@@ -43,6 +43,17 @@ function resolveUploadName(file: any, uploaded?: UploadApiResponse) {
   return `upload.${ext || 'file'}`;
 }
 
+async function resolveMultipartFile(request: FastifyRequest) {
+  // Standard multipart flow (attachFieldsToBody disabled)
+  const direct = await request.file();
+  if (direct) return direct as any;
+
+  // Fallback for attachFieldsToBody=true setups
+  const bodyFile = (request.body as any)?.file;
+  if (bodyFile?.file) return bodyFile;
+  return null;
+}
+
 async function ensureDirectConversation(workspaceId: string, currentEmail: string, peerEmail: string) {
   const participants = [currentEmail, peerEmail].map(normalizeEmail).sort();
   let conversation = await KuralConversation.findOne({
@@ -67,7 +78,7 @@ export async function channelRoutes(fastify: FastifyInstance) {
 
   fastify.post('/upload', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const file = await request.file();
+      const file = await resolveMultipartFile(request);
       if (!file) {
         return reply.code(400).send({ error: 'Missing file upload.' });
       }
@@ -209,7 +220,7 @@ export async function kuralRoutes(fastify: FastifyInstance) {
 
   fastify.post('/upload', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const file = await request.file();
+      const file = await resolveMultipartFile(request);
       if (!file) {
         return reply.code(400).send({ error: 'Missing file upload.' });
       }

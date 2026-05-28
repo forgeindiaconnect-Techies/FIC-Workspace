@@ -1977,6 +1977,13 @@ function resolveUploadName(file, uploaded) {
   const ext = mime.includes("/") ? mime.split("/")[1] : "file";
   return `upload.${ext || "file"}`;
 }
+async function resolveMultipartFile(request) {
+  const direct = await request.file();
+  if (direct) return direct;
+  const bodyFile = request.body?.file;
+  if (bodyFile?.file) return bodyFile;
+  return null;
+}
 async function ensureDirectConversation(workspaceId, currentEmail, peerEmail) {
   const participants = [currentEmail, peerEmail].map(normalizeEmail).sort();
   let conversation = await KuralConversation.findOne({
@@ -1997,7 +2004,7 @@ async function channelRoutes(fastify2) {
   fastify2.addHook("preValidation", authenticate);
   fastify2.post("/upload", async (request, reply) => {
     try {
-      const file = await request.file();
+      const file = await resolveMultipartFile(request);
       if (!file) {
         return reply.code(400).send({ error: "Missing file upload." });
       }
@@ -2120,7 +2127,7 @@ async function kuralRoutes(fastify2) {
   fastify2.addHook("preValidation", authenticate);
   fastify2.post("/upload", async (request, reply) => {
     try {
-      const file = await request.file();
+      const file = await resolveMultipartFile(request);
       if (!file) {
         return reply.code(400).send({ error: "Missing file upload." });
       }
