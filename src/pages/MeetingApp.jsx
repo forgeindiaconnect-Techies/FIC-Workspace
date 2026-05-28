@@ -124,6 +124,27 @@ const MeetingApp = () => {
   const [hostControlsTab, setHostControlsTab] = useState('meeting');
   const [waitingRoomEnabled, setWaitingRoomEnabled] = useState(false);
   
+  // Refs
+  const wsRef = useRef(null);
+  const peerIdRef = useRef(null);
+  const meetingIdRef = useRef(null);
+  const intentionalCloseRef = useRef(false);
+  const userVideo = useRef();
+  const peersRef = useRef([]);
+  const streamRef = useRef();
+  const screenStreamRef = useRef();
+  const candidateQueue = useRef(new Map());
+  const iceCandidateBufferRef = useRef(new Map());
+  const createPeerConnectionRef = useRef(null);
+  const shouldInitiateOfferRef = useRef(null);
+  const sendWsRef = useRef(null);
+  const iceServersRef = useRef(null);
+  
+  const audioContextRef = useRef();
+  const audioDestinationRef = useRef();
+  const mediaRecorderRef = useRef();
+  const recordedChunksRef = useRef([]);
+
   const aiMediaRecorderRef = useRef(null);
   const aiWsRef = useRef(null);
   const isMutedRef = useRef(!micOn);
@@ -228,27 +249,6 @@ const MeetingApp = () => {
       }
     }
   }, [aiAssistantActive, streamRef.current]);
-  
-  // Refs
-  const wsRef = useRef(null);
-  const peerIdRef = useRef(null);
-  const meetingIdRef = useRef(null);
-  const intentionalCloseRef = useRef(false);
-  const userVideo = useRef();
-  const peersRef = useRef([]);
-  const streamRef = useRef();
-  const screenStreamRef = useRef();
-  const candidateQueue = useRef(new Map());
-  const iceCandidateBufferRef = useRef(new Map());
-  const createPeerConnectionRef = useRef(null);
-  const shouldInitiateOfferRef = useRef(null);
-  const sendWsRef = useRef(null);
-  const iceServersRef = useRef(null);
-  
-  const audioContextRef = useRef();
-  const audioDestinationRef = useRef();
-  const mediaRecorderRef = useRef();
-  const recordedChunksRef = useRef([]);
 
   const sendWs = useCallback((type, data) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
