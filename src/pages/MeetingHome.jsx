@@ -73,11 +73,10 @@ const MeetingHome = () => {
 
   const handleStartInstant = async () => {
     setLoading(true);
-    const meetingId = Math.floor(1000000000 + Math.random() * 9000000000).toString().replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3');
     const password = meetPass || Math.random().toString(36).substring(2, 8).toUpperCase();
     
     try {
-       await fetch(getApiUrl('/api/meetings'), {
+       const res = await fetch(getApiUrl('/api/meetings'), {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -88,17 +87,19 @@ const MeetingHome = () => {
              title: meetTitle || 'Instant Meeting',
              host: auth.user,
              hostEmail: auth.email,
-             roomId: meetingId,
-             password: password || '',
+             passcode: password || '',
              intent: 'create'
           })
        });
+       const meeting = await res.json();
+       if (!res.ok) {
+         throw new Error(meeting.error || 'Failed to create meeting.');
+       }
        setCreateModal(false);
-       navigate(`/w/${workspaceId}/meet/room/${meetingId}?pwd=${password}&intent=create`);
+       navigate(`/w/${workspaceId}/meet/room/${meeting.joinCode}?pwd=${password}&intent=join`);
     } catch (e) {
        console.error("Failed to pre-register meeting:", e);
-       setCreateModal(false);
-       navigate(`/w/${workspaceId}/meet/room/${meetingId}?pwd=${password}&intent=create`);
+       alert(e.message || 'Failed to create meeting. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -130,13 +131,13 @@ const MeetingHome = () => {
 
     try {
         const finalWorkspaceId = workspaceId || 'default';
-        const res = await fetch(getApiUrl(`/api/meetings/join/${finalCode}?passcode=${finalPwd}`), {
+        const res = await fetch(getApiUrl(`/api/meetings/join/${encodeURIComponent(finalCode)}?passcode=${encodeURIComponent(finalPwd || '')}`), {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
         const data = await res.json();
-        if (data.room || data.id) {
+        if (res.ok && (data._id || data.meetingId || data.joinCode)) {
             setJoinModal(false);
-            navigate(`/w/${finalWorkspaceId}/meet/room/${finalCode}?pwd=${finalPwd}&intent=join`);
+            navigate(`/w/${finalWorkspaceId}/meet/room/${data.joinCode || finalCode}?pwd=${finalPwd}&intent=join`);
         } else {
             alert(data.error || 'Invalid meeting code');
         }
@@ -150,18 +151,16 @@ const MeetingHome = () => {
   const handleSchedule = async (e) => {
     e.preventDefault();
     setLoading(true);
-    const meetingId = Math.floor(1000000000 + Math.random() * 9000000000).toString().replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3');
     const password = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     const meetingData = {
       workspaceId,
       title: newMeeting.title || 'Scheduled Meeting',
-      startTime: newMeeting.startTime,
-      duration: newMeeting.duration || 60,
+      scheduledAt: newMeeting.startTime,
+      durationMinutes: newMeeting.duration || 60,
       host: auth.user,
       hostEmail: auth.email,
-      roomId: meetingId,
-      password: password
+      passcode: password
     };
 
     try {
@@ -174,7 +173,6 @@ const MeetingHome = () => {
         body: JSON.stringify(meetingData)
       });
       if (res.ok) {
-        setShowScheduleModal(false);
         setScheduleModal(false);
         fetchMeetings();
         setNewMeeting({ title: '', startTime: '', duration: 60 });
@@ -295,7 +293,7 @@ const MeetingHome = () => {
                   </div>
                ) : (
                  meetings.map(m => (
-                   <div key={m._id} onClick={() => navigate(`/w/${workspaceId}/meet/room/${m.roomId}?intent=join`)} className="flex flex-col md:flex-row md:items-center gap-4 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/5 rounded-2xl p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors shadow-sm overflow-hidden relative group">
+                   <div key={m._id} onClick={() => navigate(`/w/${workspaceId}/meet/room/${m.joinCode || m.roomId || m._id}?intent=join`)} className="flex flex-col md:flex-row md:items-center gap-4 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/5 rounded-2xl p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors shadow-sm overflow-hidden relative group">
                       <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" />
                       <div className="w-11 h-11 bg-blue-500/10 rounded-[14px] flex items-center justify-center shrink-0 ml-2">
                         {m.status === 'live' ? <Play size={18} className="text-blue-500" fill="currentColor" /> : <Clock size={18} className="text-blue-500" />}
@@ -313,7 +311,7 @@ const MeetingHome = () => {
                         <div className="flex items-center gap-4 mt-2">
                            <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                              <Clock size={12} />
-                             <span className="text-xs font-bold">{new Date(m.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                             <span className="text-xs font-bold">{new Date(m.scheduledAt || m.startTime || m.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                            </div>
                            <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                              <Users size={12} />
@@ -354,7 +352,7 @@ const MeetingHome = () => {
                         <div className="flex items-center gap-4 mt-2">
                            <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                              <Calendar size={12} />
-                             <span className="text-xs font-bold">{new Date(m.startTime).toLocaleDateString()}</span>
+                             <span className="text-xs font-bold">{new Date(m.scheduledAt || m.startTime || m.createdAt).toLocaleDateString()}</span>
                            </div>
                            <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                              <Users size={12} />
@@ -507,7 +505,7 @@ const MeetingHome = () => {
                          <h2 className="text-lg md:text-xl font-black text-slate-900 dark:text-white">{selectedMeeting.title}</h2>
                          <div className="px-2 md:px-3 py-1 bg-blue-500/10 text-blue-600 rounded-full text-[8px] font-black uppercase tracking-widest">AI Report</div>
                       </div>
-                      <p className="text-[10px] md:text-xs text-slate-500 font-medium">{new Date(selectedMeeting.startTime).toLocaleDateString()} • {selectedMeeting.host}</p>
+                      <p className="text-[10px] md:text-xs text-slate-500 font-medium">{new Date(selectedMeeting.scheduledAt || selectedMeeting.startTime || selectedMeeting.createdAt).toLocaleDateString()} • {selectedMeeting.host}</p>
                    </div>
                    <button onClick={() => setSelectedMeeting(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all text-slate-400">
                       <X size={20} />

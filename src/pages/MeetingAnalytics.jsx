@@ -115,7 +115,7 @@ export const MeetingAnalytics = () => {
                                        <div>
                                           <h3 className="text-base font-black text-zinc-800 dark:text-zinc-100">{meeting.title}</h3>
                                           <div className="flex items-center gap-4 mt-1">
-                                             <span className="text-xs text-zinc-400 font-bold flex items-center gap-1"><Clock size={12}/> {new Date(meeting.startTime).toLocaleDateString()}</span>
+                                             <span className="text-xs text-zinc-400 font-bold flex items-center gap-1"><Clock size={12}/> {new Date(meeting.scheduledAt || meeting.startTime || meeting.createdAt).toLocaleDateString()}</span>
                                              <span className="text-xs text-zinc-400 font-bold flex items-center gap-1"><Users size={12}/> Host: {meeting.host}</span>
                                           </div>
                                        </div>
@@ -149,7 +149,7 @@ export const MeetingAnalytics = () => {
                           <div className="p-8 border-b border-zinc-100 dark:border-white/10 flex items-center justify-between shrink-0">
                              <div>
                                 <h2 className="text-2xl font-black tracking-tight text-zinc-800 dark:text-zinc-100">{selectedMeeting.summary.meetingTitle}</h2>
-                                <p className="text-xs text-zinc-400 font-bold mt-1">AI-Generated Intelligence Report • {new Date(selectedMeeting.startTime).toLocaleString()}</p>
+                                <p className="text-xs text-zinc-400 font-bold mt-1">AI-Generated Intelligence Report • {new Date(selectedMeeting.scheduledAt || selectedMeeting.startTime || selectedMeeting.createdAt).toLocaleString()}</p>
                              </div>
                              <button onClick={() => setSelectedMeeting(null)} className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-white/5 flex items-center justify-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-all"><X size={20}/></button>
                           </div>

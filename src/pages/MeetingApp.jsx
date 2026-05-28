@@ -100,6 +100,7 @@ const MeetingApp = () => {
   
   const queryParams = new URLSearchParams(location.search);
   const urlPassword = queryParams.get('pwd');
+  const intent = location.state?.intent || queryParams.get('intent');
   
   // States
   const [appState, setAppState] = useState('lobby');
@@ -281,7 +282,7 @@ const MeetingApp = () => {
   };
 
   const copyMeetingInvite = () => {
-    const inviteLink = `${window.location.origin}/w/${workspaceId}/meet/room/${id}?pwd=${password}&intent=join`;
+    const inviteLink = `${window.location.origin}/w/${workspaceId}/meet/room/${code || id}?pwd=${password}&intent=join`;
     const inviteText = `Join my Nexus Meeting:\nLink: ${inviteLink}\nMeeting ID: ${code}\nPassword: ${password}`;
     
     navigator.clipboard.writeText(inviteText);
@@ -606,7 +607,7 @@ const MeetingApp = () => {
     setIsVerifying(true);
     setRoomError(null);
 
-    const cleanCode = id.trim();
+    let cleanCode = (code || id || '').trim();
     const token = localStorage.getItem('token');
 
     if (!token) {
@@ -616,6 +617,29 @@ const MeetingApp = () => {
     }
 
     try {
+      if (intent === 'create') {
+        const createRes = await fetch(getApiUrl('/api/meetings'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            title: `${auth.user || 'User'}'s Meeting`,
+            passcode: password || undefined,
+            roomId: cleanCode,
+            intent: 'create',
+          }),
+        });
+        const createdMeeting = await createRes.json();
+        if (!createRes.ok) {
+          throw new Error(createdMeeting.error || 'Failed to create meeting.');
+        }
+        cleanCode = createdMeeting.joinCode || cleanCode;
+        setCode(cleanCode);
+        navigate(`/w/${workspaceId}/meet/room/${encodeURIComponent(cleanCode)}${password ? `?pwd=${encodeURIComponent(password)}&intent=join` : '?intent=join'}`, { replace: true });
+      }
+
       // Resolve meeting via REST to get MongoDB _id
       const query = password ? `?passcode=${encodeURIComponent(password)}` : '';
       const res = await fetch(getApiUrl(`/api/meetings/join/${encodeURIComponent(cleanCode)}${query}`), {
@@ -765,7 +789,7 @@ const MeetingApp = () => {
                     disabled={!!permissionError}
                     className="px-12 py-4 bg-[#5244e1] disabled:opacity-50 disabled:cursor-not-allowed rounded-full font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
                  >
-                    {(location.state?.intent === 'create' || new URLSearchParams(location.search).get('intent') === 'create') ? 'Create Meeting Now' : 'Join Meeting Now'}
+                    {intent === 'create' ? 'Create Meeting Now' : 'Join Meeting Now'}
                  </button>
               </div>
            </div>

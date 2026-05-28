@@ -418,9 +418,29 @@ const ChatApp = () => {
     }
   };
 
-  const startCall = (type) => {
-    const roomId = `CALL-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-    window.open(`/w/${workspaceId}/meet/room/${roomId}?intent=create`, '_blank');
+  const startCall = async (type) => {
+    const passcode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    try {
+      const res = await fetch(getApiUrl('/api/meetings'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({
+          title: `${type === 'audio' ? 'Audio' : 'Video'} Call`,
+          passcode,
+        }),
+      });
+      const meeting = await res.json();
+      if (!res.ok) {
+        throw new Error(meeting.error || 'Failed to create call.');
+      }
+      window.open(`/w/${workspaceId}/meet/room/${meeting.joinCode}?pwd=${passcode}&intent=join`, '_blank');
+    } catch (err) {
+      console.error('Failed to start call:', err);
+      alert(err.message || 'Failed to start call. Please try again.');
+    }
   };
 
   // Handle User Search

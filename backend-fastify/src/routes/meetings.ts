@@ -12,7 +12,15 @@ import { summarizeMeeting } from '../services/summarizer';
 export async function meetingRoutes(fastify: FastifyInstance) {
   
   // Helper: Generate Unique 9-Digit Join Code (e.g. 592-381-042)
-  async function generate9DigitJoinCode(): Promise<string> {
+  async function generate9DigitJoinCode(preferredCode?: string): Promise<string> {
+    const normalizedPreferredCode = preferredCode ? normalizeJoinCode(preferredCode) : '';
+    if (normalizedPreferredCode) {
+      const existing = await Meeting.findOne({ joinCode: normalizedPreferredCode });
+      if (!existing) {
+        return normalizedPreferredCode;
+      }
+    }
+
     let attempts = 0;
     while (attempts < 10) {
       const code = Math.floor(100000000 + Math.random() * 900000000).toString();
@@ -48,16 +56,28 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   // 1. CREATE MEETING
   fastify.post('/', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { title, passcode, durationMinutes, scheduledAt, recordingEnabled } = request.body as any;
+      const {
+        title,
+        passcode,
+        password,
+        roomId,
+        joinCode: requestedJoinCode,
+        durationMinutes,
+        duration,
+        scheduledAt,
+        startTime,
+        recordingEnabled
+      } = request.body as any;
       if (!title) {
         return reply.code(400).send({ error: 'Meeting title is required.' });
       }
 
-      const joinCode = await generate9DigitJoinCode();
+      const joinCode = await generate9DigitJoinCode(requestedJoinCode || roomId);
+      const plainPasscode = passcode ?? password;
       let passcodeHash: string | undefined;
 
-      if (passcode) {
-        passcodeHash = await bcrypt.hash(passcode, 10);
+      if (plainPasscode) {
+        passcodeHash = await bcrypt.hash(String(plainPasscode), 10);
       }
 
       const meeting = await Meeting.create({
@@ -65,8 +85,8 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         hostId: new Types.ObjectId(request.user!.id),
         joinCode,
         passcodeHash,
-        scheduledAt: scheduledAt ? new Date(scheduledAt) : new Date(),
-        durationMinutes: durationMinutes || 60,
+        scheduledAt: scheduledAt || startTime ? new Date(scheduledAt || startTime) : new Date(),
+        durationMinutes: durationMinutes || duration || 60,
         recordingEnabled: !!recordingEnabled,
         status: 'scheduled',
         participantIds: [new Types.ObjectId(request.user!.id)]
@@ -100,7 +120,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
             roomId: meeting.joinCode.replace(/-/g, ''),
             startTime: meeting.scheduledAt,
             duration: meeting.durationMinutes,
-            password: passcode
+            password: plainPasscode
           }
         })
       }).then(res => {

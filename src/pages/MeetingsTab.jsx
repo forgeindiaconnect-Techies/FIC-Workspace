@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { getApiUrl } from '../api';
 import MeetingLayout from '../components/MeetingLayout';
 import { 
   Search, ChevronDown, Video, Plus, 
@@ -13,6 +14,30 @@ const MeetingsTab = () => {
   const [activeTab, setActiveTab] = useState('Upcoming');
 
   const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+  const startInstantMeeting = async (type = 'video') => {
+    const passcode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    try {
+      const res = await fetch(getApiUrl('/api/meetings'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({
+          title: `${auth.user || 'User'}'s ${type === 'audio' ? 'Audio' : 'Video'} Meeting`,
+          passcode,
+        }),
+      });
+      const meeting = await res.json();
+      if (!res.ok) {
+        throw new Error(meeting.error || 'Failed to create meeting.');
+      }
+      navigate(`/w/${workspaceId}/meet/room/${meeting.joinCode}?pwd=${passcode}&intent=join`);
+    } catch (err) {
+      console.error('Failed to create meeting:', err);
+      alert(err.message || 'Failed to create meeting. Please try again.');
+    }
+  };
   const meetings = [
     { 
       id: 1, 
@@ -130,10 +155,10 @@ const MeetingsTab = () => {
                           Meet Now <ChevronDown size={14} />
                        </button>
                        <div className="absolute top-full left-0 mt-2 w-48 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-white/10 rounded-xl shadow-2xl opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto transition-all z-20 overflow-hidden">
-                          <button onClick={() => navigate(`/w/${workspaceId}/meet/room/AUDIO-${Date.now()}`)} className="w-full px-5 py-3 text-left text-xs font-bold hover:bg-zinc-50 dark:hover:bg-white/5 flex items-center gap-3">
+                          <button onClick={() => startInstantMeeting('audio')} className="w-full px-5 py-3 text-left text-xs font-bold hover:bg-zinc-50 dark:hover:bg-white/5 flex items-center gap-3">
                              <Mic size={14} /> Audio Conferencing
                           </button>
-                          <button onClick={() => navigate(`/w/${workspaceId}/meet/room/VIDEO-${Date.now()}`)} className="w-full px-5 py-3 text-left text-xs font-bold hover:bg-zinc-50 dark:hover:bg-white/5 flex items-center gap-3">
+                          <button onClick={() => startInstantMeeting('video')} className="w-full px-5 py-3 text-left text-xs font-bold hover:bg-zinc-50 dark:hover:bg-white/5 flex items-center gap-3">
                              <Video size={14} /> Video Conferencing
                           </button>
                        </div>
@@ -194,7 +219,7 @@ const MeetingsTab = () => {
 
                        <div className="pt-6">
                           <button 
-                            onClick={() => navigate(`/w/${workspaceId}/meet/room/PERSONAL-${Date.now()}`)}
+                            onClick={() => startInstantMeeting('video')}
                             className="px-10 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black uppercase tracking-widest text-xs transition-all hover:scale-[1.02] active:scale-[0.98] shadow-2xl shadow-blue-500/20"
                           >
                              Start Meeting
