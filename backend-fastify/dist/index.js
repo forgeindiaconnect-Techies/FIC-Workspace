@@ -1978,11 +1978,44 @@ function resolveUploadName(file, uploaded) {
   return `upload.${ext || "file"}`;
 }
 async function resolveMultipartFile(request) {
-  const direct = await request.file();
-  if (direct) return direct;
+  try {
+    const direct = await request.file();
+    if (direct) return direct;
+  } catch {
+  }
   const bodyFile = request.body?.file;
   if (bodyFile?.file) return bodyFile;
   return null;
+}
+async function streamToBuffer(stream) {
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+async function uploadToCloudinary(file) {
+  const mimetype = file?.mimetype || "application/octet-stream";
+  const resourceType = String(mimetype).startsWith("video/") ? "video" : "auto";
+  const uploadOptions = {
+    folder: cloudinaryFolder,
+    resource_type: resourceType,
+    use_filename: true,
+    unique_filename: true,
+    overwrite: false
+  };
+  const payload = typeof file?.toBuffer === "function" ? await file.toBuffer() : file?.file ? await streamToBuffer(file.file) : Buffer.alloc(0);
+  if (!payload.length) {
+    throw new Error("Uploaded file is empty or unreadable.");
+  }
+  return new Promise((resolve, reject) => {
+    const uploadStream = import_cloudinary.v2.uploader.upload_stream(uploadOptions, (error, uploaded) => {
+      if (error) return reject(error);
+      if (!uploaded) return reject(new Error("Cloudinary upload returned no result."));
+      resolve(uploaded);
+    });
+    uploadStream.end(payload);
+  });
 }
 async function ensureDirectConversation(workspaceId, currentEmail, peerEmail) {
   const participants = [currentEmail, peerEmail].map(normalizeEmail).sort();
@@ -2008,25 +2041,7 @@ async function channelRoutes(fastify2) {
       if (!file) {
         return reply.code(400).send({ error: "Missing file upload." });
       }
-      const uploadOptions = {
-        folder: cloudinaryFolder,
-        resource_type: file.mimetype?.startsWith("video/") ? "video" : "auto",
-        use_filename: true,
-        unique_filename: true,
-        overwrite: false
-      };
-      const result = await new Promise((resolve, reject) => {
-        const uploadStream = import_cloudinary.v2.uploader.upload_stream(uploadOptions, (error, uploaded) => {
-          if (error) {
-            return reject(error);
-          }
-          if (!uploaded) {
-            return reject(new Error("Cloudinary upload returned no result."));
-          }
-          resolve(uploaded);
-        });
-        file.file.pipe(uploadStream).on("error", reject);
-      });
+      const result = await uploadToCloudinary(file);
       return reply.code(200).send({
         url: result.secure_url || result.url,
         type: file.mimetype || "application/octet-stream",
@@ -2131,25 +2146,7 @@ async function kuralRoutes(fastify2) {
       if (!file) {
         return reply.code(400).send({ error: "Missing file upload." });
       }
-      const uploadOptions = {
-        folder: cloudinaryFolder,
-        resource_type: file.mimetype?.startsWith("video/") ? "video" : "auto",
-        use_filename: true,
-        unique_filename: true,
-        overwrite: false
-      };
-      const result = await new Promise((resolve, reject) => {
-        const uploadStream = import_cloudinary.v2.uploader.upload_stream(uploadOptions, (error, uploaded) => {
-          if (error) {
-            return reject(error);
-          }
-          if (!uploaded) {
-            return reject(new Error("Cloudinary upload returned no result."));
-          }
-          resolve(uploaded);
-        });
-        file.file.pipe(uploadStream).on("error", reject);
-      });
+      const result = await uploadToCloudinary(file);
       return reply.code(200).send({
         url: result.secure_url || result.url,
         type: file.mimetype || "application/octet-stream",

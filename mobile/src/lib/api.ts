@@ -708,7 +708,8 @@ async sendMessage(workspaceId: string, channelId: string, content: string, fileD
       });
       const data = await result.json().catch(() => ({}));
       if (!result.ok) {
-        throw new Error(data?.error || 'File upload failed');
+        const detail = data?.details ? `: ${data.details}` : '';
+        throw new Error(`${data?.error || 'File upload failed'}${detail}`);
       }
       return {
         ...data,

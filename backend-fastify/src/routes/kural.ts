@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Types } from 'mongoose';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
+import { Readable } from 'stream';
 import { User } from '../models/User';
 import { KuralConversation } from '../models/KuralConversation';
 import { KuralMessage } from '../models/KuralMessage';
@@ -45,13 +46,58 @@ function resolveUploadName(file: any, uploaded?: UploadApiResponse) {
 
 async function resolveMultipartFile(request: FastifyRequest) {
   // Standard multipart flow (attachFieldsToBody disabled)
-  const direct = await request.file();
-  if (direct) return direct as any;
+  try {
+    const direct = await (request as any).file();
+    if (direct) return direct as any;
+  } catch {
+    // When attachFieldsToBody=true, request.file() may throw if body is already consumed.
+  }
 
   // Fallback for attachFieldsToBody=true setups
   const bodyFile = (request.body as any)?.file;
   if (bodyFile?.file) return bodyFile;
   return null;
+}
+
+async function streamToBuffer(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+async function uploadToCloudinary(file: any) {
+  const mimetype = file?.mimetype || 'application/octet-stream';
+  const resourceType: 'video' | 'auto' =
+    String(mimetype).startsWith('video/') ? 'video' : 'auto';
+  const uploadOptions = {
+    folder: cloudinaryFolder,
+    resource_type: resourceType,
+    use_filename: true,
+    unique_filename: true,
+    overwrite: false,
+  };
+
+  const payload: Buffer =
+    typeof file?.toBuffer === 'function'
+      ? await file.toBuffer()
+      : file?.file
+        ? await streamToBuffer(file.file as Readable)
+        : Buffer.alloc(0);
+
+  if (!payload.length) {
+    throw new Error('Uploaded file is empty or unreadable.');
+  }
+
+  return new Promise<UploadApiResponse>((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(uploadOptions, (error, uploaded) => {
+      if (error) return reject(error);
+      if (!uploaded) return reject(new Error('Cloudinary upload returned no result.'));
+      resolve(uploaded);
+    });
+    uploadStream.end(payload);
+  });
 }
 
 async function ensureDirectConversation(workspaceId: string, currentEmail: string, peerEmail: string) {
@@ -82,28 +128,7 @@ export async function channelRoutes(fastify: FastifyInstance) {
       if (!file) {
         return reply.code(400).send({ error: 'Missing file upload.' });
       }
-
-      const uploadOptions = {
-        folder: cloudinaryFolder,
-        resource_type: file.mimetype?.startsWith('video/') ? 'video' : 'auto',
-        use_filename: true,
-        unique_filename: true,
-        overwrite: false,
-      };
-
-      const result = await new Promise<UploadApiResponse>((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(uploadOptions, (error, uploaded) => {
-          if (error) {
-            return reject(error);
-          }
-          if (!uploaded) {
-            return reject(new Error('Cloudinary upload returned no result.'));
-          }
-          resolve(uploaded);
-        });
-
-        file.file.pipe(uploadStream).on('error', reject);
-      });
+      const result = await uploadToCloudinary(file);
 
       return reply.code(200).send({
         url: result.secure_url || result.url,
@@ -224,28 +249,7 @@ export async function kuralRoutes(fastify: FastifyInstance) {
       if (!file) {
         return reply.code(400).send({ error: 'Missing file upload.' });
       }
-
-      const uploadOptions = {
-        folder: cloudinaryFolder,
-        resource_type: file.mimetype?.startsWith('video/') ? 'video' : 'auto',
-        use_filename: true,
-        unique_filename: true,
-        overwrite: false,
-      };
-
-      const result = await new Promise<UploadApiResponse>((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(uploadOptions, (error, uploaded) => {
-          if (error) {
-            return reject(error);
-          }
-          if (!uploaded) {
-            return reject(new Error('Cloudinary upload returned no result.'));
-          }
-          resolve(uploaded);
-        });
-
-        file.file.pipe(uploadStream).on('error', reject);
-      });
+      const result = await uploadToCloudinary(file);
 
       return reply.code(200).send({
         url: result.secure_url || result.url,
