@@ -710,7 +710,7 @@ async function authRoutes(fastify2) {
 }
 
 // src/routes/meetings.ts
-var import_bcrypt2 = __toESM(require("bcrypt"));
+var import_bcrypt3 = __toESM(require("bcrypt"));
 var import_mongoose10 = require("mongoose");
 
 // src/models/Meeting.ts
@@ -763,6 +763,7 @@ var import_fs2 = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 var import_os = __toESM(require("os"));
 var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
+var import_bcrypt2 = __toESM(require("bcrypt"));
 init_transcription();
 
 // src/services/summarizer.ts
@@ -921,13 +922,23 @@ ${fullText}`;
 
 // src/services/aiBot.ts
 var JWT_SECRET = process.env.JWT_SECRET || "nexus-jwt-secret-key";
+var AI_BOT_EMAIL = "ai-assistant@nexus.app";
+var AI_BOT_NAME = "Nexus AI Assistant";
 var activeBots = /* @__PURE__ */ new Map();
 async function mintAIBotToken() {
   try {
-    const aiUser = await User.findOne({ email: "ai-assistant@nexus.app" });
+    let aiUser = await User.findOne({ email: AI_BOT_EMAIL });
     if (!aiUser) {
-      console.error("[AIBot] ai-assistant@nexus.app user not found in DB. Run seed first.");
-      return null;
+      const passwordHash = await import_bcrypt2.default.hash("AI_SECURE_PASSWORD_123!@#", 12);
+      aiUser = await User.create({
+        name: AI_BOT_NAME,
+        email: AI_BOT_EMAIL,
+        passwordHash,
+        avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=nexusai`,
+        mfaEnabled: false,
+        role: "company-admin",
+        workspaceId: "antigraviity-hq"
+      });
     }
     const token = import_jsonwebtoken3.default.sign(
       { userId: aiUser._id, email: aiUser.email, name: aiUser.name, role: "ai-bot", workspaceId: "antigraviity-hq" },
@@ -940,65 +951,92 @@ async function mintAIBotToken() {
     return null;
   }
 }
-async function launchAIBot(meetingId, joinCode, _frontendUrl) {
+function toWebSocketBaseUrl(url) {
+  return url.replace(/^https:/, "wss:").replace(/^http:/, "ws:").replace(/\/+$/, "");
+}
+async function launchAIBot(meetingId, joinCode, backendBaseUrl) {
   if (activeBots.has(meetingId)) {
     console.log(`[AIBot] Bot already active for meeting ${meetingId}`);
-    return;
+    return { success: true, message: "AI Assistant already active" };
   }
   console.log(`[AIBot] Launching direct-WS bot for meeting ${meetingId} (code: ${joinCode})`);
   const auth = await mintAIBotToken();
   if (!auth) {
-    console.error("[AIBot] Cannot launch bot \u2014 no valid token.");
-    return;
+    throw new Error("Cannot launch AI Assistant: bot user/token is unavailable.");
   }
   const renderUrl = process.env.RENDER_EXTERNAL_URL || "";
-  const backendWsUrl = process.env.BACKEND_WS_URL || (renderUrl ? renderUrl.replace(/^https:/, "wss:").replace(/^http:/, "ws:") : `ws://localhost:${process.env.PORT || 3001}`);
+  const backendWsUrl = process.env.BACKEND_WS_URL || (backendBaseUrl ? toWebSocketBaseUrl(backendBaseUrl) : renderUrl ? toWebSocketBaseUrl(renderUrl) : `ws://localhost:${process.env.PORT || 3001}`);
   const wsUrl = `${backendWsUrl}/ws/webrtc`;
   console.log(`[AIBot] Connecting to signaling server at ${wsUrl}`);
   let ws;
   try {
     ws = new import_ws.default(wsUrl);
   } catch (err) {
-    console.error("[AIBot] Failed to create WebSocket:", err.message);
-    return;
+    throw new Error(`Failed to create AI Assistant WebSocket: ${err.message}`);
   }
   activeBots.set(meetingId, { ws, meetingId, userId: auth.userId });
-  ws.on("open", () => {
-    console.log(`[AIBot] WS open. Sending join for meeting ${meetingId}...`);
-    ws.send(JSON.stringify({
-      type: "join",
-      data: {
-        meetingId,
-        token: auth.token
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      activeBots.delete(meetingId);
+      try {
+        ws.close();
+      } catch {
       }
-    }));
-  });
-  ws.on("message", (raw) => {
-    try {
-      const msg = JSON.parse(raw.toString());
-      console.log(`[AIBot] Signaling message: ${msg.type}`);
-      if (msg.type === "joined") {
-        console.log(`[AIBot] \u2705 Successfully joined room ${meetingId} as peer ${msg.peerId}`);
-        Participant.findOneAndUpdate(
-          { meetingId, userId: auth.userId },
-          { joinedAt: /* @__PURE__ */ new Date(), $unset: { leftAt: "" } },
-          { upsert: true }
-        ).catch(() => {
-        });
+      finish(() => reject(new Error("AI Assistant timed out while joining the meeting.")));
+    }, 1e4);
+    const finish = (fn) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      fn();
+    };
+    ws.on("open", () => {
+      console.log(`[AIBot] WS open. Sending join for meeting ${meetingId}...`);
+      ws.send(JSON.stringify({
+        type: "join",
+        data: {
+          meetingId,
+          token: auth.token
+        }
+      }));
+    });
+    ws.on("message", (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        console.log(`[AIBot] Signaling message: ${msg.type}`);
+        if (msg.type === "joined") {
+          console.log(`[AIBot] Successfully joined room ${meetingId} as peer ${msg.peerId}`);
+          Participant.findOneAndUpdate(
+            { meetingId, userId: auth.userId },
+            { joinedAt: /* @__PURE__ */ new Date(), $unset: { leftAt: "" } },
+            { upsert: true }
+          ).catch(() => {
+          });
+          finish(() => resolve({ success: true, message: "AI Assistant joined the meeting" }));
+        }
+        if (msg.type === "error") {
+          console.error(`[AIBot] Signaling error: ${msg.message}`);
+          activeBots.delete(meetingId);
+          try {
+            ws.close();
+          } catch {
+          }
+          finish(() => reject(new Error(msg.message || "AI Assistant failed to join signaling.")));
+        }
+      } catch {
       }
-      if (msg.type === "error") {
-        console.error(`[AIBot] Signaling error: ${msg.message}`);
-      }
-    } catch (e) {
-    }
-  });
-  ws.on("close", (code, reason) => {
-    console.log(`[AIBot] WS closed for meeting ${meetingId}: code=${code}`);
-    activeBots.delete(meetingId);
-  });
-  ws.on("error", (err) => {
-    console.error(`[AIBot] WS error for meeting ${meetingId}:`, err.message);
-    activeBots.delete(meetingId);
+    });
+    ws.on("close", (code) => {
+      console.log(`[AIBot] WS closed for meeting ${meetingId}: code=${code}`);
+      activeBots.delete(meetingId);
+      finish(() => reject(new Error(`AI Assistant WebSocket closed before joining: ${code}`)));
+    });
+    ws.on("error", (err) => {
+      console.error(`[AIBot] WS error for meeting ${meetingId}:`, err.message);
+      activeBots.delete(meetingId);
+      finish(() => reject(new Error(err.message)));
+    });
   });
 }
 async function stopAIBot(meetingId) {
@@ -1121,7 +1159,7 @@ async function meetingRoutes(fastify2) {
       const plainPasscode = passcode ?? password;
       let passcodeHash;
       if (plainPasscode) {
-        passcodeHash = await import_bcrypt2.default.hash(String(plainPasscode), 10);
+        passcodeHash = await import_bcrypt3.default.hash(String(plainPasscode), 10);
       }
       const meeting = await Meeting.create({
         title,
@@ -1205,7 +1243,7 @@ async function meetingRoutes(fastify2) {
         return reply.code(410).send({ error: "This meeting has already ended." });
       }
       if (meeting.passcodeHash) {
-        const isPasscodeValid = passcode && await import_bcrypt2.default.compare(String(passcode), meeting.passcodeHash);
+        const isPasscodeValid = passcode && await import_bcrypt3.default.compare(String(passcode), meeting.passcodeHash);
         if (!isPasscodeValid) {
           return reply.code(401).send({ error: "Invalid meeting passcode." });
         }
@@ -1351,16 +1389,15 @@ async function meetingRoutes(fastify2) {
   fastify2.post("/:id/start-ai", { preHandler: authenticate }, async (request, reply) => {
     try {
       const { id } = request.params;
-      const { frontendUrl } = request.body;
-      const meeting = await Meeting.findById(id);
+      const meeting = await resolveMeetingIdentifier(id);
       if (!meeting) return reply.code(404).send({ error: "Meeting room not found." });
-      if (meeting.aiEnabled) {
-        return reply.code(200).send({ success: true, message: "AI Assistant already active" });
-      }
+      const proto = request.headers["x-forwarded-proto"]?.split(",")[0] || request.protocol || "http";
+      const host = request.headers["x-forwarded-host"]?.split(",")[0] || request.headers.host;
+      const backendBaseUrl = process.env.BACKEND_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || (host ? `${proto}://${host}` : void 0);
+      const result = await launchAIBot(meeting._id.toString(), meeting.joinCode, backendBaseUrl);
       meeting.aiEnabled = true;
       await meeting.save();
-      launchAIBot(meeting._id.toString(), meeting.joinCode, frontendUrl || process.env.WEB_APP_URL || "http://localhost:3000");
-      return reply.code(200).send({ success: true, message: "AI Assistant launched" });
+      return reply.code(200).send(result);
     } catch (err) {
       return reply.code(500).send({ error: "Failed to start AI Assistant.", details: err.message });
     }
@@ -2190,7 +2227,7 @@ async function kuralRoutes(fastify2) {
 }
 
 // src/routes/members.ts
-var import_bcrypt3 = __toESM(require("bcrypt"));
+var import_bcrypt4 = __toESM(require("bcrypt"));
 var defaultWorkspaceId2 = "antigraviity-hq";
 function publicUser(user) {
   return {
@@ -2239,7 +2276,7 @@ async function memberRoutes(fastify2) {
       if (existing) {
         return reply.code(409).send({ error: "A user with this email already exists." });
       }
-      const passwordHash = await import_bcrypt3.default.hash(password, 12);
+      const passwordHash = await import_bcrypt4.default.hash(password, 12);
       const avatarUrl = body.avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`;
       const user = await User.create({
         name,
@@ -2758,14 +2795,14 @@ function handleCallSignaling(ws) {
 }
 
 // src/utils/seedDefaultUser.ts
-var import_bcrypt4 = __toESM(require("bcrypt"));
+var import_bcrypt5 = __toESM(require("bcrypt"));
 var DEFAULT_EMAIL = "admin@fic.com";
 var DEFAULT_PASSWORD = "password123";
 async function ensureDefaultUser() {
-  const salt = await import_bcrypt4.default.genSalt(12);
+  const salt = await import_bcrypt5.default.genSalt(12);
   const existing = await User.findOne({ email: DEFAULT_EMAIL });
   if (!existing) {
-    const passwordHash = await import_bcrypt4.default.hash(DEFAULT_PASSWORD, salt);
+    const passwordHash = await import_bcrypt5.default.hash(DEFAULT_PASSWORD, salt);
     await User.create({
       name: "Nexus Administrator",
       email: DEFAULT_EMAIL,
@@ -2779,7 +2816,7 @@ async function ensureDefaultUser() {
   const AI_EMAIL = "ai-assistant@nexus.app";
   const aiExisting = await User.findOne({ email: AI_EMAIL });
   if (!aiExisting) {
-    const aiPasswordHash = await import_bcrypt4.default.hash("AI_SECURE_PASSWORD_123!@#", salt);
+    const aiPasswordHash = await import_bcrypt5.default.hash("AI_SECURE_PASSWORD_123!@#", salt);
     await User.create({
       name: "Nexus AI Assistant",
       email: AI_EMAIL,
@@ -2793,7 +2830,7 @@ async function ensureDefaultUser() {
   const SUPERADMIN_EMAIL = "superadmin@fic.com";
   const superAdminExisting = await User.findOne({ email: SUPERADMIN_EMAIL });
   if (!superAdminExisting) {
-    const saPasswordHash = await import_bcrypt4.default.hash("password123", salt);
+    const saPasswordHash = await import_bcrypt5.default.hash("password123", salt);
     await User.create({
       name: "Super Admin",
       email: SUPERADMIN_EMAIL,
@@ -2807,7 +2844,7 @@ async function ensureDefaultUser() {
   const DEMO_EMAIL = "demo@fic.com";
   const demoExisting = await User.findOne({ email: DEMO_EMAIL });
   if (!demoExisting) {
-    const demoPasswordHash = await import_bcrypt4.default.hash("password123", salt);
+    const demoPasswordHash = await import_bcrypt5.default.hash("password123", salt);
     await User.create({
       name: "Demo User",
       email: DEMO_EMAIL,

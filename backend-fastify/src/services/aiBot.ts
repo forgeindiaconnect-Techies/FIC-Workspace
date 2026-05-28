@@ -3,13 +3,15 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 import { User } from '../models/User';
 import { Participant } from '../models/Participant';
-import { Meeting } from '../models/Meeting';
 import { transcribeChunk } from './transcription';
 import { summarizeMeeting } from './summarizer';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'nexus-jwt-secret-key';
+const AI_BOT_EMAIL = 'ai-assistant@nexus.app';
+const AI_BOT_NAME = 'Nexus AI Assistant';
 
 interface ActiveBot {
   ws: WebSocket;
@@ -19,16 +21,22 @@ interface ActiveBot {
 
 const activeBots = new Map<string, ActiveBot>();
 
-/**
- * Mint a long-lived JWT token for the AI Bot user directly (no HTTP round-trip).
- */
 async function mintAIBotToken(): Promise<{ token: string; userId: string } | null> {
   try {
-    const aiUser = await User.findOne({ email: 'ai-assistant@nexus.app' });
+    let aiUser = await User.findOne({ email: AI_BOT_EMAIL });
     if (!aiUser) {
-      console.error('[AIBot] ai-assistant@nexus.app user not found in DB. Run seed first.');
-      return null;
+      const passwordHash = await bcrypt.hash('AI_SECURE_PASSWORD_123!@#', 12);
+      aiUser = await User.create({
+        name: AI_BOT_NAME,
+        email: AI_BOT_EMAIL,
+        passwordHash,
+        avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=nexusai`,
+        mfaEnabled: false,
+        role: 'company-admin',
+        workspaceId: 'antigraviity-hq',
+      });
     }
+
     const token = jwt.sign(
       { userId: aiUser._id, email: aiUser.email, name: aiUser.name, role: 'ai-bot', workspaceId: 'antigraviity-hq' },
       JWT_SECRET,
@@ -41,28 +49,27 @@ async function mintAIBotToken(): Promise<{ token: string; userId: string } | nul
   }
 }
 
-export async function launchAIBot(meetingId: string, joinCode: string, _frontendUrl: string) {
+function toWebSocketBaseUrl(url: string): string {
+  return url.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\/+$/, '');
+}
+
+export async function launchAIBot(meetingId: string, joinCode: string, backendBaseUrl?: string) {
   if (activeBots.has(meetingId)) {
     console.log(`[AIBot] Bot already active for meeting ${meetingId}`);
-    return;
+    return { success: true, message: 'AI Assistant already active' };
   }
 
   console.log(`[AIBot] Launching direct-WS bot for meeting ${meetingId} (code: ${joinCode})`);
 
-  // 1. Get or create the AI bot user, then mint a token
   const auth = await mintAIBotToken();
   if (!auth) {
-    console.error('[AIBot] Cannot launch bot — no valid token.');
-    return;
+    throw new Error('Cannot launch AI Assistant: bot user/token is unavailable.');
   }
 
-  // 2. Connect directly to the WebRTC signaling server
-  // On Render, RENDER_EXTERNAL_URL = https://workspace-backend-r9f8.onrender.com
-  // We convert it to wss:// so the bot can connect to itself
   const renderUrl = process.env.RENDER_EXTERNAL_URL || '';
   const backendWsUrl = process.env.BACKEND_WS_URL ||
-    (renderUrl ? renderUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:') :
-      `ws://localhost:${process.env.PORT || 3001}`);
+    (backendBaseUrl ? toWebSocketBaseUrl(backendBaseUrl) :
+      (renderUrl ? toWebSocketBaseUrl(renderUrl) : `ws://localhost:${process.env.PORT || 3001}`));
   const wsUrl = `${backendWsUrl}/ws/webrtc`;
 
   console.log(`[AIBot] Connecting to signaling server at ${wsUrl}`);
@@ -71,57 +78,74 @@ export async function launchAIBot(meetingId: string, joinCode: string, _frontend
   try {
     ws = new WebSocket(wsUrl);
   } catch (err: any) {
-    console.error('[AIBot] Failed to create WebSocket:', err.message);
-    return;
+    throw new Error(`Failed to create AI Assistant WebSocket: ${err.message}`);
   }
 
   activeBots.set(meetingId, { ws, meetingId, userId: auth.userId });
 
-  ws.on('open', () => {
-    console.log(`[AIBot] WS open. Sending join for meeting ${meetingId}...`);
-    ws.send(JSON.stringify({
-      type: 'join',
-      data: {
-        meetingId,
-        token: auth.token
+  return await new Promise<{ success: true; message: string }>((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      activeBots.delete(meetingId);
+      try { ws.close(); } catch {}
+      finish(() => reject(new Error('AI Assistant timed out while joining the meeting.')));
+    }, 10000);
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      fn();
+    };
+
+    ws.on('open', () => {
+      console.log(`[AIBot] WS open. Sending join for meeting ${meetingId}...`);
+      ws.send(JSON.stringify({
+        type: 'join',
+        data: {
+          meetingId,
+          token: auth.token
+        }
+      }));
+    });
+
+    ws.on('message', (raw: WebSocket.RawData) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        console.log(`[AIBot] Signaling message: ${msg.type}`);
+
+        if (msg.type === 'joined') {
+          console.log(`[AIBot] Successfully joined room ${meetingId} as peer ${msg.peerId}`);
+          Participant.findOneAndUpdate(
+            { meetingId, userId: auth.userId },
+            { joinedAt: new Date(), $unset: { leftAt: '' } },
+            { upsert: true }
+          ).catch(() => {});
+          finish(() => resolve({ success: true, message: 'AI Assistant joined the meeting' }));
+        }
+
+        if (msg.type === 'error') {
+          console.error(`[AIBot] Signaling error: ${msg.message}`);
+          activeBots.delete(meetingId);
+          try { ws.close(); } catch {}
+          finish(() => reject(new Error(msg.message || 'AI Assistant failed to join signaling.')));
+        }
+      } catch {
+        // Ignore non-JSON messages.
       }
-    }));
-  });
+    });
 
-  ws.on('message', (raw: WebSocket.RawData) => {
-    try {
-      const msg = JSON.parse(raw.toString());
-      console.log(`[AIBot] Signaling message: ${msg.type}`);
+    ws.on('close', (code) => {
+      console.log(`[AIBot] WS closed for meeting ${meetingId}: code=${code}`);
+      activeBots.delete(meetingId);
+      finish(() => reject(new Error(`AI Assistant WebSocket closed before joining: ${code}`)));
+    });
 
-      if (msg.type === 'joined') {
-        console.log(`[AIBot] ✅ Successfully joined room ${meetingId} as peer ${msg.peerId}`);
-        // Register as participant
-        Participant.findOneAndUpdate(
-          { meetingId, userId: auth.userId },
-          { joinedAt: new Date(), $unset: { leftAt: '' } },
-          { upsert: true }
-        ).catch(() => {});
-      }
-
-      if (msg.type === 'error') {
-        console.error(`[AIBot] Signaling error: ${msg.message}`);
-      }
-
-      // The bot is listening-only; it does not send WebRTC offers/answers.
-      // Audio streaming is handled separately via /ws/audio.
-    } catch (e) {
-      // Ignore non-JSON messages
-    }
-  });
-
-  ws.on('close', (code, reason) => {
-    console.log(`[AIBot] WS closed for meeting ${meetingId}: code=${code}`);
-    activeBots.delete(meetingId);
-  });
-
-  ws.on('error', (err) => {
-    console.error(`[AIBot] WS error for meeting ${meetingId}:`, err.message);
-    activeBots.delete(meetingId);
+    ws.on('error', (err) => {
+      console.error(`[AIBot] WS error for meeting ${meetingId}:`, err.message);
+      activeBots.delete(meetingId);
+      finish(() => reject(new Error(err.message)));
+    });
   });
 }
 
@@ -136,12 +160,10 @@ export async function stopAIBot(meetingId: string) {
     activeBots.delete(meetingId);
   }
 
-  // Trigger summarization when the bot leaves
   console.log(`[AIBot] Triggering summarization for ${meetingId}`);
   await summarizeMeeting(meetingId);
 }
 
-// WebSocket handler for receiving audio chunks from the frontend
 export function handleAudioSocket(ws: WebSocket) {
   let currentMeetingId = '';
   let currentUserId = '';
@@ -149,7 +171,6 @@ export function handleAudioSocket(ws: WebSocket) {
 
   ws.on('message', async (message: WebSocket.RawData, isBinary: boolean) => {
     if (!isBinary) {
-      // It's a metadata message
       try {
         const meta = JSON.parse(message.toString());
         if (meta.type === 'metadata') {
@@ -160,7 +181,6 @@ export function handleAudioSocket(ws: WebSocket) {
         }
       } catch (e) {}
     } else {
-      // It's a binary audio chunk (WebM)
       if (!currentMeetingId || !currentUserId) {
         console.warn('[AudioSocket] Received audio chunk before metadata, ignoring.');
         return;
@@ -172,8 +192,6 @@ export function handleAudioSocket(ws: WebSocket) {
 
       try {
         fs.writeFileSync(filePath, message as Buffer);
-
-        // Send to Groq Whisper for transcription
         const text = await transcribeChunk(currentMeetingId, currentUserId, currentSpeakerName, filePath);
         if (text) {
           console.log(`[AudioSocket] Transcribed: "${text.slice(0, 60)}..."`);

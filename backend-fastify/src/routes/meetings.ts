@@ -352,23 +352,20 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   fastify.post('/:id/start-ai', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as any;
-      const { frontendUrl } = request.body as { frontendUrl: string };
-
-      const meeting = await Meeting.findById(id);
+      const meeting = await resolveMeetingIdentifier(id);
       if (!meeting) return reply.code(404).send({ error: 'Meeting room not found.' });
 
       // Already launched — don't double-start
-      if (meeting.aiEnabled) {
-        return reply.code(200).send({ success: true, message: 'AI Assistant already active' });
-      }
+      const proto = (request.headers['x-forwarded-proto'] as string)?.split(',')[0] || request.protocol || 'http';
+      const host = (request.headers['x-forwarded-host'] as string)?.split(',')[0] || request.headers.host;
+      const backendBaseUrl = process.env.BACKEND_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || (host ? `${proto}://${host}` : undefined);
 
+      // Launch direct-WS bot (no browser needed) and only mark enabled once it joins.
+      const result = await launchAIBot(meeting._id.toString(), meeting.joinCode, backendBaseUrl);
       meeting.aiEnabled = true;
       await meeting.save();
 
-      // Launch direct-WS bot (no browser needed)
-      launchAIBot(meeting._id.toString(), meeting.joinCode, frontendUrl || process.env.WEB_APP_URL || 'http://localhost:3000');
-
-      return reply.code(200).send({ success: true, message: 'AI Assistant launched' });
+      return reply.code(200).send(result);
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to start AI Assistant.', details: err.message });
     }

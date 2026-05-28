@@ -156,16 +156,17 @@ const MeetingApp = () => {
 
   const aiMediaRecorderRef = useRef(null);
   const aiWsRef = useRef(null);
+  const autoStartedAiRef = useRef(false);
   const isMutedRef = useRef(!micOn);
   useEffect(() => { isMutedRef.current = !micOn; }, [micOn]);
   
-  const handleStartAI = async () => {
+  const handleStartAI = async (meetingOverride = null) => {
      if (aiAssistantActive) return;
      try {
-        const meetingId = meetingMetadata?._id || meetingMetadata?.meetingId || id;
+        const activeMeeting = meetingOverride || meetingMetadata;
+        const meetingId = activeMeeting?._id || activeMeeting?.meetingId || activeMeeting?.joinCode || id;
         if (!meetingId) return;
-        setAiAssistantActive(true);
-        await fetch(getApiUrl(`/api/meetings/${meetingId}/start-ai`), {
+        const res = await fetch(getApiUrl(`/api/meetings/${encodeURIComponent(meetingId)}/start-ai`), {
            method: 'POST',
            headers: {
               'Content-Type': 'application/json',
@@ -173,11 +174,28 @@ const MeetingApp = () => {
            },
            body: JSON.stringify({ frontendUrl: window.location.origin })
         });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || data.details || 'Failed to start AI Assistant.');
+        }
+        setAiAssistantActive(true);
      } catch(e) {
         console.error('Failed to start AI', e);
         setAiAssistantActive(false);
      }
   };
+
+  useEffect(() => {
+    if (
+      appState === 'in-call' &&
+      meetingMetadata?.isHost &&
+      !aiAssistantActive &&
+      !autoStartedAiRef.current
+    ) {
+      autoStartedAiRef.current = true;
+      handleStartAI(meetingMetadata);
+    }
+  }, [appState, meetingMetadata, aiAssistantActive]);
 
   useEffect(() => {
     if (aiAssistantActive && streamRef.current && !window.isAIBot) {
