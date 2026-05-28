@@ -198,6 +198,12 @@ const MeetingApp = () => {
   }, [appState, meetingMetadata, aiAssistantActive]);
 
   useEffect(() => {
+    if (appState === 'in-call' && meetingMetadata?.aiEnabled && !aiAssistantActive) {
+      setAiAssistantActive(true);
+    }
+  }, [appState, meetingMetadata, aiAssistantActive]);
+
+  useEffect(() => {
     if (aiAssistantActive && streamRef.current && !window.isAIBot) {
       const API_URL = getApiUrl('/');
       let wsBase = API_URL;
@@ -410,16 +416,25 @@ const MeetingApp = () => {
     return pc;
   };
 
-  const handleEndCall = () => {
+  const handleEndCall = async () => {
     setFinalStats({ duration, participants: peers.length + 1 });
     setAppState('ended');
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
+    setAiAssistantActive(false);
     intentionalCloseRef.current = true;
     if (wsRef.current) {
       sendWs('leave', {});
       wsRef.current.close();
+    }
+    const token = localStorage.getItem('token');
+    const meetingId = meetingMetadata?._id || meetingMetadata?.meetingId || meetingMetadata?.joinCode || id;
+    if (token && meetingId) {
+      fetch(getApiUrl(`/api/meetings/${encodeURIComponent(meetingId)}/leave`), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(err => console.warn('[Meeting] Failed to notify backend leave:', err));
     }
     if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
   };
@@ -489,11 +504,17 @@ const MeetingApp = () => {
           setRoomError(null);
           setIsVerifying(false);
           setAppState('in-call');
+          if (meetingMetadata?.aiEnabled) {
+            setAiAssistantActive(true);
+          }
           const peers = (msg.existingPeers || []).map(p => ({
             peerId: p.peerId,
             userId: p.userId,
             name: p.name,
           }));
+          if (peers.some(peer => peer.name === 'Nexus AI Assistant')) {
+            setAiAssistantActive(true);
+          }
           // Initiate offers with peers whose ID sorts higher (avoid SDP glare)
           for (const peer of peers) {
             if (shouldInitiateOfferRef.current(peer.peerId)) {
@@ -515,6 +536,9 @@ const MeetingApp = () => {
           if (msg.peerId === peerIdRef.current) return;
           if (peersRef.current.find(p => p.peerID === msg.peerId)) return;
           setPeers(prev => [...prev, { peerID: msg.peerId, pc: null, stream: null, name: msg.name || 'Participant' }]);
+          if (msg.name === 'Nexus AI Assistant') {
+            setAiAssistantActive(true);
+          }
           if (shouldInitiateOfferRef.current(msg.peerId)) {
             const pc = await createPeerConnectionRef.current(msg.peerId, streamRef.current, msg.name || 'Participant');
             if (pc) {

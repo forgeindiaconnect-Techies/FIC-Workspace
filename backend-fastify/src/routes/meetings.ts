@@ -222,6 +222,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         durationMinutes: meeting.durationMinutes,
         status: meeting.status === 'scheduled' ? 'live' : meeting.status,
         hasPasscode: !!meeting.passcodeHash,
+        aiEnabled: !!meeting.aiEnabled,
         participantIds: meeting.participantIds,
         activeParticipantCount,
         isHost: hostId === request.user!.id
@@ -453,6 +454,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       );
 
       if (meeting.aiEnabled) {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
         await stopAIBot(meeting._id.toString());
       }
 
@@ -514,6 +516,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         // Everyone (except possibly the bot) has left — end meeting and trigger summary
         meeting.status = 'ended';
         await meeting.save();
+        await new Promise((resolve) => setTimeout(resolve, 2500));
         if (meeting.aiEnabled) {
           await stopAIBot(meeting._id.toString());
         } else {

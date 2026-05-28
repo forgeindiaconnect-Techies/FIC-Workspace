@@ -1285,6 +1285,7 @@ async function meetingRoutes(fastify2) {
         durationMinutes: meeting.durationMinutes,
         status: meeting.status === "scheduled" ? "live" : meeting.status,
         hasPasscode: !!meeting.passcodeHash,
+        aiEnabled: !!meeting.aiEnabled,
         participantIds: meeting.participantIds,
         activeParticipantCount,
         isHost: hostId === request.user.id
@@ -1470,6 +1471,7 @@ async function meetingRoutes(fastify2) {
         { leftAt: /* @__PURE__ */ new Date() }
       );
       if (meeting.aiEnabled) {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
         await stopAIBot(meeting._id.toString());
       }
       let recordingDoc = null;
@@ -1522,6 +1524,7 @@ async function meetingRoutes(fastify2) {
       if (activeParticipantCount === 0) {
         meeting.status = "ended";
         await meeting.save();
+        await new Promise((resolve) => setTimeout(resolve, 2500));
         if (meeting.aiEnabled) {
           await stopAIBot(meeting._id.toString());
         } else {
