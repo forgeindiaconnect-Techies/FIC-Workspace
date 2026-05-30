@@ -7,12 +7,13 @@ import {
   TouchableOpacity, View, Image, useWindowDimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode, Audio } from 'expo-av';
 import {
   CheckCheck, ChevronLeft, Mic, MicOff, PhoneOff,
   Plus, Search, Send, Shield, ShieldCheck, Users, X, UserPlus,
   MessageSquare, MoreVertical, Paperclip, Camera, Hash,
-  Bell, Star, Smile, Edit, Edit3, Edit2, Home, Grid, FileText
+  Bell, Star, Smile, Edit, Edit3, Edit2, Home, Grid, FileText,
+  Trash2, Eye, Settings, Play, Pause
 } from 'lucide-react-native';
 import { api, getSession, SOCKET_URL } from '../lib/api';
 import { getRTCPeerConnectionClass, getMediaDevices, getIceServers, RTCView } from '../lib/webrtc';
@@ -22,8 +23,97 @@ import { callManager } from '../lib/callManager';
 
 /* --- helpers ----------------------------------------------- */
 const avatarFor = (name: string) => {
-  const parts = String(name || 'U').trim().split(/\s+/).filter(Boolean);
-  return parts.slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'U';
+  if (!name) return 'U';
+  return name.substring(0, 2).toUpperCase();
+};
+
+const AudioMessagePlayer = ({ url, self }: { url: string, self: boolean }) => {
+  const [sound, setSound] = React.useState<Audio.Sound | null>(null);
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [position, setPosition] = React.useState(0);
+  const [duration, setDuration] = React.useState(0);
+  const soundRef = React.useRef<Audio.Sound | null>(null);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    const loadSound = async () => {
+      try {
+        const { sound, status } = await Audio.Sound.createAsync(
+          { uri: url },
+          { shouldPlay: false },
+          (status: any) => {
+            if (status.isLoaded) {
+              if (isMounted) {
+                setPosition(status.positionMillis || 0);
+                setDuration(status.durationMillis || 0);
+                setIsPlaying(status.isPlaying);
+                if (status.didJustFinish) {
+                  setIsPlaying(false);
+                  setPosition(0);
+                }
+              }
+            }
+          }
+        );
+        if (isMounted) {
+          setSound(sound);
+          soundRef.current = sound;
+        } else {
+          sound.unloadAsync();
+        }
+      } catch (e) {
+        console.error('Failed to load sound', e);
+      }
+    };
+    loadSound();
+    return () => {
+      isMounted = false;
+      if (soundRef.current) soundRef.current.unloadAsync();
+    };
+  }, [url]);
+
+  const togglePlay = async () => {
+    if (!sound) return;
+    if (isPlaying) {
+      await sound.pauseAsync();
+    } else {
+      if (position >= duration && duration > 0) {
+        await sound.playFromPositionAsync(0);
+      } else {
+        await sound.playAsync();
+      }
+    }
+  };
+
+  const formatTime = (ms: number) => {
+    const totalSec = Math.floor(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const progress = duration > 0 ? (position / duration) * 100 : 0;
+
+  return (
+    <View style={tw`flex-row items-center gap-3 mb-1 min-w-[200px]`}>
+      <TouchableOpacity onPress={togglePlay} style={tw`w-10 h-10 rounded-full items-center justify-center ${self ? 'bg-white/20' : 'bg-[#3CCF6F]'}`}>
+        {isPlaying ? (
+          <Pause size={18} color={self ? '#fff' : '#fff'} fill={self ? '#fff' : '#fff'} />
+        ) : (
+          <Play size={18} color={self ? '#fff' : '#fff'} fill={self ? '#fff' : '#fff'} style={tw`ml-1`} />
+        )}
+      </TouchableOpacity>
+      <View style={tw`flex-1`}>
+        <View style={tw`h-1.5 bg-black/10 rounded-full w-full mb-1.5 overflow-hidden`}>
+          <View style={[tw`h-full rounded-full`, { width: `${progress}%`, backgroundColor: self ? '#fff' : '#3CCF6F' }]} />
+        </View>
+        <View style={tw`flex-row justify-between`}>
+          <Text style={tw`text-[10px] ${self ? 'text-white/80' : 'text-black/50'}`}>{formatTime(position)}</Text>
+          <Text style={tw`text-[10px] ${self ? 'text-white/80' : 'text-black/50'}`}>{formatTime(duration)}</Text>
+        </View>
+      </View>
+    </View>
+  );
 };
 const formatTime = (v?: string | Date) => {
   if (!v) return '';
@@ -77,6 +167,11 @@ export default function Chat() {
   const [loadingMessages, setLoadingMessages] = React.useState(false);
   const [uploadingFile, setUploadingFile] = React.useState(false);
 
+  /* audio recording */
+  const [recording, setRecording] = React.useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = React.useState(false);
+  const [recordingDuration, setRecordingDuration] = React.useState(0);
+
   /* modals */
   const [addMemberModal, setAddMemberModal] = React.useState(false);
   const [createGroupModal, setCreateGroupModal] = React.useState(false);
@@ -91,6 +186,7 @@ export default function Chat() {
   const [plusMenu, setPlusMenu] = React.useState(false);
   const [appsMenu, setAppsMenu] = React.useState(false);
   const [chatOptionsOpen, setChatOptionsOpen] = React.useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = React.useState(false);
 
   /* add member form */
   const [newName, setNewName] = React.useState('');
@@ -101,6 +197,10 @@ export default function Chat() {
   /* create group form */
   const [groupName, setGroupName] = React.useState('');
   const [groupDesc, setGroupDesc] = React.useState('');
+  const [groupMembers, setGroupMembers] = React.useState('');
+
+  /* settings */
+  const [settingsModal, setSettingsModal] = React.useState(false);
 
   const { user } = getSession();
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
@@ -345,8 +445,10 @@ export default function Chat() {
     if (!groupName.trim()) { Alert.alert('Required', 'Group name needed.'); return; }
     setSavingMember(true);
     try {
-      await api.chat.createGroup(workspaceId, groupName.trim(), []);
-      setCreateGroupModal(false); setGroupName('');
+      const members = groupMembers.split(',').map(e => e.trim().toLowerCase()).filter(e => e);
+      if (!members.includes(email)) members.push(email); // Add creator
+      await api.chat.createGroup(workspaceId, groupName.trim(), members);
+      setCreateGroupModal(false); setGroupName(''); setGroupDesc(''); setGroupMembers('');
       await loadChannels();
       Alert.alert('Done', 'Group created!');
     } catch (e: any) { Alert.alert('Error', e.message); }
@@ -492,6 +594,20 @@ export default function Chat() {
     }
   };
 
+  const handleDeleteStatus = async () => {
+    if (!statusViewerData) return;
+    const activeStatus = statusViewerData.statuses[statusActiveIndex];
+    if (!activeStatus) return;
+    try {
+      await api.chat.deleteStatus(activeStatus._id);
+      Alert.alert('Deleted', 'Status deleted successfully');
+      setStatusViewerData(null);
+      await loadChannels();
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to delete status');
+    }
+  };
+
   const handleToggleMute = async () => {
     if (!statusViewerData) return;
     const emailToToggle = statusViewerData.userEmail;
@@ -575,7 +691,7 @@ export default function Chat() {
               <Text style={s.storyOwnerName}>{statusViewerData.userName}</Text>
               <View style={{ flex: 1 }} />
               
-              {statusViewerData.userEmail !== email && (
+              {statusViewerData.userEmail !== email ? (
                 <View style={tw`relative`}>
                   <TouchableOpacity onPress={() => setStatusOptionsOpen(!statusOptionsOpen)} style={tw`mr-4`}>
                     <MoreVertical size={28} color="#fff" />
@@ -594,6 +710,10 @@ export default function Chat() {
                     </View>
                   )}
                 </View>
+              ) : (
+                <TouchableOpacity onPress={handleDeleteStatus} style={tw`mr-4`}>
+                  <Trash2 size={24} color="#EF4444" />
+                </TouchableOpacity>
               )}
               
               <TouchableOpacity onPress={() => setStatusViewerData(null)}>
@@ -657,7 +777,7 @@ export default function Chat() {
               )}
             </TouchableOpacity>
 
-            {statusViewerData.userEmail !== email && (
+            {statusViewerData.userEmail !== email ? (
               <View style={tw`absolute bottom-0 left-0 right-0 bg-black/40 pt-2 pb-6 px-4`}>
                 <View style={tw`flex-row justify-between mb-4 px-2`}>
                   {['😂', '😮', '😍', '😢', '👏', '🔥'].map(emoji => (
@@ -683,6 +803,27 @@ export default function Chat() {
                     <Send size={18} color="#fff" />
                   </TouchableOpacity>
                 </View>
+              </View>
+            ) : (
+              <View style={tw`absolute bottom-0 left-0 right-0 bg-black/60 pt-4 pb-8 px-6 items-center`}>
+                <View style={tw`flex-row items-center mb-2`}>
+                  <Eye size={20} color="#fff" style={tw`mr-2`} />
+                  <Text style={tw`text-white font-bold text-lg`}>{activeStatus.views?.length || 0}</Text>
+                </View>
+                {activeStatus.views?.length > 0 ? (
+                  <ScrollView style={tw`max-h-32 w-full mt-2`} showsVerticalScrollIndicator={false}>
+                    {activeStatus.views.map((v: any, i: number) => (
+                      <View key={i} style={tw`flex-row items-center py-2 border-b border-white/10`}>
+                        <View style={tw`w-8 h-8 rounded-full bg-[#E9EDEF] items-center justify-center mr-3`}>
+                          <Text style={tw`text-[#8696A0] text-xs font-bold uppercase`}>{avatarFor(v.viewerEmail)}</Text>
+                        </View>
+                        <Text style={tw`text-white text-sm flex-1`} numberOfLines={1}>{v.viewerEmail}</Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                ) : (
+                  <Text style={tw`text-white/70 text-sm mt-1`}>No views yet</Text>
+                )}
               </View>
             )}
           </View>
@@ -711,25 +852,32 @@ export default function Chat() {
         <Text style={tw`text-[20px] font-bold text-black px-4 py-3 mt-2`}>Status</Text>
         
         {/* My Status */}
-        <TouchableOpacity style={tw`flex-row items-center px-4 py-3 bg-white`} onPress={() => {
-          if (myGroup && myGroup.statuses.length > 0) setStatusViewerData(myGroup);
-          else setStatusCreatorOpen(true);
-        }}>
-          <View style={tw`w-[56px] h-[56px] rounded-full items-center justify-center mr-4 border-2 ${myGroup ? 'border-[#25D366]' : 'border-transparent'}`}>
-             <View style={tw`w-[50px] h-[50px] rounded-full bg-[#E9EDEF] items-center justify-center overflow-hidden relative`}>
-               <Text style={tw`text-[#8696A0] text-xl font-bold uppercase`}>{avatarFor(user?.name || email)}</Text>
-               {!myGroup && (
-                 <View style={tw`absolute bottom-0 right-0 w-5 h-5 bg-[#25D366] rounded-full items-center justify-center border-2 border-white`}>
-                   <Plus size={12} color="#fff" />
-                 </View>
-               )}
-             </View>
-          </View>
-          <View style={tw`flex-1 justify-center border-b border-[#D1D7DB]/50 h-[60px] pr-2`}>
-            <Text style={tw`text-[16px] font-semibold text-[#111B21] mb-0.5`}>My status</Text>
-            <Text style={tw`text-[14px] text-[#667781]`}>{myGroup ? 'Tap to view your status update' : 'Tap to add status update'}</Text>
-          </View>
-        </TouchableOpacity>
+        <View style={tw`flex-row items-center px-4 py-3 bg-white`}>
+          <TouchableOpacity style={tw`flex-row items-center flex-1`} onPress={() => {
+            if (myGroup && myGroup.statuses.length > 0) setStatusViewerData(myGroup);
+            else setStatusCreatorOpen(true);
+          }}>
+            <View style={tw`w-[56px] h-[56px] rounded-full items-center justify-center mr-4 border-2 ${myGroup ? 'border-[#25D366]' : 'border-transparent'}`}>
+               <View style={tw`w-[50px] h-[50px] rounded-full bg-[#E9EDEF] items-center justify-center overflow-hidden relative`}>
+                 <Text style={tw`text-[#8696A0] text-xl font-bold uppercase`}>{avatarFor(user?.name || email)}</Text>
+                 {!myGroup && (
+                   <View style={tw`absolute bottom-0 right-0 w-5 h-5 bg-[#25D366] rounded-full items-center justify-center border-2 border-white`}>
+                     <Plus size={12} color="#fff" />
+                   </View>
+                 )}
+               </View>
+            </View>
+            <View style={tw`flex-1 justify-center border-b border-[#D1D7DB]/50 h-[60px] pr-2`}>
+              <Text style={tw`text-[16px] font-semibold text-[#111B21] mb-0.5`}>My status</Text>
+              <Text style={tw`text-[14px] text-[#667781]`}>{myGroup ? 'Tap to view your status update' : 'Tap to add status update'}</Text>
+            </View>
+          </TouchableOpacity>
+          {myGroup && (
+            <TouchableOpacity style={tw`w-10 h-10 bg-[#F0F2F5] rounded-full items-center justify-center ml-2`} onPress={() => setStatusCreatorOpen(true)}>
+              <Camera size={20} color="#667781" />
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Recent Updates */}
         {recentUpdates.length > 0 && (
@@ -843,6 +991,10 @@ export default function Chat() {
             <TextInput style={s.modalInput} value={groupName} onChangeText={setGroupName} placeholder="e.g. Design Team" placeholderTextColor="#94a3b8" />
           </View>
           <View style={s.formGroup}>
+            <Text style={s.fieldLabel}>Members (comma separated emails)</Text>
+            <TextInput style={s.modalInput} value={groupMembers} onChangeText={setGroupMembers} placeholder="user1@fic.com, user2@fic.com" placeholderTextColor="#94a3b8" autoCapitalize="none" />
+          </View>
+          <View style={s.formGroup}>
             <Text style={s.fieldLabel}>Description (optional)</Text>
             <TextInput style={[s.modalInput, { height: 72, paddingTop: 10 }]} value={groupDesc} onChangeText={setGroupDesc} placeholder="What's this group about?" placeholderTextColor="#94a3b8" multiline textAlignVertical="top" />
           </View>
@@ -850,6 +1002,34 @@ export default function Chat() {
             <TouchableOpacity style={s.cancelBtn} onPress={() => setCreateGroupModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
             <TouchableOpacity style={s.primaryBtn} onPress={handleCreateGroup} disabled={savingMember}>
               {savingMember ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.primaryBtnText}>Create Group</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  /* ------------------------------------------------------------
+     SETTINGS MODAL
+  ------------------------------------------------------------ */
+  const renderSettingsModal = () => (
+    <Modal visible={settingsModal} animationType="slide" transparent onRequestClose={() => setSettingsModal(false)}>
+      <View style={s.modalOverlay}>
+        <View style={s.modalCard}>
+          <View style={s.modalTopRow}>
+            <Text style={s.modalTitle}>Settings</Text>
+            <TouchableOpacity onPress={() => setSettingsModal(false)}><X size={20} color="#64748b" /></TouchableOpacity>
+          </View>
+          <View style={tw`items-center my-4`}>
+            <View style={tw`w-[80px] h-[80px] rounded-full bg-[#E9EDEF] items-center justify-center mb-4`}>
+              <Text style={tw`text-[#8696A0] text-3xl font-bold uppercase`}>{avatarFor(user?.name || email)}</Text>
+            </View>
+            <Text style={tw`text-lg font-bold text-black`}>{user?.name || 'Current User'}</Text>
+            <Text style={tw`text-gray-500`}>{email}</Text>
+          </View>
+          <View style={s.modalBtnRow}>
+            <TouchableOpacity style={s.primaryBtn} onPress={() => setSettingsModal(false)}>
+              <Text style={s.primaryBtnText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -878,6 +1058,9 @@ export default function Chat() {
           </TouchableOpacity>
           <TouchableOpacity style={tw`w-10 h-10 rounded-full justify-center items-center bg-transparent`} onPress={() => setPlusMenu(p => !p)}>
             <Plus size={20} color="#667781" />
+          </TouchableOpacity>
+          <TouchableOpacity style={tw`w-10 h-10 rounded-full justify-center items-center bg-transparent`} onPress={() => setSettingsModal(true)}>
+            <Settings size={20} color="#667781" />
           </TouchableOpacity>
         </View>
       </View>
@@ -1007,6 +1190,65 @@ export default function Chat() {
   );
 
   /* ------------------------------------------------------------
+     AUDIO RECORDING
+  ------------------------------------------------------------ */
+  const startRecording = async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status === 'granted') {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+        });
+        const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+        setRecording(recording);
+        setIsRecording(true);
+        setRecordingDuration(0);
+      } else {
+        Alert.alert('Permission needed', 'Please grant microphone access to record audio.');
+      }
+    } catch (err: any) {
+      console.error('Failed to start recording', err);
+      Alert.alert('Error', 'Failed to start recording');
+    }
+  };
+
+  const stopRecording = async (send: boolean) => {
+    if (!recording) return;
+    setIsRecording(false);
+    try {
+      await recording.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      const uri = recording.getURI();
+      setRecording(null);
+
+      if (send && uri && selectedChat) {
+        setUploadingFile(true);
+        try {
+          const uploaded = await api.chat.uploadFile(uri, 'audio/m4a', 'voice_message.m4a');
+          await handleSendWithFile({ url: uploaded.url, type: 'audio/m4a', originalName: 'Voice Note' });
+        } catch (e: any) {
+          Alert.alert('Error', e.message || 'Failed to send voice message');
+        } finally {
+          setUploadingFile(false);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to stop recording', error);
+    }
+  };
+
+  React.useEffect(() => {
+    let t: any;
+    if (isRecording) {
+      t = setInterval(() => setRecordingDuration(p => p + 1), 1000);
+    } else {
+      setRecordingDuration(0);
+    }
+    return () => clearInterval(t);
+  }, [isRecording]);
+
+  /* ------------------------------------------------------------
      ACTIVE CHAT PANEL
   ------------------------------------------------------------ */
   const renderActiveChat = () => {
@@ -1103,6 +1345,8 @@ export default function Chat() {
                       <View style={tw`mb-2 rounded-lg overflow-hidden`}>
                         {msg.fileType?.startsWith('image/') ? (
                           <Image source={{ uri: msg.fileUrl }} style={tw`w-[200px] h-[150px] rounded-lg`} resizeMode="cover" />
+                        ) : msg.fileType?.startsWith('audio/') || msg.originalName?.toLowerCase().includes('.m4a') || msg.originalName?.toLowerCase().includes('.webm') ? (
+                          <AudioMessagePlayer url={msg.fileUrl} self={msg.self} />
                         ) : (
                           <View style={tw`flex-row items-center bg-black/5 p-2 rounded-lg gap-2`}>
                             <View style={tw`w-8 h-8 bg-[#828282] items-center justify-center rounded-full`}>
@@ -1124,35 +1368,73 @@ export default function Chat() {
         {/* Input bar */}
         <View style={tw`absolute bottom-0 left-0 right-0 bg-white px-4 pb-8 pt-2`}>
           <View style={tw`flex-row items-center border border-[#E0E0E0] rounded-[20px] bg-white pl-4 pr-2 min-h-[40px] max-h-[100px]`}>
-            <TextInput 
-              style={[tw`flex-1 text-[14px] text-black py-2`, { outlineStyle: 'none' } as any]} 
-              placeholder="Reply" 
-              placeholderTextColor="#828282"
-              value={inputVal} 
-              onChangeText={setInputVal} 
-              multiline 
-            />
-            
-            {!inputVal.trim() ? (
-               <View style={tw`flex-row items-center gap-3 ml-2`}>
-                 <TouchableOpacity onPress={pickDocument} disabled={uploadingFile}>
-                   {uploadingFile ? <ActivityIndicator size="small" color="#828282" /> : <Camera size={20} color="#828282" />}
-                 </TouchableOpacity>
-                 <TouchableOpacity>
-                   <Smile size={20} color="#828282" />
-                 </TouchableOpacity>
-                 <TouchableOpacity>
-                   <Mic size={20} color="#828282" />
-                 </TouchableOpacity>
-               </View>
+            {isRecording ? (
+              <View style={tw`flex-1 flex-row items-center justify-between py-2`}>
+                <View style={tw`flex-row items-center`}>
+                  <View style={tw`w-3 h-3 rounded-full bg-red-500 mr-2`} />
+                  <Text style={tw`text-red-500 font-bold`}>{Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}</Text>
+                </View>
+                <View style={tw`flex-row items-center gap-4`}>
+                  <TouchableOpacity onPress={() => stopRecording(false)}><Text style={tw`text-gray-500`}>Cancel</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => stopRecording(true)} style={tw`w-8 h-8 bg-[#3CCF6F] rounded-full items-center justify-center`}><Send size={14} color="#fff" /></TouchableOpacity>
+                </View>
+              </View>
             ) : (
-               <TouchableOpacity style={tw`ml-2 w-8 h-8 bg-[#3CCF6F] rounded-full items-center justify-center`} onPress={handleSend} disabled={!inputVal.trim()}>
-                 <Send size={14} color="#fff" />
-               </TouchableOpacity>
+              <>
+                <TextInput 
+                  style={[tw`flex-1 text-[14px] text-black py-2`, { outlineStyle: 'none' } as any]} 
+                  placeholder="Reply" 
+                  placeholderTextColor="#828282"
+                  value={inputVal} 
+                  onChangeText={setInputVal} 
+                  multiline 
+                />
+                
+                {!inputVal.trim() ? (
+                   <View style={tw`flex-row items-center gap-3 ml-2`}>
+                     <TouchableOpacity onPress={pickDocument} disabled={uploadingFile}>
+                       {uploadingFile ? <ActivityIndicator size="small" color="#828282" /> : <Camera size={20} color="#828282" />}
+                     </TouchableOpacity>
+                     <TouchableOpacity onPress={() => setEmojiPickerOpen(true)}>
+                       <Smile size={20} color="#828282" />
+                     </TouchableOpacity>
+                     <TouchableOpacity onPress={startRecording}>
+                       <Mic size={20} color="#828282" />
+                     </TouchableOpacity>
+                   </View>
+                ) : (
+                   <TouchableOpacity style={tw`ml-2 w-8 h-8 bg-[#3CCF6F] rounded-full items-center justify-center`} onPress={handleSend} disabled={!inputVal.trim()}>
+                     <Send size={14} color="#fff" />
+                   </TouchableOpacity>
+                )}
+              </>
             )}
           </View>
         </View>
       </KeyboardAvoidingView>
+    );
+  };
+
+  /* ------------------------------------------------------------
+     EMOJI PICKER
+  ------------------------------------------------------------ */
+  const renderEmojiPicker = () => {
+    const emojis = ['😀','😂','🥰','😎','🥺','😭','🤔','🔥','❤️','✨','👍','🎉','👀','🙌','💯'];
+    if (!emojiPickerOpen) return null;
+    return (
+      <View style={tw`absolute bottom-[90px] left-4 bg-white border border-[#E0E0E0] rounded-[20px] p-4 w-[300px] shadow-lg flex-row flex-wrap gap-3 z-50`}>
+        {emojis.map((emoji, idx) => (
+          <TouchableOpacity key={idx} onPress={() => {
+            setInputVal(prev => prev + emoji);
+            setEmojiPickerOpen(false);
+          }}>
+            <Text style={tw`text-[28px]`}>{emoji}</Text>
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity style={tw`absolute top-2 right-2`} onPress={() => setEmojiPickerOpen(false)}>
+          <X size={16} color="#828282" />
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -1166,8 +1448,10 @@ export default function Chat() {
       {renderStatusViewerModal()}
       {renderAddMemberModal()}
       {renderCreateGroupModal()}
+      {renderSettingsModal()}
       {(!isMobile || !selectedChat) && renderSidebar()}
       {(!isMobile || selectedChat) && renderActiveChat()}
+      {renderEmojiPicker()}
     </View>
   );
 }

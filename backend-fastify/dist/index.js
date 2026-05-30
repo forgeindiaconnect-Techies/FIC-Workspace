@@ -2892,6 +2892,24 @@ async function statusRoutes(fastify2) {
       return reply.code(500).send({ error: "Failed to fetch muted users", details: err.message });
     }
   });
+  fastify2.delete("/:id", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const currentEmail = normalizeEmail2(request.user?.email || "");
+      if (!import_mongoose18.Types.ObjectId.isValid(id)) {
+        return reply.code(400).send({ error: "Invalid status id." });
+      }
+      const status = await Story.findById(id);
+      if (!status) return reply.code(404).send({ error: "Status not found" });
+      if (status.userEmail !== currentEmail) {
+        return reply.code(403).send({ error: "Not authorized to delete this status" });
+      }
+      await Story.findByIdAndDelete(id);
+      return reply.code(200).send({ success: true });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to delete status", details: err.message });
+    }
+  });
 }
 
 // backend-fastify/src/services/webrtc.ts

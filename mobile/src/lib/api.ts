@@ -332,7 +332,7 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
   const { token } = getSession();
   const headers = new Headers(options.headers || {});
   
-  if (options.body && !headers.has('Content-Type')) {
+  if (options.body && !headers.has('Content-Type') && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -723,24 +723,20 @@ async sendMessage(workspaceId: string, channelId: string, content: string, fileD
         method: 'DELETE',
       });
     },
+    async deleteStatus(statusId: string) {
+      return request(`/api/status/${statusId}`, { method: 'DELETE' });
+    },
     async uploadFile(fileUri: string, mimeType: string, originalName: string) {
-      const { token } = getSession();
       const response = await fetch(fileUri);
       const blob = await response.blob();
       const form = new FormData();
       form.append('file', blob, originalName);
-      const result = await fetch(`${API_URL}/api/chat/upload`, {
+      
+      const data = await request('/api/chat/upload', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        body: form,
+        body: form as any,
       });
-      const data = await result.json().catch(() => ({}));
-      if (!result.ok) {
-        const detail = data?.details ? `: ${data.details}` : '';
-        throw new Error(`${data?.error || 'File upload failed'}${detail}`);
-      }
+
       return {
         ...data,
         originalName: data?.originalName || originalName || 'Attachment',

@@ -228,4 +228,29 @@ export async function statusRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({ error: 'Failed to fetch muted users', details: err.message });
     }
   });
+
+  // DELETE /api/status/:id — Delete a status
+  fastify.delete('/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as any;
+      const currentEmail = normalizeEmail(request.user?.email || '');
+
+      if (!Types.ObjectId.isValid(id)) {
+        return reply.code(400).send({ error: 'Invalid status id.' });
+      }
+
+      const status = await Story.findById(id);
+      if (!status) return reply.code(404).send({ error: 'Status not found' });
+
+      // Only the owner can delete their status
+      if (status.userEmail !== currentEmail) {
+        return reply.code(403).send({ error: 'Not authorized to delete this status' });
+      }
+
+      await Story.findByIdAndDelete(id);
+      return reply.code(200).send({ success: true });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to delete status', details: err.message });
+    }
+  });
 }
