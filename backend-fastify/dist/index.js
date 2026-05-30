@@ -28,6 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // backend-fastify/src/models/Transcript.ts
 var import_mongoose8, TranscriptSchema, Transcript;
@@ -90,6 +91,27 @@ var init_transcription = __esm({
     import_groq_sdk = __toESM(require("groq-sdk"));
     init_Transcript();
     groq = new import_groq_sdk.default({ apiKey: process.env.GROQ_API_KEY });
+  }
+});
+
+// backend-fastify/src/models/MutedUser.ts
+var MutedUser_exports = {};
+__export(MutedUser_exports, {
+  MutedUser: () => MutedUser
+});
+var import_mongoose17, MutedUserSchema, MutedUser;
+var init_MutedUser = __esm({
+  "backend-fastify/src/models/MutedUser.ts"() {
+    "use strict";
+    import_mongoose17 = require("mongoose");
+    MutedUserSchema = new import_mongoose17.Schema({
+      userId: { type: String, required: true },
+      userEmail: { type: String, required: true },
+      mutedUserEmail: { type: String, required: true },
+      createdAt: { type: Date, default: Date.now }
+    });
+    MutedUserSchema.index({ userEmail: 1, mutedUserEmail: 1 }, { unique: true });
+    MutedUser = (0, import_mongoose17.model)("MutedUser", MutedUserSchema);
   }
 });
 
@@ -1975,10 +1997,21 @@ var StorySchema = new import_mongoose13.Schema({
   userName: { type: String, required: true },
   userAvatar: { type: String },
   content: { type: String },
-  mediaType: { type: String, enum: ["text", "image", "video"], default: "text" },
+  mediaType: { type: String, enum: ["text", "image", "video", "voice"], default: "text" },
   mediaUrl: { type: String },
   bgColor: { type: String },
-  views: [{ type: String }],
+  privacyType: { type: String, enum: ["everyone", "contacts", "except", "only_share"], default: "everyone" },
+  mentions: [{ type: String }],
+  views: [{
+    viewerEmail: String,
+    viewedAt: { type: Date, default: Date.now }
+  }],
+  reactions: [{
+    userEmail: String,
+    emoji: String,
+    addedAt: { type: Date, default: Date.now }
+  }],
+  isArchived: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now, expires: 86400 }
   // Auto-delete after 24 hours
 });
@@ -2676,7 +2709,7 @@ async function superadminRoutes(fastify2) {
 }
 
 // backend-fastify/src/routes/status.ts
-var import_mongoose17 = require("mongoose");
+var import_mongoose18 = require("mongoose");
 function normalizeEmail2(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -2704,7 +2737,10 @@ async function statusRoutes(fastify2) {
           content: status.content,
           bgColor: status.bgColor,
           createdAt: status.createdAt,
-          views: status.views || []
+          privacyType: status.privacyType || "everyone",
+          mentions: status.mentions || [],
+          views: status.views || [],
+          reactions: status.reactions || []
         });
       });
       return reply.code(200).send(Object.values(grouped));
@@ -2716,7 +2752,7 @@ async function statusRoutes(fastify2) {
     try {
       const { workspaceId } = request.params;
       const activeWorkspaceId = workspaceId || request.user?.workspaceId || "demo";
-      const { mediaType, mediaUrl, content, bgColor } = request.body;
+      const { mediaType, mediaUrl, content, bgColor, privacyType = "everyone", mentions = [] } = request.body;
       const currentEmail = normalizeEmail2(request.user?.email || "");
       const status = await Story.create({
         workspaceId: activeWorkspaceId,
@@ -2728,7 +2764,10 @@ async function statusRoutes(fastify2) {
         mediaUrl,
         content,
         bgColor,
-        views: []
+        privacyType,
+        mentions,
+        views: [],
+        reactions: []
       });
       return reply.code(201).send(status);
     } catch (err) {
@@ -2739,18 +2778,74 @@ async function statusRoutes(fastify2) {
     try {
       const { id } = request.params;
       const currentEmail = normalizeEmail2(request.user?.email || "");
-      if (!import_mongoose17.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose18.Types.ObjectId.isValid(id)) {
+        return reply.code(400).send({ error: "Invalid status id." });
+      }
+      const existingStatus = await Story.findById(id);
+      if (!existingStatus) return reply.code(404).send({ error: "Status not found" });
+      const hasViewed = existingStatus.views.some((v) => v.viewerEmail === currentEmail);
+      if (!hasViewed) {
+        existingStatus.views.push({ viewerEmail: currentEmail, viewedAt: /* @__PURE__ */ new Date() });
+        await existingStatus.save();
+      }
+      return reply.code(200).send(existingStatus);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to mark status as viewed", details: err.message });
+    }
+  });
+  fastify2.post("/:id/reaction", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const { emoji } = request.body;
+      const currentEmail = normalizeEmail2(request.user?.email || "");
+      if (!import_mongoose18.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid status id." });
       }
       const status = await Story.findByIdAndUpdate(
         id,
-        { $addToSet: { views: currentEmail } },
+        { $push: { reactions: { userEmail: currentEmail, emoji, addedAt: /* @__PURE__ */ new Date() } } },
         { new: true }
       );
       if (!status) return reply.code(404).send({ error: "Status not found" });
       return reply.code(200).send(status);
     } catch (err) {
-      return reply.code(500).send({ error: "Failed to mark status as viewed", details: err.message });
+      return reply.code(500).send({ error: "Failed to add reaction", details: err.message });
+    }
+  });
+  fastify2.post("/mute", async (request, reply) => {
+    try {
+      const { mutedUserEmail } = request.body;
+      const currentEmail = normalizeEmail2(request.user?.email || "");
+      const { MutedUser: MutedUser2 } = (init_MutedUser(), __toCommonJS(MutedUser_exports));
+      await MutedUser2.findOneAndUpdate(
+        { userEmail: currentEmail, mutedUserEmail: normalizeEmail2(mutedUserEmail) },
+        { userEmail: currentEmail, mutedUserEmail: normalizeEmail2(mutedUserEmail), userId: request.user?.id },
+        { upsert: true, new: true }
+      );
+      return reply.code(200).send({ success: true });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to mute user", details: err.message });
+    }
+  });
+  fastify2.post("/unmute", async (request, reply) => {
+    try {
+      const { mutedUserEmail } = request.body;
+      const currentEmail = normalizeEmail2(request.user?.email || "");
+      const { MutedUser: MutedUser2 } = (init_MutedUser(), __toCommonJS(MutedUser_exports));
+      await MutedUser2.findOneAndDelete({ userEmail: currentEmail, mutedUserEmail: normalizeEmail2(mutedUserEmail) });
+      return reply.code(200).send({ success: true });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to unmute user", details: err.message });
+    }
+  });
+  fastify2.get("/muted", async (request, reply) => {
+    try {
+      const currentEmail = normalizeEmail2(request.user?.email || "");
+      const { MutedUser: MutedUser2 } = (init_MutedUser(), __toCommonJS(MutedUser_exports));
+      const muted = await MutedUser2.find({ userEmail: currentEmail });
+      return reply.code(200).send(muted.map((m) => m.mutedUserEmail));
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to fetch muted users", details: err.message });
     }
   });
 }

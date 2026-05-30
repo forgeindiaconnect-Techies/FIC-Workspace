@@ -7,6 +7,7 @@ import {
   TouchableOpacity, View, Image, useWindowDimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Video, ResizeMode } from 'expo-av';
 import {
   CheckCheck, ChevronLeft, Mic, MicOff, PhoneOff,
   Plus, Search, Send, Shield, ShieldCheck, Users, X, UserPlus,
@@ -456,20 +457,28 @@ export default function Chat() {
   /* ------------------------------------------------------------
      STATUS VIEWER MODAL
   ------------------------------------------------------------ */
+  const videoRef = React.useRef<Video>(null);
+
   React.useEffect(() => {
     if (!statusViewerData || statusPaused) return;
     const statuses = statusViewerData.statuses || [];
     if (statuses.length === 0) return;
 
-    const timer = setTimeout(() => {
-      if (statusActiveIndex < statuses.length - 1) {
-        setStatusActiveIndex(prev => prev + 1);
-      } else {
-        setStatusViewerData(null);
-      }
-    }, 5000);
+    const activeStatus = statuses[statusActiveIndex];
+    const isVideo = activeStatus?.mediaType === 'video';
 
-    return () => clearTimeout(timer);
+    // If it's a video, let the video's onPlaybackStatusUpdate handle the transition.
+    // If it's an image/text, use a 5-second timer.
+    if (!isVideo) {
+      const timer = setTimeout(() => {
+        if (statusActiveIndex < statuses.length - 1) {
+          setStatusActiveIndex(prev => prev + 1);
+        } else {
+          setStatusViewerData(null);
+        }
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
   }, [statusViewerData, statusActiveIndex, statusPaused]);
 
   React.useEffect(() => {
@@ -526,7 +535,40 @@ export default function Chat() {
               }}
               style={tw`flex-1 items-center justify-center`}
             >
-              {activeStatus.mediaUrl ? (
+              {activeStatus.mediaType === 'video' && activeStatus.mediaUrl ? (
+                <Video
+                  ref={videoRef}
+                  source={{ uri: activeStatus.mediaUrl }}
+                  style={tw`w-full h-full`}
+                  resizeMode={ResizeMode.CONTAIN}
+                  shouldPlay={!statusPaused}
+                  isMuted={false}
+                  onPlaybackStatusUpdate={(status: any) => {
+                    if (status.didJustFinish && !status.isLooping) {
+                      handleNext();
+                    }
+                  }}
+                />
+              ) : activeStatus.mediaType === 'voice' && activeStatus.mediaUrl ? (
+                <View style={tw`w-full h-full items-center justify-center`}>
+                  <View style={tw`w-24 h-24 rounded-full bg-[#3CCF6F] items-center justify-center mb-8`}>
+                    <Mic size={48} color="#fff" />
+                  </View>
+                  <View style={tw`flex-row items-center gap-1 h-12`}>
+                    {[1,2,3,4,5,4,3,2,1,2,3,4,5,4,3,2,1].map((val, i) => (
+                      <View key={i} style={[tw`w-1 bg-white rounded-full`, { height: !statusPaused ? val * 8 : 4 }]} />
+                    ))}
+                  </View>
+                  <Video
+                    source={{ uri: activeStatus.mediaUrl }}
+                    style={{ width: 0, height: 0 }}
+                    shouldPlay={!statusPaused}
+                    onPlaybackStatusUpdate={(status: any) => {
+                      if (status.didJustFinish) handleNext();
+                    }}
+                  />
+                </View>
+              ) : activeStatus.mediaUrl ? (
                  <Image source={{ uri: activeStatus.mediaUrl }} style={tw`w-full h-full`} resizeMode="contain" />
               ) : (
                  <Text style={tw`text-3xl text-white font-bold text-center px-4`}>{activeStatus.content}</Text>
@@ -961,7 +1003,7 @@ export default function Chat() {
         <View style={tw`absolute bottom-0 left-0 right-0 bg-white px-4 pb-8 pt-2`}>
           <View style={tw`flex-row items-center border border-[#E0E0E0] rounded-[20px] bg-white pl-4 pr-2 min-h-[40px] max-h-[100px]`}>
             <TextInput 
-              style={tw`flex-1 text-[14px] text-black py-2`} 
+              style={[tw`flex-1 text-[14px] text-black py-2`, { outlineStyle: 'none' } as any]} 
               placeholder="Reply" 
               placeholderTextColor="#828282"
               value={inputVal} 
