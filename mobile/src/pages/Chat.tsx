@@ -84,6 +84,9 @@ export default function Chat() {
   const [statusViewerData, setStatusViewerData] = React.useState<any>(null); // The user object containing statuses
   const [statusActiveIndex, setStatusActiveIndex] = React.useState(0);
   const [statusPaused, setStatusPaused] = React.useState(false);
+  const [statusReplyText, setStatusReplyText] = React.useState('');
+  const [statusOptionsOpen, setStatusOptionsOpen] = React.useState(false);
+  const [mutedStatuses, setMutedStatuses] = React.useState<string[]>([]);
   const [audioCallModal, setAudioCallModal] = React.useState(false);
   const [plusMenu, setPlusMenu] = React.useState(false);
   const [appsMenu, setAppsMenu] = React.useState(false);
@@ -215,10 +218,11 @@ export default function Chat() {
   const loadChannels = React.useCallback(async () => {
     setLoadingChannels(true);
     try {
-      const [data, groupsData, storiesData] = await Promise.all([
+      const [data, groupsData, storiesData, mutedData] = await Promise.all([
         api.chat.getChannels(workspaceId, email),
         api.chat.getGroups(workspaceId, email),
-        api.chat.getStories(workspaceId)
+        api.chat.getStories(workspaceId),
+        api.chat.getMutedStatuses().catch(() => [])
       ]);
       const mapped = Array.isArray(data) ? data.map((ch: any) => ({
         id: ch._id, name: ch.displayName || ch.name || ch.email,
@@ -240,10 +244,12 @@ export default function Chat() {
       setGroupMessages(gMapped);
 
       setGroupedStatuses(Array.isArray(storiesData) ? storiesData : []);
+      setMutedStatuses(Array.isArray(mutedData) ? mutedData : []);
     } catch {
       setDirectMessages([]);
       setGroupMessages([]);
       setGroupedStatuses([]);
+      setMutedStatuses([]);
     } finally { setLoadingChannels(false); }
   }, [workspaceId, email, user?.id]);
 
@@ -459,6 +465,55 @@ export default function Chat() {
   ------------------------------------------------------------ */
   const videoRef = React.useRef<Video>(null);
 
+  const handleStatusReply = async () => {
+    if (!statusViewerData || !statusReplyText.trim()) return;
+    const activeStatus = statusViewerData.statuses[statusActiveIndex];
+    if (!activeStatus) return;
+
+    try {
+      await api.chat.replyToStatus(activeStatus._id, statusReplyText);
+      setStatusReplyText('');
+      Alert.alert('Success', 'Reply sent successfully!');
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to send reply');
+    }
+  };
+
+  const handleStatusReaction = async (emoji: string) => {
+    if (!statusViewerData) return;
+    const activeStatus = statusViewerData.statuses[statusActiveIndex];
+    if (!activeStatus) return;
+
+    try {
+      await api.chat.addReaction(activeStatus._id, emoji);
+      Alert.alert('Success', `Reacted with ${emoji}`);
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to add reaction');
+    }
+  };
+
+  const handleToggleMute = async () => {
+    if (!statusViewerData) return;
+    const emailToToggle = statusViewerData.userEmail;
+    const isCurrentlyMuted = mutedStatuses.includes(emailToToggle);
+    
+    try {
+      if (isCurrentlyMuted) {
+        await api.chat.unmuteStatus(emailToToggle);
+        setMutedStatuses(prev => prev.filter(e => e !== emailToToggle));
+        Alert.alert('Unmuted', `You have unmuted ${statusViewerData.userName}'s statuses.`);
+      } else {
+        await api.chat.muteStatus(emailToToggle);
+        setMutedStatuses(prev => [...prev, emailToToggle]);
+        setStatusViewerData(null); // Close viewer after muting
+        Alert.alert('Muted', `You have muted ${statusViewerData.userName}'s statuses. They will appear in the Muted section.`);
+      }
+      setStatusOptionsOpen(false);
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to toggle mute');
+    }
+  };
+
   React.useEffect(() => {
     if (!statusViewerData || statusPaused) return;
     const statuses = statusViewerData.statuses || [];
@@ -519,6 +574,28 @@ export default function Chat() {
               </View>
               <Text style={s.storyOwnerName}>{statusViewerData.userName}</Text>
               <View style={{ flex: 1 }} />
+              
+              {statusViewerData.userEmail !== email && (
+                <View style={tw`relative`}>
+                  <TouchableOpacity onPress={() => setStatusOptionsOpen(!statusOptionsOpen)} style={tw`mr-4`}>
+                    <MoreVertical size={28} color="#fff" />
+                  </TouchableOpacity>
+                  {statusOptionsOpen && (
+                    <View style={tw`absolute top-10 right-0 bg-white rounded-lg shadow-lg py-2 w-40 z-50`}>
+                      <TouchableOpacity 
+                        style={tw`px-4 py-3 border-b border-gray-100 flex-row items-center`}
+                        onPress={() => handleToggleMute()}
+                      >
+                        <Bell size={18} color={mutedStatuses.includes(statusViewerData.userEmail) ? '#10B981' : '#EF4444'} style={tw`mr-2`} />
+                        <Text style={tw`text-black font-semibold text-[15px]`}>
+                          {mutedStatuses.includes(statusViewerData.userEmail) ? 'Unmute' : 'Mute'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
+              
               <TouchableOpacity onPress={() => setStatusViewerData(null)}>
                 <X size={28} color="#fff" />
               </TouchableOpacity>
@@ -581,9 +658,31 @@ export default function Chat() {
             </TouchableOpacity>
 
             {statusViewerData.userEmail !== email && (
-              <View style={s.storyReplyRow}>
-                <TextInput style={s.storyReplyInput} placeholder="Reply..." placeholderTextColor="rgba(255,255,255,0.6)" />
-                <TouchableOpacity style={s.storyReplySend}><Send size={18} color="#fff" /></TouchableOpacity>
+              <View style={tw`absolute bottom-0 left-0 right-0 bg-black/40 pt-2 pb-6 px-4`}>
+                <View style={tw`flex-row justify-between mb-4 px-2`}>
+                  {['😂', '😮', '😍', '😢', '👏', '🔥'].map(emoji => (
+                    <TouchableOpacity 
+                      key={emoji} 
+                      onPress={() => handleStatusReaction(emoji)}
+                      style={tw`bg-white/20 w-12 h-12 rounded-full items-center justify-center`}
+                    >
+                      <Text style={tw`text-2xl`}>{emoji}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={s.storyReplyRow}>
+                  <TextInput 
+                    style={s.storyReplyInput} 
+                    placeholder="Reply..." 
+                    placeholderTextColor="rgba(255,255,255,0.6)" 
+                    value={statusReplyText}
+                    onChangeText={setStatusReplyText}
+                    onSubmitEditing={handleStatusReply}
+                  />
+                  <TouchableOpacity style={s.storyReplySend} onPress={handleStatusReply}>
+                    <Send size={18} color="#fff" />
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
           </View>
@@ -599,10 +698,13 @@ export default function Chat() {
     const myGroup = groupedStatuses.find(g => g.userEmail === email);
     const otherGroups = groupedStatuses.filter(g => g.userEmail !== email);
     
-    // Determine viewed vs recent
+    // Determine viewed vs recent vs muted
+    const mutedGroupList = otherGroups.filter(g => mutedStatuses.includes(g.userEmail));
+    const unmutedGroups = otherGroups.filter(g => !mutedStatuses.includes(g.userEmail));
+
     const hasViewedAll = (group: any) => group.statuses.every((st: any) => st.views.includes(email));
-    const recentUpdates = otherGroups.filter(g => !hasViewedAll(g));
-    const viewedUpdates = otherGroups.filter(g => hasViewedAll(g));
+    const recentUpdates = unmutedGroups.filter(g => !hasViewedAll(g));
+    const viewedUpdates = unmutedGroups.filter(g => hasViewedAll(g));
 
     return (
       <ScrollView style={tw`flex-1 bg-white`} contentContainerStyle={tw`pb-[90px]`}>
@@ -666,6 +768,26 @@ export default function Chat() {
                 <View style={tw`flex-1 justify-center border-b border-[#D1D7DB]/50 h-[60px] pr-2`}>
                   <Text style={tw`text-[16px] font-semibold text-[#111B21] mb-0.5`}>{group.userName}</Text>
                   <Text style={tw`text-[14px] text-[#667781]`}>Viewed</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Muted Updates */}
+        {mutedGroupList.length > 0 && (
+          <View>
+            <Text style={tw`text-[13px] font-bold text-[#667781] px-4 py-2 mt-2 bg-[#F0F2F5]`}>Muted updates</Text>
+            {mutedGroupList.map(group => (
+              <TouchableOpacity key={group.userEmail} style={tw`flex-row items-center px-4 py-3 bg-white opacity-50`} onPress={() => setStatusViewerData(group)}>
+                <View style={tw`w-[56px] h-[56px] rounded-full items-center justify-center mr-4 border-2 border-[#D1D7DB]`}>
+                  <View style={tw`w-[50px] h-[50px] rounded-full bg-[#E9EDEF] items-center justify-center overflow-hidden`}>
+                    <Text style={tw`text-[#8696A0] text-xl font-bold uppercase`}>{avatarFor(group.userName)}</Text>
+                  </View>
+                </View>
+                <View style={tw`flex-1 justify-center border-b border-[#D1D7DB]/50 h-[60px] pr-2`}>
+                  <Text style={tw`text-[16px] font-semibold text-[#111B21] mb-0.5`}>{group.userName}</Text>
+                  <Text style={tw`text-[14px] text-[#667781]`}>Muted</Text>
                 </View>
               </TouchableOpacity>
             ))}

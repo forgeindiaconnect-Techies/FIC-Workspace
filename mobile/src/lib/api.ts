@@ -670,6 +670,33 @@ export const api = {
     async viewStatus(statusId: string) {
       return request(`/api/status/${statusId}/view`, { method: 'POST' });
     },
+    async replyToStatus(statusId: string, text: string) {
+      return request(`/api/status/${statusId}/reply`, {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      });
+    },
+    async addReaction(statusId: string, emoji: string) {
+      return request(`/api/status/${statusId}/reaction`, {
+        method: 'POST',
+        body: JSON.stringify({ emoji }),
+      });
+    },
+    async muteStatus(mutedUserEmail: string) {
+      return request('/api/status/mute', {
+        method: 'POST',
+        body: JSON.stringify({ mutedUserEmail }),
+      });
+    },
+    async unmuteStatus(mutedUserEmail: string) {
+      return request('/api/status/unmute', {
+        method: 'POST',
+        body: JSON.stringify({ mutedUserEmail }),
+      });
+    },
+    async getMutedStatuses() {
+      return request('/api/status/muted');
+    },
     async createChannel(channelData: any) {
       return request('/api/channels/create', {
         method: 'POST',

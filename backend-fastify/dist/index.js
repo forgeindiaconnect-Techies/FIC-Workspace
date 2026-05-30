@@ -2812,6 +2812,50 @@ async function statusRoutes(fastify2) {
       return reply.code(500).send({ error: "Failed to add reaction", details: err.message });
     }
   });
+  fastify2.post("/:id/reply", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const { text } = request.body;
+      const currentEmail = normalizeEmail2(request.user?.email || "");
+      if (!import_mongoose18.Types.ObjectId.isValid(id)) {
+        return reply.code(400).send({ error: "Invalid status id." });
+      }
+      const status = await Story.findById(id);
+      if (!status) return reply.code(404).send({ error: "Status not found" });
+      const { Channel } = require("../models/Channel");
+      const { Message } = require("../models/Message");
+      let dmChannel = await Channel.findOne({
+        workspaceId: status.workspaceId,
+        type: "direct",
+        participantEmails: { $all: [currentEmail, status.userEmail], $size: 2 }
+      });
+      if (!dmChannel) {
+        dmChannel = await Channel.create({
+          workspaceId: status.workspaceId,
+          name: `DM_${Date.now()}`,
+          type: "direct",
+          participantEmails: [currentEmail, status.userEmail],
+          createdBy: currentEmail
+        });
+      }
+      const newMessage = await Message.create({
+        channelId: dmChannel._id,
+        workspaceId: status.workspaceId,
+        senderId: request.user?.id,
+        senderEmail: currentEmail,
+        senderName: request.user?.name || currentEmail,
+        content: text,
+        metadata: {
+          type: "status_reply",
+          statusId: id,
+          statusContent: status.content || status.mediaUrl
+        }
+      });
+      return reply.code(201).send(newMessage);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to reply to status", details: err.message });
+    }
+  });
   fastify2.post("/mute", async (request, reply) => {
     try {
       const { mutedUserEmail } = request.body;
