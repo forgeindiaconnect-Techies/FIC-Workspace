@@ -19,13 +19,13 @@ import {
   Video, 
   Mail, 
   MessageSquare, 
-  CheckSquare, 
   FileText,
   User as UserIcon,
   Settings,
   LogOut,
   Bell
 } from "lucide-react-native";
+import tw from 'twrnc';
 import { useNavigate, useLocation } from "../lib/router";
 import { getScreenType, getBottomNavHeight, getSafeAreaInsets as getSafeInsets } from "../lib/responsive";
 
@@ -34,7 +34,6 @@ const navItems = [
   { id: "meetings", icon: Video, label: "Meet", path: "/meetings" },
   { id: "mail", icon: Mail, label: "Mail", path: "/mail" },
   { id: "chat", icon: MessageSquare, label: "Kural", path: "/chat" },
-  { id: "tasks", icon: CheckSquare, label: "Tasks", path: "/tasks" },
 ];
 
 export function BottomNav() {
@@ -143,10 +142,10 @@ export function TopBar({ title }: { title: string }) {
   };
 
   const topBarHeight = Platform.select({
-    ios: 56,
-    android: 56,
-    web: 64,
-  }) || 56;
+    ios: 48,
+    android: 48,
+    web: 52,
+  }) || 48;
 
   const notificationsMenuWidth = screenType === 'small' ? Math.min(280, width - 32) : 320;
   const dropdownMenuWidth = screenType === 'small' ? Math.min(160, width - 32) : 200;
@@ -161,31 +160,24 @@ export function TopBar({ title }: { title: string }) {
       }
     ]}>
       <View style={[styles.logoRow, screenType === 'small' && styles.logoRowSmall]}>
-        <View style={[styles.logoIcon, screenType === 'small' && styles.logoIconSmall]}>
-          <Text style={[styles.logoText, screenType === 'small' && styles.logoTextSmall]}>N</Text>
-        </View>
-        <Text style={[styles.pageTitle, screenType === 'small' && styles.pageTitleSmall]}>
-          {screenType === 'small' ? title.substring(0, 12) : title}
+        <Text style={[tw`text-[28px] -tracking-[0.01em]`, { fontFamily: 'AbhayaLibre_600SemiBold', lineHeight: 36 }]}>
+          <Text style={tw`text-[#1806DA]`}>WORK</Text>
+          <Text style={tw`text-[#FDD201]`}>SPACE</Text>
         </Text>
       </View>
       
-      <View style={styles.topActions}>
-        <TouchableOpacity style={styles.topButton} onPress={async () => {
-          await refreshNotifications();
-          setShowNotifications(true);
-        }}>
-          <Bell size={screenType === 'small' ? 18 : 20} color="#64748b" />
-          {unreadCount > 0 && (
-            <View style={styles.notificationBadge}>
-              <Text style={styles.notificationBadgeText}>{unreadCount}</Text>
-            </View>
-          )}
+      <View style={tw`flex-row items-center gap-4`}>
+        <TouchableOpacity style={tw`mr-1 p-1`} onPress={() => navigate('/home')}>
+          <HomeIcon size={22} color="#000000" strokeWidth={2} />
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.profileBox, screenType === 'small' && styles.profileBoxSmall]} onPress={() => setShowMenu(true)}>
+        
+        <TouchableOpacity style={tw`w-8 h-8 rounded-full overflow-hidden border border-gray-200`} onPress={() => setShowMenu(true)}>
           {user?.avatarUrl ? (
-            <Image source={{ uri: user.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+            <Image source={{ uri: user.avatarUrl }} style={tw`w-full h-full`} resizeMode="cover" />
           ) : (
-            <UserIcon size={screenType === 'small' ? 16 : 18} color="#64748b" />
+            <View style={tw`w-full h-full bg-[#f1f5f9] items-center justify-center`}>
+              <Text style={tw`text-[#64748b] font-bold text-[14px]`}>{user?.name?.charAt(0).toUpperCase() || 'D'}</Text>
+            </View>
           )}
         </TouchableOpacity>
       </View>
@@ -324,13 +316,18 @@ const styles = StyleSheet.create({
     color: '#2563eb',
   },
   topBar: {
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
     position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   logoRow: {
     flexDirection: 'row',

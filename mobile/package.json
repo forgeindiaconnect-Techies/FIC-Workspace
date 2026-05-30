@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@expo-google-fonts/abhaya-libre": "^0.4.1",
     "@expo/metro-runtime": "~6.1.2",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "clsx": "^2.1.1",
@@ -19,6 +20,8 @@
     "expo-av": "~16.0.8",
     "expo-camera": "~17.0.10",
     "expo-dev-client": "~6.0.21",
+    "expo-document-picker": "~14.0.8",
+    "expo-font": "~14.0.12",
     "expo-image-picker": "~17.0.11",
     "expo-print": "~15.0.8",
     "expo-sharing": "~14.0.8",
@@ -33,7 +36,8 @@
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
     "react-native-webrtc": "^124.0.7",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "twrnc": "^4.16.0"
   },
   "devDependencies": {
     "@config-plugins/react-native-webrtc": "^14.0.0",

@@ -1,4 +1,4 @@
-export type AppState = 'meeting' | 'mail' | 'chat' | 'tasks';
+export type AppState = 'meeting' | 'mail' | 'chat';
 
 export interface User {
   id: string;
@@ -11,20 +11,6 @@ export interface User {
   createdAt?: string;
 }
 
-export interface Task {
-  _id: string;
-  workspaceId: string;
-  title: string;
-  description?: string;
-  status: 'todo' | 'in-progress' | 'pending_approval' | 'done';
-  priority: 'low' | 'medium' | 'high';
-  assigneeEmail?: string;
-  assigneeName?: string;
-  createdByEmail: string;
-  dueDate?: string;
-  feedback?: string;
-  createdAt: string;
-}
 
 export interface Message {
   id: string;

@@ -19,6 +19,7 @@ import { memberRoutes } from './routes/members';
 import { taskRoutes } from './routes/tasks';
 import { docsRoutes } from './routes/docs';
 import { superadminRoutes } from './routes/superadmin';
+import { statusRoutes } from './routes/status';
 import { handleWebRtcSignalling } from './services/webrtc';
 import { handleCallSignaling } from './services/callSignaling';
 import { handleMailSocket } from './services/mailSockets';
@@ -150,6 +151,7 @@ async function bootstrap() {
   await server.register(taskRoutes, { prefix: '/api/tasks' });
   await server.register(docsRoutes, { prefix: '/api/docs' });
   await server.register(superadminRoutes, { prefix: '/api/superadmin' });
+  await server.register(statusRoutes, { prefix: '/api/status' });
 
   // 3b. ICE / TURN server config endpoint (public — returns STUN + Metered TURN via REST API)
   server.get('/api/meet/ice-servers', async () => {

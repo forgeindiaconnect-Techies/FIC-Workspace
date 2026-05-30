@@ -659,13 +659,16 @@ export const api = {
       });
     },
     async getStories(workspaceId: string) {
-      return request(`/api/chat/${workspaceId}/stories`);
+      return request(`/api/status/${workspaceId}`);
     },
-    async postStory(workspaceId: string, content: string) {
-      return request(`/api/chat/${workspaceId}/stories`, {
+    async postStory(workspaceId: string, statusData: { mediaType: string, mediaUrl?: string, content?: string, bgColor?: string }) {
+      return request(`/api/status/${workspaceId}`, {
         method: 'POST',
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(statusData),
       });
+    },
+    async viewStatus(statusId: string) {
+      return request(`/api/status/${statusId}/view`, { method: 'POST' });
     },
     async createChannel(channelData: any) {
       return request('/api/channels/create', {

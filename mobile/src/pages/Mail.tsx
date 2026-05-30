@@ -11,7 +11,8 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
-  useWindowDimensions
+  useWindowDimensions,
+  Image
 } from 'react-native';
 import RenderHtml from 'react-native-render-html';
 import * as Print from 'expo-print';
@@ -30,10 +31,23 @@ import {
   Mail as MailIcon,
   X,
   Reply,
-  CornerUpRight
+  CornerUpRight,
+  Menu,
+  Home,
+  Grid,
+  MessageSquare,
+  Video,
+  Paperclip,
+  Image as ImageIcon,
+  Bold,
+  Italic,
+  List,
+  ChevronDown
 } from 'lucide-react-native';
-
-
+import { useNavigate } from '../lib/router';
+import tw from 'twrnc';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 
 import { api, getSession, SOCKET_URL, API_URL } from '../lib/api';
 
@@ -56,11 +70,14 @@ const buildLocalSmartDraft = (prompt: string, subject: string, context: string) 
 
 export default function Mail() {
   const { width } = useWindowDimensions();
+  const navigate = useNavigate();
   const isMobile = width < 768;
   const contentWidth = width;
   const styles = React.useMemo(() => getStyles(width, isMobile), [width, isMobile]);
 
   const [activeFolder, setActiveFolder] = React.useState('inbox');
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [appSwitcherOpen, setAppSwitcherOpen] = React.useState(false);
   const [mailList, setMailList] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [selectedEmail, setSelectedEmail] = React.useState<any>(null);
@@ -72,6 +89,67 @@ export default function Mail() {
   const [composeBody, setComposeBody] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const [aiGenerating, setAiGenerating] = React.useState(false);
+  const [attachments, setAttachments] = React.useState<Array<{name: string; uri: string; type: string; size: number; cloudUrl?: string}>>([]);
+  const [uploading, setUploading] = React.useState(false);
+
+  const CLOUDINARY_CLOUD = 'dfou7lxtg';
+  const CLOUDINARY_UPLOAD_PRESET = 'mail_attachments';
+  const CLOUDINARY_FOLDER = 'c-726de3a6883bccf114775c7a84376e';
+
+  const uploadToCloudinary = async (file: {uri: string; name: string; type: string}): Promise<string> => {
+    // Convert file to base64 and upload via backend proxy (keeps API secret server-side)
+    const fileRes = await fetch(file.uri);
+    const blob = await fileRes.blob();
+    const reader = new FileReader();
+    const base64 = await new Promise<string>((resolve, reject) => {
+      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    const { token } = getSession();
+    const res = await fetch(`${API_URL}/api/mail/upload-attachment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ fileBase64: base64, fileName: file.name, mimeType: file.type }),
+    });
+    if (!res.ok) throw new Error('Upload failed: ' + res.status);
+    const data = await res.json();
+    if (!data?.url) throw new Error('Upload failed: no URL returned');
+    return data.url;
+  };
+
+  const pickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: true });
+      if (result.canceled) return;
+      const files = result.assets.map((a: any) => ({ name: a.name, uri: a.uri, type: a.mimeType || 'application/octet-stream', size: a.size || 0 }));
+      setAttachments(prev => [...prev, ...files]);
+    } catch (e) { console.warn('Document pick error:', e); }
+  };
+
+  const pickImage = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) { Alert.alert('Permission needed', 'Please grant photo library access.'); return; }
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsMultipleSelection: true, quality: 0.85 });
+      if (result.canceled) return;
+      const files = result.assets.map((a: any) => ({ name: a.fileName || `image_${Date.now()}.jpg`, uri: a.uri, type: a.type === 'video' ? 'video/mp4' : 'image/jpeg', size: a.fileSize || 0 }));
+      setAttachments(prev => [...prev, ...files]);
+    } catch (e) { console.warn('Image pick error:', e); }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const handleAiSuggest = async () => {
     if (!composeBody.trim()) {
@@ -152,19 +230,34 @@ export default function Mail() {
     if (!composeTo.trim()) return Alert.alert("Error", "Please provide a recipient");
     setSending(true);
     try {
+      // Upload attachments to Cloudinary first
+      let uploadedAttachments: Array<{name: string; url: string; size: number; type: string}> = [];
+      if (attachments.length > 0) {
+        setUploading(true);
+        uploadedAttachments = await Promise.all(
+          attachments.map(async (att) => {
+            const url = await uploadToCloudinary({ uri: att.uri, name: att.name, type: att.type });
+            return { name: att.name, url, size: att.size, type: att.type };
+          })
+        );
+        setUploading(false);
+      }
       await api.mail.sendMail({
         to: composeTo.split(',').map(e => e.trim()),
         subject: composeSubject || '(No Subject)',
-        body: composeBody
+        body: composeBody,
+        attachments: uploadedAttachments,
       });
       setComposeVisible(false);
       setComposeTo('');
       setComposeSubject('');
       setComposeBody('');
+      setAttachments([]);
       if (activeFolder === 'sent') fetchEmails('sent');
       Alert.alert("Success", "Email sent securely.");
     } catch (e) {
       console.warn(e);
+      setUploading(false);
       Alert.alert("Failed", "Could not send the email.");
     } finally {
       setSending(false);
@@ -258,15 +351,15 @@ export default function Mail() {
 
   const renderMailList = () => {
     return (
-      <View style={styles.listContainer}>
-        <View style={styles.listHeader}>
-          <Text style={styles.listTitle}>{activeFolder.charAt(0).toUpperCase() + activeFolder.slice(1)}</Text>
-          <View style={styles.searchWrapper}>
-            <Search size={16} color="#94a3b8" />
+      <View style={tw`flex-1 bg-[#F8F9FB] pt-[16px]`}>
+        {/* Search Bar Section */}
+        <View style={tw`px-[16px] mb-[16px]`}>
+          <View style={[tw`flex-row items-center px-[16px] w-full h-[58px] bg-[#FFFFFF] rounded-[12px] border border-[#C3C6D6]`, { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 }]}>
+            <Search size={18} color="#737685" style={tw`mr-3`} />
             <TextInput 
-              placeholder="Search..." 
-              placeholderTextColor="#94a3b8"
-              style={styles.searchInput}
+              placeholder="Search in mail" 
+              placeholderTextColor="#434654"
+              style={tw`flex-1 text-[16px] text-[#434654]`}
             />
           </View>
         </View>
@@ -281,34 +374,46 @@ export default function Mail() {
             <Text style={styles.emptyText}>Nothing to see here</Text>
           </View>
         ) : (
-          <ScrollView style={styles.listScroller}>
-            {mailList.map((email) => {
-              const displayDate = new Date(email.sentAt).toLocaleDateString([], { month: 'short', day: 'numeric' });
+          <ScrollView style={tw`flex-1`} contentContainerStyle={tw`px-[16px] pb-[120px] gap-[8px]`}>
+            {mailList.map((email, index) => {
+              const displayDate = new Date(email.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const isUnread = !email.isRead && activeFolder !== 'sent';
+              
               return (
                 <TouchableOpacity 
-                  key={email._id} 
+                  key={email._id}
                   onPress={() => handleOpenEmail(email)}
                   style={[
-                    styles.mailCard, 
-                    !email.isRead && activeFolder !== 'sent' && styles.unreadCard,
-                    selectedEmail?._id === email._id && styles.selectedCard
+                    tw`flex-col p-[16px] w-full h-[108px] bg-[#FFFFFF] rounded-[12px] gap-[4px]`,
+                    isUnread ? tw`border-l-[4px] border-[#003D9B]` : {},
+                    { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 }
                   ]}
                 >
-                  <View style={styles.mailTop}>
-                    <View style={styles.senderGroup}>
-                      <TouchableOpacity onPress={() => toggleStar(email)}>
-                        <Star size={16} color={email.isStarred ? "#fbbf24" : "#cbd5e1"} fill={email.isStarred ? "#fbbf24" : "none"} />
-                      </TouchableOpacity>
-                      <Text style={[styles.senderName, !email.isRead && activeFolder !== 'sent' && styles.boldText]}>
-                        {activeFolder === 'sent' ? `To: ${email.recipientEmails.join(', ')}` : email.senderName}
-                      </Text>
-                    </View>
-                    <Text style={[styles.mailTime, !email.isRead && activeFolder !== 'sent' && styles.boldText]}>{displayDate}</Text>
+                  {/* Name and Time row */}
+                  <View style={tw`flex-row justify-between items-center w-full h-[24px]`}>
+                    <Text style={tw`font-bold text-[16px] text-[#191C1E]`} numberOfLines={1}>
+                      {activeFolder === 'sent' ? `To: ${email.recipientEmails.join(', ')}` : email.senderName}
+                    </Text>
+                    <Text style={tw`font-medium text-[12px] tracking-[0.24px] ${isUnread ? 'text-[#003D9B]' : 'text-[#737685]'}`}>
+                      {displayDate}
+                    </Text>
                   </View>
-                  <Text style={[styles.mailSubject, !email.isRead && activeFolder !== 'sent' && styles.boldText]} numberOfLines={1}>{email.subject}</Text>
-                  <Text style={styles.mailPreview} numberOfLines={1}>{email.body.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()}</Text>
+                  
+                  {/* Subject */}
+                  <View style={tw`w-full h-[24px]`}>
+                    <Text style={tw`font-medium text-[16px] text-[#191C1E]`} numberOfLines={1}>
+                      {email.subject}
+                    </Text>
+                  </View>
+                  
+                  {/* Snippet */}
+                  <View style={tw`w-full h-[20px]`}>
+                    <Text style={tw`font-normal text-[14px] leading-[20px] text-[#434654]`} numberOfLines={1}>
+                      {email.body.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
-              )
+              );
             })}
           </ScrollView>
         )}
@@ -482,8 +587,40 @@ export default function Mail() {
     );
   };
 
+  const { user } = getSession();
+
   return (
-    <View style={styles.container}>
+    <View style={tw`flex-1 flex-col bg-[#F8F9FB]`}>
+      {/* Custom Mail TopBar */}
+      {!selectedEmail && (
+        <View style={tw`flex-row items-center justify-between px-[16px] h-[64px] bg-[#F8F9FB]`}>
+          <View style={tw`flex-row items-center gap-[4px]`}>
+            <TouchableOpacity onPress={() => navigate('/home')} style={tw`w-[34px] h-[28px] rounded-full items-center justify-center`}>
+              <Home size={18} color="#003D9B" strokeWidth={2.5} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setDrawerOpen(true)} style={tw`w-[34px] h-[28px] rounded-full items-center justify-center p-[8px]`}>
+              <Menu size={18} color="#003D9B" strokeWidth={2.5} />
+            </TouchableOpacity>
+          </View>
+          <Text style={tw`text-[16px] font-bold text-[#003D9B] capitalize tracking-[0.24px]`}>
+            {activeFolder}
+          </Text>
+          <View style={tw`flex-row items-center gap-[12px]`}>
+            <TouchableOpacity onPress={() => setAppSwitcherOpen(true)} style={tw`w-[34px] h-[28px] items-center justify-center`}>
+              <Grid size={18} color="#003D9B" strokeWidth={2.5} />
+            </TouchableOpacity>
+            <TouchableOpacity style={tw`w-[32px] h-[32px] rounded-full overflow-hidden bg-[#D4E0F8] items-center justify-center`}>
+              {user?.avatarUrl ? (
+                <Image source={{ uri: user.avatarUrl }} style={tw`w-full h-full`} resizeMode="cover" />
+              ) : (
+                <Text style={tw`text-[#576377] font-bold text-[14px]`}>{user?.name?.charAt(0).toUpperCase() || 'U'}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      <View style={styles.container}>
       {/* Compose Modal */}
       <Modal
         visible={composeVisible}
@@ -491,71 +628,244 @@ export default function Mail() {
         transparent={true}
         onRequestClose={() => setComposeVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.composeModalBox}>
-            <View style={styles.composeHeader}>
-              <Text style={styles.composeTitle}>New Message</Text>
-              <TouchableOpacity onPress={() => setComposeVisible(false)}>
-                <X size={20} color="#64748b" />
+        <View style={tw`flex-1 bg-[#FFFFFF]`}>
+          {/* Header - TopAppBar */}
+          <View style={[tw`absolute top-0 left-0 right-0 h-[64px] bg-[#F8F9FB] flex-row justify-between items-center px-[16px] z-10`]}>
+            <View style={tw`flex-row items-center gap-[16px]`}>
+              <TouchableOpacity onPress={() => setComposeVisible(false)} style={tw`w-[40px] h-[40px] items-center justify-center rounded-full`}>
+                <X size={20} color="#434654" />
+              </TouchableOpacity>
+              <Text style={tw`font-bold text-[20px] text-[#003D9B] tracking-[-0.2px]`}>Compose</Text>
+            </View>
+            <View style={tw`flex-row items-center gap-[8px]`}>
+              <TouchableOpacity 
+                style={[tw`flex-row items-center justify-center px-[24px] py-[8px] bg-[#0052CC] rounded-full h-[32px] gap-[8px]`, sending && {opacity: 0.7}]}
+                onPress={handleSendMail}
+                disabled={sending}
+              >
+                {sending ? <ActivityIndicator size="small" color="#fff" /> : (
+                  <>
+                    <Send size={16} color="#C4D2FF" />
+                    <Text style={tw`font-bold text-[11px] text-[#C4D2FF] tracking-[0.55px]`}>SEND</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={tw`w-[40px] h-[40px] items-center justify-center rounded-full`}>
+                <MoreVertical size={20} color="#434654" />
               </TouchableOpacity>
             </View>
+          </View>
 
-            <View style={styles.composeField}>
-              <Text style={styles.composeLabel}>To:</Text>
-              <TextInput 
-                style={styles.composeInput} 
-                value={composeTo}
-                onChangeText={setComposeTo}
-                placeholder="email@example.com, another@example.com"
-                placeholderTextColor="#cbd5e1"
-                autoCapitalize="none"
-              />
-            </View>
-
-            <View style={styles.composeField}>
-              <TextInput 
-                style={styles.composeInput} 
-                value={composeSubject}
-                onChangeText={setComposeSubject}
-                placeholder="Subject"
-                placeholderTextColor="#94a3b8"
-              />
-            </View>
-
-            <TextInput 
-              style={styles.composeBodyInput} 
-              value={composeBody}
-              onChangeText={setComposeBody}
-              multiline={true}
-              textAlignVertical="top"
-            />
-
-            <View style={styles.composeFooter}>
-              <TouchableOpacity style={styles.trashBtn} onPress={() => setComposeVisible(false)}>
-                <Trash2 size={20} color="#94a3b8" />
-              </TouchableOpacity>
+          {/* Main Content Area - adjusted bottom for attachments + toolbar */}
+          <ScrollView style={tw`absolute top-[64px] ${attachments.length > 0 ? 'bottom-[153px]' : 'bottom-[57px]'} left-0 right-0 bg-[#FFFFFF]`} contentContainerStyle={tw`pb-[20px]`}>
+            {/* Input Fields Container */}
+            <View style={tw`px-[16px]`}>
               
-              <View style={styles.footerRight}>
-                <TouchableOpacity 
-                  style={[styles.aiBtn, aiGenerating && { opacity: 0.7 }]} 
-                  onPress={handleAiSuggest}
-                  disabled={aiGenerating}
-                >
-                  {aiGenerating ? <ActivityIndicator size="small" color="#8b5cf6" /> : <Text style={styles.aiBtnText}> AI Suggest</Text>}
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.sendBtn, sending && { opacity: 0.7 }]} 
-                  onPress={handleSendMail}
-                  disabled={sending}
-                >
-                  {sending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.sendBtnText}>Send</Text>}
-                  {!sending && <Send size={16} color="#fff" style={{ marginLeft: 8 }} />}
+              {/* To Field */}
+              <View style={tw`flex-row items-center h-[69px] border-b border-[#C3C6D6] py-[16px]`}>
+                <Text style={tw`font-bold text-[11px] text-[#434654] tracking-[0.55px] w-[48px]`}>TO</Text>
+                <TextInput 
+                  style={tw`flex-1 text-[14px] text-[#191C1E] py-[9px] px-[12px]`}
+                  value={composeTo}
+                  onChangeText={setComposeTo}
+                  placeholder="Recipients"
+                  placeholderTextColor="#C3C6D6"
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity style={tw`w-[32px] h-[32px] items-center justify-center rounded-full`}>
+                  <ChevronDown size={16} color="#434654" />
                 </TouchableOpacity>
               </View>
+
+              {/* Subject Field */}
+              <View style={tw`flex-row items-center h-[72px] border-b border-[#C3C6D6] py-[16px]`}>
+                <TextInput 
+                  style={tw`flex-1 text-[16px] font-medium text-[#191C1E] py-[10px] px-[12px]`}
+                  value={composeSubject}
+                  onChangeText={setComposeSubject}
+                  placeholder="Subject"
+                  placeholderTextColor="#C3C6D6"
+                />
+              </View>
+            </View>
+
+            {/* Message Body */}
+            <View style={tw`p-[16px] min-h-[200px]`}>
+              <TextInput 
+                style={tw`flex-1 text-[14px] text-[#191C1E] px-[12px] py-[8px]`}
+                value={composeBody}
+                onChangeText={setComposeBody}
+                placeholder="Compose email"
+                placeholderTextColor="#C3C6D6"
+                multiline={true}
+                textAlignVertical="top"
+              />
+            </View>
+          </ScrollView>
+
+          {/* Attachment Preview Strip */}
+          {attachments.length > 0 && (
+            <View style={tw`absolute bottom-[57px] left-0 right-0 bg-[#F8F9FB] border-t border-[#C3C6D6]`}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={tw`flex-row items-center px-[12px] py-[8px] gap-[8px]`}>
+                {attachments.map((att, idx) => (
+                  <View key={idx} style={[tw`flex-row items-center bg-[#FFFFFF] rounded-[8px] px-[10px] py-[6px] gap-[6px] border border-[#C3C6D6]`, {maxWidth: 180}]}>
+                    <Paperclip size={14} color="#0052CC" />
+                    <View style={tw`flex-1`}>
+                      <Text style={tw`text-[11px] font-bold text-[#191C1E]`} numberOfLines={1}>{att.name}</Text>
+                      <Text style={tw`text-[10px] text-[#737685]`}>{formatFileSize(att.size)}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => removeAttachment(idx)} style={tw`w-[16px] h-[16px] items-center justify-center`}>
+                      <X size={12} color="#737685" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Section - Formatting and Tools Bar */}
+          <View style={tw`absolute bottom-0 left-0 right-0 h-[57px] bg-[#F3F4F6] border-t border-[#C3C6D6] flex-row items-center justify-between px-[16px]`}>
+            <View style={tw`flex-row items-center gap-[4px]`}>
+              <TouchableOpacity onPress={pickDocument} style={tw`w-[40px] h-[40px] items-center justify-center rounded-[8px]`}>
+                <Paperclip size={20} color={attachments.length > 0 ? "#0052CC" : "#434654"} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={pickImage} style={tw`w-[40px] h-[40px] items-center justify-center rounded-[8px]`}>
+                <ImageIcon size={20} color="#434654" />
+              </TouchableOpacity>
+              <TouchableOpacity style={tw`w-[40px] h-[40px] items-center justify-center rounded-[8px]`}>
+                <Bold size={20} color="#434654" />
+              </TouchableOpacity>
+              <TouchableOpacity style={tw`w-[40px] h-[40px] items-center justify-center rounded-[8px]`}>
+                <Italic size={20} color="#434654" />
+              </TouchableOpacity>
+              
+              <View style={tw`w-[1px] h-[24px] bg-[#C3C6D6] mx-[4px]`} />
+              
+              <TouchableOpacity style={tw`w-[40px] h-[40px] items-center justify-center rounded-[8px]`}>
+                <List size={20} color="#434654" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={tw`flex-row items-center gap-[8px]`}>
+              {(uploading || sending) && (
+                <View style={tw`flex-row items-center gap-[4px]`}>
+                  <ActivityIndicator size="small" color="#0052CC" />
+                  <Text style={tw`text-[11px] text-[#0052CC] font-medium`}>{uploading ? 'Uploading...' : 'Sending...'}</Text>
+                </View>
+              )}
+              {attachments.length > 0 && (
+                <View style={tw`bg-[#0052CC] rounded-full w-[18px] h-[18px] items-center justify-center`}>
+                  <Text style={tw`text-[10px] text-[#fff] font-bold`}>{attachments.length}</Text>
+                </View>
+              )}
+              <TouchableOpacity style={tw`flex-row items-center h-[32px] px-[12px] bg-[#D4E0F8] rounded-[8px]`} onPress={handleAiSuggest}>
+                {aiGenerating ? <ActivityIndicator size="small" color="#0052CC" /> : <Text style={tw`font-bold text-[12px] text-[#0052CC]`}>✨ AI</Text>}
+              </TouchableOpacity>
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* App Switcher Modal */}
+      <Modal visible={appSwitcherOpen} transparent animationType="fade" onRequestClose={() => setAppSwitcherOpen(false)}>
+        <TouchableOpacity style={tw`flex-1 bg-[rgba(0,0,0,0.3)]`} activeOpacity={1} onPress={() => setAppSwitcherOpen(false)}>
+          <View style={[tw`absolute top-[64px] right-[16px] w-[280px] bg-[#FFFFFF] rounded-[16px] p-[16px]`, { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 5 }]}>
+            <Text style={tw`text-[14px] font-bold text-[#434654] mb-[16px] uppercase tracking-[0.5px]`}>Workspace Apps</Text>
+            <View style={tw`flex-row flex-wrap justify-between gap-y-[16px]`}>
+              <TouchableOpacity onPress={() => { setAppSwitcherOpen(false); navigate('/home'); }} style={tw`w-[76px] items-center gap-[8px]`}>
+                <View style={tw`w-[48px] h-[48px] bg-[#F1F5F9] rounded-[12px] items-center justify-center`}><Home size={24} color="#003D9B" /></View>
+                <Text style={tw`text-[12px] font-medium text-[#434654]`}>Home</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setAppSwitcherOpen(false); navigate('/mail'); }} style={tw`w-[76px] items-center gap-[8px]`}>
+                <View style={tw`w-[48px] h-[48px] bg-[#D4E0F8] rounded-[12px] items-center justify-center`}><MailIcon size={24} color="#0052CC" /></View>
+                <Text style={tw`text-[12px] font-bold text-[#0052CC]`}>Mail</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setAppSwitcherOpen(false); navigate('/chat'); }} style={tw`w-[76px] items-center gap-[8px]`}>
+                <View style={tw`w-[48px] h-[48px] bg-[#F1F5F9] rounded-[12px] items-center justify-center`}><MessageSquare size={24} color="#003D9B" /></View>
+                <Text style={tw`text-[12px] font-medium text-[#434654]`}>Chat</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setAppSwitcherOpen(false); navigate('/meetings'); }} style={tw`w-[76px] items-center gap-[8px]`}>
+                <View style={tw`w-[48px] h-[48px] bg-[#F1F5F9] rounded-[12px] items-center justify-center`}><Video size={24} color="#003D9B" /></View>
+                <Text style={tw`text-[12px] font-medium text-[#434654]`}>Meetings</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Navigation Drawer */}
+      <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
+        <TouchableOpacity style={tw`flex-1 bg-[rgba(0,0,0,0.4)]`} activeOpacity={1} onPress={() => setDrawerOpen(false)}>
+          <TouchableOpacity activeOpacity={1} style={tw`w-[320px] h-full bg-[#F3F4F6] rounded-r-[12px] py-[24px] shadow-lg flex-col justify-between`}>
+            
+            <View style={tw`flex-1`}>
+              {/* Profile Header */}
+              <View style={tw`px-[16px] pb-[24px]`}>
+                {user?.avatarUrl ? (
+                  <Image source={{ uri: user.avatarUrl }} style={tw`w-[64px] h-[64px] rounded-full border-[2px] border-[#0052CC]`} />
+                ) : (
+                  <View style={tw`w-[64px] h-[64px] rounded-full border-[2px] border-[#0052CC] bg-[#D4E0F8] items-center justify-center`}>
+                    <Text style={tw`text-[24px] font-bold text-[#576377]`}>{user?.name?.charAt(0).toUpperCase() || 'U'}</Text>
+                  </View>
+                )}
+                <View style={tw`mt-[8px]`}>
+                  <Text style={tw`text-[16px] font-bold text-[#191C1E]`}>{user?.name || 'User'}</Text>
+                  <Text style={tw`text-[14px] text-[#434654]`}>{user?.email || 'user@example.com'}</Text>
+                </View>
+              </View>
+
+              {/* Nav Items */}
+              <ScrollView style={tw`flex-1`} contentContainerStyle={tw`px-[8px] gap-[4px]`}>
+                {[
+                  { id: 'inbox', label: 'Inbox', icon: Inbox },
+                  { id: 'starred', label: 'Starred', icon: Star },
+                  { id: 'snoozed', label: 'Snoozed', icon: Archive },
+                  { id: 'sent', label: 'Sent', icon: Send },
+                  { id: 'drafts', label: 'Drafts', icon: FileText },
+                  { id: 'trash', label: 'Trash', icon: Trash2 },
+                ].map(f => {
+                  const isActive = activeFolder === f.id;
+                  const Icon = f.icon;
+                  return (
+                    <TouchableOpacity 
+                      key={f.id}
+                      onPress={() => { setActiveFolder(f.id); setDrawerOpen(false); setSelectedEmail(null); }}
+                      style={[tw`flex-row items-center px-[16px] py-[12px] gap-[16px] rounded-full h-[48px]`, isActive ? tw`bg-[#D4E0F8]` : {}]}
+                    >
+                      <Icon size={18} color={isActive ? "#576377" : "#434654"} />
+                      <Text style={[tw`text-[16px] font-bold`, isActive ? tw`text-[#576377]` : tw`text-[#434654]`]}>{f.label}</Text>
+                      {isActive && f.id === 'inbox' && (
+                        <View style={tw`ml-auto`}>
+                          <Text style={tw`text-[11px] font-bold text-[#576377] tracking-[0.55px]`}>15.3k</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+
+                <View style={tw`px-[24px] pt-[24px]`}>
+                  <Text style={tw`text-[11px] font-bold uppercase text-[#737685] tracking-[0.55px]`}>LABELS</Text>
+                </View>
+                <TouchableOpacity style={tw`flex-row items-center px-[16px] py-[12px] gap-[16px] rounded-full h-[48px]`}>
+                  <View style={tw`w-[20px] h-[16px] items-center justify-center`}><View style={tw`w-[12px] h-[12px] rounded-full bg-[#003D9B]`} /></View>
+                  <Text style={tw`text-[16px] font-bold text-[#434654]`}>Work</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={tw`flex-row items-center px-[16px] py-[12px] gap-[16px] rounded-full h-[48px]`}>
+                  <View style={tw`w-[20px] h-[16px] items-center justify-center`}><View style={tw`w-[12px] h-[12px] rounded-full bg-[#BA1A1A]`} /></View>
+                  <Text style={tw`text-[16px] font-bold text-[#434654]`}>Personal</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+
+            <View style={tw`px-[8px] pt-[16px] border-t border-[#C3C6D6]`}>
+              <TouchableOpacity style={tw`flex-row items-center px-[16px] py-[12px] gap-[16px] rounded-full h-[48px]`}>
+                <View style={tw`w-[20px] h-[20px] items-center justify-center`}><Archive size={18} color="#434654" /></View>
+                <Text style={tw`text-[16px] font-bold text-[#434654]`}>Settings</Text>
+              </TouchableOpacity>
+            </View>
+
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {(!isMobile || !selectedEmail) && (
@@ -571,32 +881,19 @@ export default function Mail() {
         </View>
       )}
 
-      {/* Mobile Floating Action Button */}
+      {/* FAB Simulation */}
       {isMobile && !selectedEmail && (
-        <TouchableOpacity style={styles.fabBtn} onPress={() => setComposeVisible(true)}>
-          <Plus size={24} color="#fff" />
+        <TouchableOpacity 
+          style={[tw`absolute right-[24px] bottom-[96px] w-[56px] h-[56px] bg-[#0052CC] rounded-[16px] items-center justify-center z-10`, { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 15, elevation: 5 }]} 
+          onPress={() => setComposeVisible(true)}
+        >
+          <View style={tw`w-[22.5px] h-[22.5px] items-center justify-center rounded-sm`}>
+            <Plus size={22.5} color="#C4D2FF" strokeWidth={3} />
+          </View>
         </TouchableOpacity>
       )}
-      
-      {/* Mobile simple folder strip */}
-      {isMobile && !selectedEmail && (
-        <View style={styles.mobileFolderStrip}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {['inbox', 'starred', 'sent', 'archive', 'trash'].map(f => (
-              <TouchableOpacity 
-                key={f}
-                style={[styles.mobileFolderTab, activeFolder === f && styles.mobileFolderTabActive]}
-                onPress={() => setActiveFolder(f)}
-              >
-                <Text style={[styles.mobileFolderText, activeFolder === f && styles.mobileFolderTextActive]}>
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
 
+    </View>
     </View>
   );
 }

@@ -275,4 +275,42 @@ Important: Provide ONLY the final generated email body text. Do not include intr
       return reply.code(500).send({ error: 'Failed to generate PDF', details: err.message });
     }
   });
+
+  // Cloudinary Upload Proxy — keeps API secret server-side
+  fastify.post('/upload-attachment', async (request: any, reply) => {
+    try {
+      const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || 'dfou7lxtg';
+      const API_KEY    = process.env.CLOUDINARY_API_KEY    || '323596529822668';
+      const API_SECRET = process.env.CLOUDINARY_API_SECRET || '1DGzf5iYPo0OhiAN_KKQs_mVim0';
+      const FOLDER     = process.env.CLOUDINARY_FOLDER     || 'c-726de3a6883bccf114775c7a84376e';
+
+      const { fileBase64, fileName, mimeType } = request.body as any;
+      if (!fileBase64) return reply.code(400).send({ error: 'fileBase64 is required' });
+
+      const timestamp = Math.floor(Date.now() / 1000);
+      const crypto = await import('crypto');
+      const signatureStr = `folder=${FOLDER}&timestamp=${timestamp}${API_SECRET}`;
+      const signature = crypto.createHash('sha1').update(signatureStr).digest('hex');
+
+      const formData = new URLSearchParams();
+      formData.append('file', `data:${mimeType};base64,${fileBase64}`);
+      formData.append('api_key', API_KEY);
+      formData.append('timestamp', String(timestamp));
+      formData.append('signature', signature);
+      formData.append('folder', FOLDER);
+      if (fileName) formData.append('public_id', fileName.replace(/\.[^/.]+$/, ''));
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData.toString(),
+      });
+
+      const data: any = await res.json();
+      if (!res.ok) return reply.code(500).send({ error: 'Cloudinary error', details: data });
+      return reply.code(200).send({ url: data.secure_url, publicId: data.public_id, bytes: data.bytes });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Upload failed', details: err.message });
+    }
+  });
 }

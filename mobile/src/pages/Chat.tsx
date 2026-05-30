@@ -1,4 +1,6 @@
 import React from 'react';
+import tw from 'twrnc';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from '../lib/router';
 import {
   ActivityIndicator, Alert, Dimensions, KeyboardAvoidingView,
   Modal, Platform, ScrollView, StyleSheet, Text, TextInput,
@@ -7,9 +9,9 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import {
   CheckCheck, ChevronLeft, Mic, MicOff, PhoneOff,
-  Plus, Search, Send, Shield, Users, X, UserPlus,
+  Plus, Search, Send, Shield, ShieldCheck, Users, X, UserPlus,
   MessageSquare, MoreVertical, Paperclip, Camera, Hash,
-  Bell, Star, Smile, Edit, Edit3, Edit2
+  Bell, Star, Smile, Edit, Edit3, Edit2, Home, Grid, FileText
 } from 'lucide-react-native';
 import { api, getSession, SOCKET_URL } from '../lib/api';
 import { getRTCPeerConnectionClass, getMediaDevices, getIceServers, RTCView } from '../lib/webrtc';
@@ -59,13 +61,14 @@ export default function Chat() {
   const { width, height } = useWindowDimensions();
   const isMobile = width < 768;
   const s = React.useMemo(() => getStyles(width, height, isMobile), [width, height, isMobile]);
+  const navigate = useNavigate();
   
   /* -- state -- */
-  const [tab, setTab] = React.useState<'chats'|'groups'|'calls'>('chats');
+  const [tab, setTab] = React.useState<'chats'|'groups'|'calls'|'status'>('chats');
   const [selectedChat, setSelectedChat] = React.useState<any>(null);
   const [directMessages, setDirectMessages] = React.useState<any[]>([]);
   const [groupMessages, setGroupMessages] = React.useState<any[]>([]);
-  const [stories, setStories] = React.useState<any[]>([]);
+  const [groupedStatuses, setGroupedStatuses] = React.useState<any[]>([]);
   const [messages, setMessages] = React.useState<any[]>([{ id: 'init', user: 'Workspace', time: 'Now', text: 'Select a chat to start messaging.', self: false }]);
   const [inputVal, setInputVal] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -76,9 +79,13 @@ export default function Chat() {
   /* modals */
   const [addMemberModal, setAddMemberModal] = React.useState(false);
   const [createGroupModal, setCreateGroupModal] = React.useState(false);
-  const [storyModal, setStoryModal] = React.useState<any>(null);
+  const [statusCreatorOpen, setStatusCreatorOpen] = React.useState(false);
+  const [statusViewerData, setStatusViewerData] = React.useState<any>(null); // The user object containing statuses
+  const [statusActiveIndex, setStatusActiveIndex] = React.useState(0);
+  const [statusPaused, setStatusPaused] = React.useState(false);
   const [audioCallModal, setAudioCallModal] = React.useState(false);
   const [plusMenu, setPlusMenu] = React.useState(false);
+  const [appsMenu, setAppsMenu] = React.useState(false);
   const [chatOptionsOpen, setChatOptionsOpen] = React.useState(false);
 
   /* add member form */
@@ -164,7 +171,7 @@ export default function Chat() {
   const pickDocument = async () => {
     if (uploadingFile) return;
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      mediaTypes: ['images', 'videos'],
       allowsEditing: false,
       quality: 1,
     });
@@ -231,14 +238,11 @@ export default function Chat() {
       })) : [];
       setGroupMessages(gMapped);
 
-      const sMapped = Array.isArray(storiesData) ? storiesData.map((s: any) => ({
-        id: s._id, name: s.userName, avatar: s.userAvatar || avatarFor(s.userName), color: colorFor(s.userId), isOwn: s.userId === user?.id, image: s.content
-      })) : [];
-      setStories(sMapped);
+      setGroupedStatuses(Array.isArray(storiesData) ? storiesData : []);
     } catch {
       setDirectMessages([]);
       setGroupMessages([]);
-      setStories([]);
+      setGroupedStatuses([]);
     } finally { setLoadingChannels(false); }
   }, [workspaceId, email, user?.id]);
 
@@ -265,9 +269,10 @@ export default function Chat() {
       .finally(() => setLoadingMessages(false));
   }, [selectedChat, workspaceId, email]);
 
-  const filteredChats = directMessages.filter(c => {
+  const activeList = tab === 'groups' ? groupMessages : directMessages;
+  const filteredChats = activeList.filter(c => {
     const q = searchQuery.trim().toLowerCase();
-    return !q || `${c.name} ${c.email} ${c.lastMsg}`.toLowerCase().includes(q);
+    return !q || `${c.name} ${c.email || ''} ${c.lastMsg}`.toLowerCase().includes(q);
   });
 
   /* -- send message -- */
@@ -342,12 +347,10 @@ export default function Chat() {
   };
 
   /* -- post story -- */
-  const handlePostStory = async (content: string) => {
-    if (!content.trim()) return;
+  const handlePostStatus = async (statusData: { mediaType: string, mediaUrl?: string, content?: string, bgColor?: string }) => {
     try {
-      await api.chat.postStory(workspaceId, content);
+      await api.chat.postStory(workspaceId, statusData);
       await loadChannels();
-      Alert.alert('Done', 'Status updated!');
     } catch (e: any) { Alert.alert('Error', e.message); }
   };
 
@@ -389,54 +392,246 @@ export default function Chat() {
     </Modal>
   );
 
+
   /* ------------------------------------------------------------
-     STORY VIEWER MODAL
+     STATUS CREATOR MODAL
   ------------------------------------------------------------ */
-  const renderStoryModal = () => (
-    <Modal visible={!!storyModal} animationType="fade" transparent onRequestClose={() => setStoryModal(null)}>
-      <View style={s.storyOverlay}>
-        <View style={[s.storyCard, { backgroundColor: storyModal ? colorFor(storyModal.id) : '#0f766e' }]}>
-          {/* progress bar */}
-          <View style={s.storyProgressRow}>
-            {[0,1,2].map(i => <View key={i} style={[s.storyProgressBar, i === 0 && s.storyProgressActive]} />)}
+  const renderStatusCreatorModal = () => {
+    if (!statusCreatorOpen) return null;
+    return (
+      <Modal visible={statusCreatorOpen} animationType="slide" transparent onRequestClose={() => setStatusCreatorOpen(false)}>
+        <View style={tw`flex-1 bg-black justify-between`}>
+          <View style={tw`flex-row justify-between items-center px-4 pt-12 pb-4`}>
+            <TouchableOpacity onPress={() => setStatusCreatorOpen(false)}>
+              <X size={28} color="#fff" />
+            </TouchableOpacity>
+            <Text style={tw`text-white font-bold text-lg`}>New Status</Text>
+            <View style={tw`w-7`} />
           </View>
-          <View style={s.storyTopRow}>
-            <View style={s.storyAvatarSmall}>
-              <Text style={s.storyAvatarSmallText}>{storyModal?.avatar}</Text>
-            </View>
-            <Text style={s.storyOwnerName}>{storyModal?.name}</Text>
-            <Text style={s.storyTime}>2m ago</Text>
-            <View style={{ flex: 1 }} />
-            <TouchableOpacity onPress={() => setStoryModal(null)}>
-              <X size={22} color="#fff" />
+          
+          <View style={tw`flex-1 items-center justify-center p-4`}>
+            <TextInput 
+              style={tw`text-white text-3xl text-center w-full`}
+              placeholder="Type a status"
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              multiline
+              autoFocus
+              value={inputVal}
+              onChangeText={setInputVal}
+            />
+          </View>
+
+          <View style={tw`flex-row items-center justify-between p-4 pb-8 bg-black/50`}>
+            <TouchableOpacity style={tw`p-2 bg-white/20 rounded-full`} onPress={async () => {
+              const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.8 });
+              if (!res.canceled && res.assets?.[0]) {
+                const asset = res.assets[0];
+                setUploadingFile(true);
+                try {
+                  const uploaded = await api.chat.uploadFile(asset.uri, asset.mimeType || 'image/jpeg', asset.fileName || 'status.jpg');
+                  await handlePostStatus({ mediaType: asset.type === 'video' ? 'video' : 'image', mediaUrl: uploaded.url, content: inputVal });
+                  setStatusCreatorOpen(false);
+                  setInputVal('');
+                } catch (e: any) { Alert.alert('Upload Failed', e.message); }
+                finally { setUploadingFile(false); }
+              }
+            }}>
+              <Camera size={24} color="#fff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={tw`w-14 h-14 bg-[#25D366] rounded-full items-center justify-center`} disabled={uploadingFile || (!inputVal.trim())} onPress={async () => {
+              if (!inputVal.trim()) return;
+              await handlePostStatus({ mediaType: 'text', content: inputVal, bgColor: '#FF5722' });
+              setStatusCreatorOpen(false);
+              setInputVal('');
+            }}>
+              {uploadingFile ? <ActivityIndicator color="#fff" /> : <Send size={24} color="#fff" />}
             </TouchableOpacity>
           </View>
-          <View style={s.storyContent}>
-            {storyModal?.isOwn ? (
-               <TextInput 
-                 style={[s.storyReplyInput, { fontSize: 24, textAlign: 'center', height: 100 }]} 
-                 placeholder="Type status..." 
-                 placeholderTextColor="rgba(255,255,255,0.6)" 
-                 autoFocus
-                 onSubmitEditing={(e) => {
-                   handlePostStory(e.nativeEvent.text);
-                   setStoryModal(null);
-                 }}
-               />
-            ) : (
-               <Text style={s.storyText}>{storyModal?.image || `Status update from ${storyModal?.name}`}</Text>
+        </View>
+      </Modal>
+    );
+  };
+
+  /* ------------------------------------------------------------
+     STATUS VIEWER MODAL
+  ------------------------------------------------------------ */
+  React.useEffect(() => {
+    if (!statusViewerData || statusPaused) return;
+    const statuses = statusViewerData.statuses || [];
+    if (statuses.length === 0) return;
+
+    const timer = setTimeout(() => {
+      if (statusActiveIndex < statuses.length - 1) {
+        setStatusActiveIndex(prev => prev + 1);
+      } else {
+        setStatusViewerData(null);
+      }
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [statusViewerData, statusActiveIndex, statusPaused]);
+
+  React.useEffect(() => {
+    if (statusViewerData) setStatusActiveIndex(0);
+  }, [statusViewerData]);
+
+  const renderStatusViewerModal = () => {
+    if (!statusViewerData) return null;
+    const statuses = statusViewerData.statuses || [];
+    const activeIndex = statusActiveIndex;
+
+    if (!statuses.length) return null;
+    const activeStatus = statuses[activeIndex];
+
+    const handleNext = () => {
+      if (activeIndex < statuses.length - 1) setStatusActiveIndex(activeIndex + 1);
+      else setStatusViewerData(null);
+    };
+
+    const handlePrev = () => {
+      if (activeIndex > 0) setStatusActiveIndex(activeIndex - 1);
+    };
+
+    return (
+      <Modal visible={!!statusViewerData} animationType="fade" transparent onRequestClose={() => setStatusViewerData(null)}>
+        <View style={s.storyOverlay}>
+          <View style={[s.storyCard, { backgroundColor: activeStatus.bgColor || '#000' }]}>
+            <View style={s.storyProgressRow}>
+              {statuses.map((_: any, i: number) => <View key={i} style={[s.storyProgressBar, i <= activeIndex && s.storyProgressActive]} />)}
+            </View>
+            <View style={s.storyTopRow}>
+              <View style={tw`w-10 h-10 rounded-full bg-[#334155] items-center justify-center overflow-hidden`}>
+                {statusViewerData.avatarUrl.includes('dicebear') ? (
+                  <Text style={tw`text-white font-bold`}>{avatarFor(statusViewerData.userName)}</Text>
+                ) : (
+                  <Image source={{ uri: statusViewerData.avatarUrl }} style={tw`w-full h-full`} />
+                )}
+              </View>
+              <Text style={s.storyOwnerName}>{statusViewerData.userName}</Text>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity onPress={() => setStatusViewerData(null)}>
+                <X size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity 
+              activeOpacity={1} 
+              onPressIn={() => setStatusPaused(true)} 
+              onPressOut={() => setStatusPaused(false)}
+              onPress={(e) => {
+                const { locationX } = e.nativeEvent;
+                if (locationX < 100) handlePrev();
+                else handleNext();
+              }}
+              style={tw`flex-1 items-center justify-center`}
+            >
+              {activeStatus.mediaUrl ? (
+                 <Image source={{ uri: activeStatus.mediaUrl }} style={tw`w-full h-full`} resizeMode="contain" />
+              ) : (
+                 <Text style={tw`text-3xl text-white font-bold text-center px-4`}>{activeStatus.content}</Text>
+              )}
+              {activeStatus.mediaUrl && activeStatus.content && (
+                <View style={tw`absolute bottom-10 bg-black/50 px-4 py-2 rounded-lg`}>
+                  <Text style={tw`text-white text-lg`}>{activeStatus.content}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {statusViewerData.userEmail !== email && (
+              <View style={s.storyReplyRow}>
+                <TextInput style={s.storyReplyInput} placeholder="Reply..." placeholderTextColor="rgba(255,255,255,0.6)" />
+                <TouchableOpacity style={s.storyReplySend}><Send size={18} color="#fff" /></TouchableOpacity>
+              </View>
             )}
           </View>
-          {!storyModal?.isOwn && (
-            <View style={s.storyReplyRow}>
-              <TextInput style={s.storyReplyInput} placeholder="Reply to status" placeholderTextColor="rgba(255,255,255,0.6)" />
-              <TouchableOpacity style={s.storyReplySend}><Send size={18} color="#fff" /></TouchableOpacity>
-            </View>
-          )}
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
+  };
+
+  /* ------------------------------------------------------------
+     STATUS TAB (UPDATES LIST)
+  ------------------------------------------------------------ */
+  const renderStatusTab = () => {
+    const myGroup = groupedStatuses.find(g => g.userEmail === email);
+    const otherGroups = groupedStatuses.filter(g => g.userEmail !== email);
+    
+    // Determine viewed vs recent
+    const hasViewedAll = (group: any) => group.statuses.every((st: any) => st.views.includes(email));
+    const recentUpdates = otherGroups.filter(g => !hasViewedAll(g));
+    const viewedUpdates = otherGroups.filter(g => hasViewedAll(g));
+
+    return (
+      <ScrollView style={tw`flex-1 bg-white`} contentContainerStyle={tw`pb-[90px]`}>
+        <Text style={tw`text-[20px] font-bold text-black px-4 py-3 mt-2`}>Status</Text>
+        
+        {/* My Status */}
+        <TouchableOpacity style={tw`flex-row items-center px-4 py-3 bg-white`} onPress={() => {
+          if (myGroup && myGroup.statuses.length > 0) setStatusViewerData(myGroup);
+          else setStatusCreatorOpen(true);
+        }}>
+          <View style={tw`w-[56px] h-[56px] rounded-full items-center justify-center mr-4 border-2 ${myGroup ? 'border-[#25D366]' : 'border-transparent'}`}>
+             <View style={tw`w-[50px] h-[50px] rounded-full bg-[#E9EDEF] items-center justify-center overflow-hidden relative`}>
+               <Text style={tw`text-[#8696A0] text-xl font-bold uppercase`}>{avatarFor(user?.name || email)}</Text>
+               {!myGroup && (
+                 <View style={tw`absolute bottom-0 right-0 w-5 h-5 bg-[#25D366] rounded-full items-center justify-center border-2 border-white`}>
+                   <Plus size={12} color="#fff" />
+                 </View>
+               )}
+             </View>
+          </View>
+          <View style={tw`flex-1 justify-center border-b border-[#D1D7DB]/50 h-[60px] pr-2`}>
+            <Text style={tw`text-[16px] font-semibold text-[#111B21] mb-0.5`}>My status</Text>
+            <Text style={tw`text-[14px] text-[#667781]`}>{myGroup ? 'Tap to view your status update' : 'Tap to add status update'}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Recent Updates */}
+        {recentUpdates.length > 0 && (
+          <View>
+            <Text style={tw`text-[13px] font-bold text-[#667781] px-4 py-2 mt-2 bg-[#F0F2F5]`}>Recent updates</Text>
+            {recentUpdates.map(group => (
+              <TouchableOpacity key={group.userEmail} style={tw`flex-row items-center px-4 py-3 bg-white`} onPress={() => {
+                setStatusViewerData(group);
+                group.statuses.forEach((s: any) => { if (!s.views.includes(email)) api.chat.viewStatus(s._id); });
+              }}>
+                <View style={tw`w-[56px] h-[56px] rounded-full items-center justify-center mr-4 border-2 border-[#25D366]`}>
+                  <View style={tw`w-[50px] h-[50px] rounded-full bg-[#E9EDEF] items-center justify-center overflow-hidden`}>
+                    <Text style={tw`text-[#8696A0] text-xl font-bold uppercase`}>{avatarFor(group.userName)}</Text>
+                  </View>
+                </View>
+                <View style={tw`flex-1 justify-center border-b border-[#D1D7DB]/50 h-[60px] pr-2`}>
+                  <Text style={tw`text-[16px] font-semibold text-[#111B21] mb-0.5`}>{group.userName}</Text>
+                  <Text style={tw`text-[14px] text-[#667781]`}>{group.statuses.length} new update{group.statuses.length > 1 ? 's' : ''}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Viewed Updates */}
+        {viewedUpdates.length > 0 && (
+          <View>
+            <Text style={tw`text-[13px] font-bold text-[#667781] px-4 py-2 mt-2 bg-[#F0F2F5]`}>Viewed updates</Text>
+            {viewedUpdates.map(group => (
+              <TouchableOpacity key={group.userEmail} style={tw`flex-row items-center px-4 py-3 bg-white`} onPress={() => setStatusViewerData(group)}>
+                <View style={tw`w-[56px] h-[56px] rounded-full items-center justify-center mr-4 border-2 border-[#D1D7DB]`}>
+                  <View style={tw`w-[50px] h-[50px] rounded-full bg-[#E9EDEF] items-center justify-center overflow-hidden`}>
+                    <Text style={tw`text-[#8696A0] text-xl font-bold uppercase`}>{avatarFor(group.userName)}</Text>
+                  </View>
+                </View>
+                <View style={tw`flex-1 justify-center border-b border-[#D1D7DB]/50 h-[60px] pr-2`}>
+                  <Text style={tw`text-[16px] font-semibold text-[#111B21] mb-0.5`}>{group.userName}</Text>
+                  <Text style={tw`text-[14px] text-[#667781]`}>Viewed</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    );
+  };
 
   /* ------------------------------------------------------------
      FIND USER MODAL
@@ -502,25 +697,30 @@ export default function Chat() {
      SIDEBAR
   ------------------------------------------------------------ */
   const renderSidebar = () => (
-    <View style={s.sidebar}>
-      {/* Header */}
-      <View style={s.sidebarHeader}>
-        <View>
-          <Text style={s.sidebarTitle}>Kural</Text>
-          <View style={s.secureBadge}>
-            <Shield size={11} color="#0f766e" />
-            <Text style={s.secureBadgeText}>End-to-End Encrypted</Text>
-          </View>
+    <View style={tw`flex-1 md:w-[390px] md:flex-none bg-white border-r border-[#D1D7DB]`}>
+      
+      {/* TopAppBar */}
+      <View style={tw`flex-row justify-between items-center px-4 h-16 bg-white border-b border-[#D1D7DB]`}>
+        <View style={tw`flex-row items-center gap-2`}>
+          <Image source={require('../../assets/Chat.png')} style={tw`w-10 h-10`} resizeMode="contain" />
+          <Text style={tw`text-[22px] font-bold text-[#25D366] tracking-tight`}>KURAL</Text>
         </View>
-        {/* Plus menu */}
-        <TouchableOpacity style={s.plusBtn} onPress={() => setPlusMenu(p => !p)}>
-          <Plus size={20} color="#fff" />
-        </TouchableOpacity>
+        <View style={tw`flex-row items-center gap-1`}>
+          <TouchableOpacity style={tw`w-10 h-10 rounded-full justify-center items-center bg-transparent`} onPress={() => navigate('/home')}>
+            <Home size={20} color="#667781" />
+          </TouchableOpacity>
+          <TouchableOpacity style={tw`w-10 h-10 rounded-full justify-center items-center bg-transparent`} onPress={() => { setAppsMenu(p => !p); setPlusMenu(false); }}>
+            <Grid size={20} color="#667781" />
+          </TouchableOpacity>
+          <TouchableOpacity style={tw`w-10 h-10 rounded-full justify-center items-center bg-transparent`} onPress={() => setPlusMenu(p => !p)}>
+            <Plus size={20} color="#667781" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Plus dropdown */}
       {plusMenu && (
-        <View style={s.plusMenu}>
+        <View style={[s.plusMenu, tw`absolute top-[70px] right-4 z-50 bg-white`]}>
           {[
             { icon: <UserPlus size={16} color="#2563eb" />, label: 'New Direct Message', action: () => { setAddMemberModal(true); setPlusMenu(false); } },
             { icon: <Users size={16} color="#7c3aed" />, label: 'Create Group', action: () => { setCreateGroupModal(true); setPlusMenu(false); } },
@@ -533,73 +733,73 @@ export default function Chat() {
         </View>
       )}
 
+      {/* Apps dropdown */}
+      {appsMenu && (
+        <View style={[s.plusMenu, tw`absolute top-[70px] right-14 z-50 bg-white min-w-[200px]`]}>
+          <Text style={tw`text-xs font-bold text-gray-500 uppercase px-4 py-2 border-b border-gray-100`}>Switch App</Text>
+          {[
+            { icon: <Image source={require('../../assets/Mail.png')} style={tw`w-5 h-5`} />, label: 'Mail', action: () => { navigate('/mail'); setAppsMenu(false); } },
+            { icon: <Image source={require('../../assets/Meet.png')} style={tw`w-5 h-5`} />, label: 'Meet', action: () => { navigate('/meetings'); setAppsMenu(false); } },
+            { icon: <Image source={require('../../assets/Chat.png')} style={tw`w-5 h-5`} />, label: 'Kural', action: () => { navigate('/chat'); setAppsMenu(false); } },
+            ...(user?.role === 'company-admin' || user?.email === 'admin@fic.com' ? [{ icon: <Users size={16} color="#7c3aed" />, label: 'Team', action: () => { navigate('/team'); setAppsMenu(false); } }] : []),
+            ...(user?.role === 'super-admin' ? [{ icon: <ShieldCheck size={16} color="#dc2626" />, label: 'Subscriptions', action: () => { navigate('/superadmin'); setAppsMenu(false); } }] : [])
+          ].map(item => (
+            <TouchableOpacity key={item.label} style={s.plusMenuItem} onPress={item.action}>
+              <View style={s.plusMenuIcon}>{item.icon}</View>
+              <Text style={s.plusMenuLabel}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       {/* Search */}
-      <View style={s.searchBarWrapper}>
-        <View style={s.searchBar}>
-          <Search size={20} color="#74777d" style={s.searchIcon} />
-          <TextInput style={s.searchInput} placeholder="Find a conversation..." placeholderTextColor="rgba(116,119,125,0.6)" value={searchQuery} onChangeText={setSearchQuery} />
+      <View style={tw`px-4 py-3 bg-white`}>
+        <View style={tw`flex-row items-center h-9 bg-[#F0F2F5] rounded-full px-4 gap-3`}>
+          <Search size={16} color="#667781" />
+          <TextInput 
+            style={tw`flex-1 text-[#111B21] text-[15px] p-0`}
+            placeholder="Search" 
+            placeholderTextColor="#667781" 
+            value={searchQuery} 
+            onChangeText={setSearchQuery} 
+          />
         </View>
       </View>
 
-      {/* Stories row (only when there are stories) */}
-      {stories.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.storiesRow} contentContainerStyle={s.storiesContent}>
-          {stories.map((story, i) => (
-            <TouchableOpacity key={story.id} style={s.storyItem} onPress={() => setStoryModal(story)}>
-              {story.image ? (
-                <Image source={{ uri: story.image }} style={s.storyAvatarImg} />
-              ) : (
-                <View style={[s.storyAvatarOwn, { backgroundColor: story.color || colorFor(story.id) }]}>
-                  <Text style={s.storyAvatarSmallText}>{story.avatar || avatarFor(story.name)}</Text>
-                </View>
-              )}
-              <Text style={s.storyName} numberOfLines={1}>{story.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
+
 
       {/* List */}
       {loadingChannels ? (
-        <View style={s.loadingPane}><ActivityIndicator color="#006b5e" /></View>
+        <View style={tw`flex-1 p-8 items-center justify-center`}><ActivityIndicator color="#25D366" size="large" /></View>
+      ) : tab === 'status' ? (
+        renderStatusTab()
       ) : (
-        <ScrollView style={s.chatList} contentContainerStyle={s.chatListContent}>
-          <Text style={s.messagesHeader}>Messages</Text>
+        <ScrollView style={tw`flex-1 bg-white`} contentContainerStyle={tw`pb-[90px]`}>
           {filteredChats.map(chat => (
             <TouchableOpacity key={chat.id} onPress={() => setSelectedChat(chat)}
-              style={[s.chatCard, chat.unread > 0 && s.chatCardUnread]}>
-              <View style={s.avatarWrap}>
-                {chat.image ? (
-                  <Image source={{ uri: chat.image }} style={[s.avatar, !chat.unread && s.avatarRead]} />
-                ) : (
-                  <View style={[s.avatar, { backgroundColor: colorFor(chat.id) }]}>
-                    {chat.type === 'group' ? <Users size={28} color="#4c5b71" /> : <Text style={s.avatarText}>{chat.avatar}</Text>}
-                  </View>
-                )}
-                {chat.online && chat.unread > 0 && <View style={s.onlineDot} />}
+              style={tw`flex-row items-center px-4 py-0 w-full bg-white`}>
+              <View style={tw`w-[56px] h-[56px] rounded-full bg-[#E9EDEF] items-center justify-center mr-4 my-3 overflow-hidden`}>
+                <Text style={tw`text-[#8696A0] text-xl font-bold uppercase`}>{chat.avatar}</Text>
               </View>
-              <View style={s.chatInfo}>
-                <View style={s.chatRow}>
-                  <Text style={[s.chatName, chat.unread > 0 ? s.textBold : s.textSemiBold]} numberOfLines={1}>{chat.name}</Text>
-                  <Text style={[s.chatTime, chat.unread > 0 ? s.timeUnread : s.timeRead]}>{chat.time}</Text>
+              <View style={tw`flex-1 justify-center border-b border-[#D1D7DB]/50 h-[85px] pr-2`}>
+                <View style={tw`flex-row justify-between items-center mb-0.5`}>
+                  <Text style={tw`text-[16px] font-semibold text-[#111B21] flex-1`} numberOfLines={1}>{chat.name}</Text>
+                  <Text style={tw`text-[12px] font-medium ml-2 ${chat.unread > 0 ? 'text-[#25D366]' : 'text-[#667781]'}`}>{chat.time}</Text>
                 </View>
-                <View style={s.chatRow}>
-                  <Text style={[s.chatPreview, chat.unread > 0 && s.textSemiBold]} numberOfLines={1}>{chat.lastMsg}</Text>
+                <View style={tw`flex-row justify-between items-center`}>
+                  <Text style={tw`text-[15px] text-[#667781] flex-1`} numberOfLines={1}>{chat.lastMsg}</Text>
+                  {chat.unread > 0 && (
+                    <View style={tw`w-[20px] h-[20px] bg-[#25D366] rounded-full items-center justify-center mt-0.5 ml-2`}>
+                      <Text style={tw`text-[11px] font-bold text-white`}>{chat.unread}</Text>
+                    </View>
+                  )}
                 </View>
-              </View>
-              <View style={s.chatRightIndicator}>
-                {chat.unread > 0 ? (
-                  <View style={s.unreadBadge}><Text style={s.unreadText}>{chat.unread}</Text></View>
-                ) : chat.read ? (
-                  <CheckCheck size={16} color="#74777d" />
-                ) : null}
               </View>
             </TouchableOpacity>
           ))}
           {filteredChats.length === 0 && (
-            <View style={s.emptyList}>
-              <MessageSquare size={36} color="#c4c6cd" />
-              <Text style={s.emptyListTitle}>No conversations</Text>
+            <View style={tw`p-8 items-center`}>
+              <Text style={tw`text-[#667781]`}>No conversations</Text>
             </View>
           )}
         </ScrollView>
@@ -607,10 +807,38 @@ export default function Chat() {
 
       {/* Floating Action Button */}
       {isMobile && !selectedChat && (
-        <TouchableOpacity style={s.fab} onPress={() => setAddMemberModal(true)}>
-          <Edit2 size={24} color="#ffffff" />
+        <TouchableOpacity style={tw`absolute bottom-[96px] right-4 w-14 h-14 bg-[#25D366] rounded-2xl items-center justify-center z-50`} onPress={() => setAddMemberModal(true)}>
+          <MessageSquare size={24} color="#ffffff" fill="#ffffff" />
         </TouchableOpacity>
       )}
+
+      {/* Bottom Navbar */}
+      <View style={tw`absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-[#D1D7DB] flex-row justify-around items-center px-2 pb-2 z-40`}>
+        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('chats')}>
+          <View style={tw`w-16 h-8 ${tab === 'chats' ? 'bg-[#25D366]/20' : 'bg-transparent'} rounded-full items-center justify-center mb-1`}>
+            <MessageSquare size={20} color={tab === 'chats' ? '#25D366' : '#667781'} fill={tab === 'chats' ? '#25D366' : 'transparent'} />
+          </View>
+          <Text style={tw`text-[12px] font-medium ${tab === 'chats' ? 'text-[#25D366] font-bold' : 'text-[#667781]'}`}>Chats</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('status')}>
+          <View style={tw`w-16 h-8 ${tab === 'status' ? 'bg-[#25D366]/20' : 'bg-transparent'} rounded-full items-center justify-center mb-1`}>
+            <View style={tw`w-5 h-5 rounded-full border-2 ${tab === 'status' ? 'border-[#25D366]' : 'border-[#667781]'} border-dashed`} />
+          </View>
+          <Text style={tw`text-[12px] font-medium ${tab === 'status' ? 'text-[#25D366] font-bold' : 'text-[#667781]'}`}>Status</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('groups')}>
+          <View style={tw`w-16 h-8 ${tab === 'groups' ? 'bg-[#25D366]/20' : 'bg-transparent'} rounded-full items-center justify-center mb-1`}>
+            <Users size={22} color={tab === 'groups' ? '#25D366' : '#667781'} />
+          </View>
+          <Text style={tw`text-[12px] font-medium ${tab === 'groups' ? 'text-[#25D366] font-bold' : 'text-[#667781]'}`}>Groups</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('calls')}>
+          <View style={tw`w-16 h-8 ${tab === 'calls' ? 'bg-[#25D366]/20' : 'bg-transparent'} rounded-full items-center justify-center mb-1`}>
+             <PhoneOff size={20} color={tab === 'calls' ? '#25D366' : '#667781'} />
+          </View>
+          <Text style={tw`text-[12px] font-medium ${tab === 'calls' ? 'text-[#25D366] font-bold' : 'text-[#667781]'}`}>Calls</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -621,42 +849,53 @@ export default function Chat() {
     if (!selectedChat) {
       if (isMobile) return null;
       return (
-        <View style={s.emptyState}>
-          <View style={s.emptyStateIcon}><MessageSquare size={44} color="#0f766e" /></View>
-          <Text style={s.emptyStateTitle}>Select a conversation</Text>
-          <Text style={s.emptyStateSub}>Choose from your chats or start a new one.</Text>
-          <TouchableOpacity style={s.emptyStateBtn} onPress={() => setAddMemberModal(true)}>
-            <UserPlus size={16} color="#fff" />
-            <Text style={s.emptyStateBtnText}>New Message</Text>
+        <View style={tw`flex-1 items-center justify-center bg-white p-6`}>
+          <View style={tw`w-[120px] h-[120px] rounded-full bg-[#E9E9EB] items-center justify-center mb-6`}>
+            <MessageSquare size={60} color="#828282" />
+          </View>
+          <Text style={tw`text-[28px] font-semibold text-black mb-4`}>Messages</Text>
+          <Text style={tw`text-[14px] text-[#828282] text-center max-w-[400px]`}>Select a conversation to start messaging.</Text>
+          <TouchableOpacity style={tw`mt-8 bg-[#3CCF6F] px-6 py-3 rounded-full flex-row items-center gap-2`} onPress={() => setAddMemberModal(true)}>
+            <UserPlus size={18} color="#fff" />
+            <Text style={tw`text-white font-bold`}>New Message</Text>
           </TouchableOpacity>
         </View>
       );
     }
 
     return (
-      <KeyboardAvoidingView style={s.chatPanel} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={tw`flex-1 bg-white relative`} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Chat header */}
-        <View style={s.chatHeader}>
-          <View style={s.chatHeaderLeft}>
+        <View style={tw`flex-row items-center justify-between px-4 py-2 bg-white border-b border-[#E6E6E6] h-16`}>
+          <View style={tw`flex-1 flex-row items-center`}>
             {isMobile && (
-              <TouchableOpacity onPress={() => setSelectedChat(null)} style={s.backBtn}>
-                <ChevronLeft size={24} color="#0f172a" />
+              <TouchableOpacity onPress={() => setSelectedChat(null)} style={tw`mr-2`}>
+                <ChevronLeft size={24} color="#000" />
               </TouchableOpacity>
             )}
-            <View style={[s.headerAvatar, { backgroundColor: colorFor(selectedChat.id) }]}>
-              <Text style={s.headerAvatarText}>{selectedChat.avatar || avatarFor(selectedChat.name)}</Text>
-            </View>
-            <View style={s.headerInfo}>
-              <Text style={s.headerName} numberOfLines={1}>{selectedChat.name}</Text>
-              <View style={s.headerStatusRow}>
-                <View style={[s.headerOnlineDot, { backgroundColor: selectedChat.online ? '#22c55e' : '#94a3b8' }]} />
-                <Text style={s.headerStatusText}>{selectedChat.online ? 'Online' : 'Offline'}</Text>
+            <TouchableOpacity style={tw`flex-row items-center flex-1`}>
+              <View style={tw`w-8 h-8 rounded-full bg-[#E9E9EB] items-center justify-center mr-3 overflow-hidden`}>
+                 {selectedChat.image ? (
+                   <Image source={{ uri: selectedChat.image }} style={tw`w-full h-full`} />
+                 ) : (
+                   <Text style={tw`text-[#828282] text-xs font-bold uppercase`}>{selectedChat.avatar || avatarFor(selectedChat.name)}</Text>
+                 )}
               </View>
-            </View>
+              <View style={tw`flex-1`}>
+                <Text style={tw`text-[16px] font-semibold text-[#000000]`} numberOfLines={1}>{selectedChat.name}</Text>
+                <Text style={tw`text-[12px] text-black/50`}>{selectedChat.online ? 'Active now' : 'Offline'}</Text>
+              </View>
+            </TouchableOpacity>
           </View>
-          <View style={s.chatHeaderActions}>
-            <TouchableOpacity style={s.headerActionBtn} onPress={() => setChatOptionsOpen(true)}>
-              <MoreVertical size={18} color="#64748b" />
+          <View style={tw`flex-row gap-4 items-center`}>
+            <TouchableOpacity onPress={startCall}>
+              <PhoneOff size={22} color="#000" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => {}}>
+              <Camera size={22} color="#000" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setChatOptionsOpen(true)}>
+              <MoreVertical size={22} color="#000" />
             </TouchableOpacity>
           </View>
         </View>
@@ -674,42 +913,43 @@ export default function Chat() {
 
         {/* Messages */}
         {loadingMessages ? (
-          <View style={s.loadingPane}><ActivityIndicator color="#0f766e" /></View>
+          <View style={tw`flex-1 items-center justify-center`}><ActivityIndicator color="#3CCF6F" size="large" /></View>
         ) : (
-          <ScrollView style={s.feed} contentContainerStyle={s.feedContent}>
-            <View style={s.dateSep}><Text style={s.dateSepText}>Today</Text></View>
+          <ScrollView style={tw`flex-1 px-4`} contentContainerStyle={tw`py-4 pb-[100px]`}>
+            <Text style={tw`text-[#828282] text-[12px] text-center my-4`}>Today</Text>
+            
             {messages.length === 0 ? (
-              <View style={s.noMsgBox}>
-                <Text style={s.noMsgTitle}>No messages yet</Text>
-                <Text style={s.noMsgSub}>Say hello </Text>
+              <View style={tw`items-center py-10`}>
+                <Text style={tw`text-[#828282] text-[13px]`}>No messages here yet.</Text>
               </View>
             ) : messages.map((msg, idx) => {
               const next = messages[idx + 1];
               const showAv = !msg.self && (!next || next.self !== msg.self);
               return (
-                <View key={msg.id} style={[s.msgRow, msg.self ? s.msgRowSelf : s.msgRowOther]}>
-                  {!msg.self && (showAv
-                    ? <View style={[s.msgAvatar, { backgroundColor: colorFor(selectedChat.id) }]}><Text style={s.msgAvatarText}>{avatarFor(msg.user)}</Text></View>
-                    : <View style={s.msgAvatarSpacer} />
+                <View key={msg.id} style={tw`flex-row mb-1 items-end ${msg.self ? 'justify-end' : 'justify-start'}`}>
+                  {!msg.self && showAv && (
+                    <View style={tw`w-6 h-6 rounded-full bg-[#E9E9EB] items-center justify-center mr-2 mb-1`}>
+                      <Text style={tw`text-[9px] font-bold text-[#828282]`}>{avatarFor(msg.user)}</Text>
+                    </View>
                   )}
-                  <View style={[s.bubble, msg.self ? s.bubbleSelf : s.bubbleOther]}>
+                  {!msg.self && !showAv && <View style={tw`w-8`} />}
+                  
+                  <View style={tw`max-w-[70%] px-4 py-2 ${msg.self ? 'bg-[#3CCF6F]' : 'bg-[#E9E9EB]'} ${msg.self ? 'rounded-[18px] rounded-br-[4px]' : 'rounded-[18px] rounded-bl-[4px]'}`}>
                     {msg.fileUrl && (
-                      <View style={s.filePreview}>
+                      <View style={tw`mb-2 rounded-lg overflow-hidden`}>
                         {msg.fileType?.startsWith('image/') ? (
-                          <Image source={{ uri: msg.fileUrl }} style={s.fileImage} resizeMode="cover" />
+                          <Image source={{ uri: msg.fileUrl }} style={tw`w-[200px] h-[150px] rounded-lg`} resizeMode="cover" />
                         ) : (
-                          <View style={s.fileBox}>
-                            <Paperclip size={16} color="#64748b" />
-                            <Text style={s.fileName} numberOfLines={1}>{msg.fileUrl?.split('/').pop() || 'File'}</Text>
+                          <View style={tw`flex-row items-center bg-black/5 p-2 rounded-lg gap-2`}>
+                            <View style={tw`w-8 h-8 bg-[#828282] items-center justify-center rounded-full`}>
+                              <FileText size={16} color="#fff" />
+                            </View>
+                            <Text style={tw`text-[13px] color-[#000] flex-1`} numberOfLines={1}>{msg.fileUrl?.split('/').pop() || 'File'}</Text>
                           </View>
                         )}
                       </View>
                     )}
-                    <Text style={[s.bubbleText, msg.self ? s.bubbleTextSelf : s.bubbleTextOther]}>{msg.text}</Text>
-                    <View style={s.bubbleMeta}>
-                      <Text style={[s.bubbleTime, msg.self ? s.bubbleTimeSelf : s.bubbleTimeOther]}>{msg.time || 'Now'}</Text>
-                      {msg.self && <CheckCheck size={13} color="rgba(255,255,255,0.7)" style={{ marginLeft: 3 }} />}
-                    </View>
+                    <Text style={tw`text-[14px] ${msg.self ? 'text-white' : 'text-[#000000]'} font-medium leading-[20px]`}>{msg.text}</Text>
                   </View>
                 </View>
               );
@@ -717,20 +957,37 @@ export default function Chat() {
           </ScrollView>
         )}
 
-{/* Input bar */}
-         <View style={s.inputBar}>
-           <TouchableOpacity style={s.inputIconBtn}><Smile size={20} color="#94a3b8" /></TouchableOpacity>
-           <TouchableOpacity style={s.inputIconBtn} onPress={pickDocument} disabled={uploadingFile}>
-             {uploadingFile ? <ActivityIndicator size="small" color="#94a3b8" /> : <Paperclip size={20} color="#94a3b8" />}
-           </TouchableOpacity>
-           <View style={s.inputField}>
-             <TextInput style={s.textInput} placeholder="Type a message" placeholderTextColor="#94a3b8"
-               value={inputVal} onChangeText={setInputVal} multiline />
-           </View>
-           <TouchableOpacity style={[s.sendBtn, !inputVal.trim() && s.sendBtnOff]} onPress={handleSend} disabled={!inputVal.trim()}>
-             <Send size={18} color="#fff" />
-           </TouchableOpacity>
-         </View>
+        {/* Input bar */}
+        <View style={tw`absolute bottom-0 left-0 right-0 bg-white px-4 pb-8 pt-2`}>
+          <View style={tw`flex-row items-center border border-[#E0E0E0] rounded-[20px] bg-white pl-4 pr-2 min-h-[40px] max-h-[100px]`}>
+            <TextInput 
+              style={tw`flex-1 text-[14px] text-black py-2`} 
+              placeholder="Reply" 
+              placeholderTextColor="#828282"
+              value={inputVal} 
+              onChangeText={setInputVal} 
+              multiline 
+            />
+            
+            {!inputVal.trim() ? (
+               <View style={tw`flex-row items-center gap-3 ml-2`}>
+                 <TouchableOpacity onPress={pickDocument} disabled={uploadingFile}>
+                   {uploadingFile ? <ActivityIndicator size="small" color="#828282" /> : <Camera size={20} color="#828282" />}
+                 </TouchableOpacity>
+                 <TouchableOpacity>
+                   <Smile size={20} color="#828282" />
+                 </TouchableOpacity>
+                 <TouchableOpacity>
+                   <Mic size={20} color="#828282" />
+                 </TouchableOpacity>
+               </View>
+            ) : (
+               <TouchableOpacity style={tw`ml-2 w-8 h-8 bg-[#3CCF6F] rounded-full items-center justify-center`} onPress={handleSend} disabled={!inputVal.trim()}>
+                 <Send size={14} color="#fff" />
+               </TouchableOpacity>
+            )}
+          </View>
+        </View>
       </KeyboardAvoidingView>
     );
   };
@@ -741,7 +998,8 @@ export default function Chat() {
   return (
     <View style={s.root}>
       {renderAudioCallModal()}
-      {renderStoryModal()}
+      {renderStatusCreatorModal()}
+      {renderStatusViewerModal()}
       {renderAddMemberModal()}
       {renderCreateGroupModal()}
       {(!isMobile || !selectedChat) && renderSidebar()}
@@ -765,7 +1023,7 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   plusBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#0f766e', alignItems: 'center', justifyContent: 'center' },
 
   /* plus menu */
-  plusMenu: { marginHorizontal: 16, marginBottom: 8, backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 6 },
+  plusMenu: { marginHorizontal: 16, marginBottom: 8, backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden' },
   plusMenuItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
   plusMenuIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' },
   plusMenuLabel: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
@@ -781,7 +1039,7 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
 
   /* search */
   searchBarWrapper: { paddingHorizontal: 16, marginBottom: 12 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 24, paddingHorizontal: 16, height: 48, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 24, paddingHorizontal: 16, height: 48, borderWidth: 1, borderColor: '#e2e8f0' },
   searchIcon: { marginRight: 12 },
   searchInput: { flex: 1, fontSize: 15, color: '#0d1c2e' },
 
@@ -789,7 +1047,7 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   chatList: { flex: 1 },
   chatListContent: { paddingHorizontal: 16, paddingBottom: 100 },
   messagesHeader: { fontSize: 13, fontWeight: '600', color: '#74777d', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 },
-  chatCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 8, backgroundColor: '#ffffff', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 2 },
+  chatCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 8, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#f1f5f9' },
   chatCardUnread: { backgroundColor: '#eff4ff' },
   avatarWrap: { marginRight: 16, position: 'relative' },
   avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
@@ -810,7 +1068,7 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   unreadText: { fontSize: 11, fontWeight: '700', color: '#ffffff' },
   
   /* fab */
-  fab: { position: 'absolute', bottom: 24, right: 24, width: 56, height: 56, backgroundColor: '#006b5e', borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6, zIndex: 50 },
+  fab: { position: 'absolute', bottom: 24, right: 24, width: 56, height: 56, backgroundColor: '#006b5e', borderRadius: 16, alignItems: 'center', justifyContent: 'center', zIndex: 50 },
 
   /* empty states */
   loadingPane: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
@@ -883,8 +1141,8 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   sendBtnOff: { backgroundColor: '#cbd5e1' },
 
   /* audio call modal */
-  callOverlay: { flex: 1, backgroundColor: 'rgba(2,6,23,0.85)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  callCard: { width: '100%', maxWidth: 340, backgroundColor: '#0f172a', borderRadius: 32, padding: 32, alignItems: 'center', gap: 16 },
+  callOverlay: { flex: 1, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  callCard: { width: '100%', maxWidth: 340, backgroundColor: '#1e293b', borderRadius: 32, padding: 32, alignItems: 'center', gap: 16 },
   callAvatar: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
   callAvatarText: { fontSize: 32, fontWeight: '900', color: '#fff' },
   callName: { fontSize: 22, fontWeight: '900', color: '#fff' },
@@ -892,19 +1150,19 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   callWaveRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, height: 40, marginVertical: 8 },
   callWaveBar: { width: 4, backgroundColor: '#0f766e', borderRadius: 2, minHeight: 8 },
   callControls: { flexDirection: 'row', gap: 20, marginTop: 8 },
-  callCtrlBtn: { alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.1)', width: 64, height: 64, borderRadius: 32, justifyContent: 'center' },
+  callCtrlBtn: { alignItems: 'center', gap: 6, backgroundColor: '#334155', width: 64, height: 64, borderRadius: 32, justifyContent: 'center' },
   callCtrlRed: { backgroundColor: 'rgba(239,68,68,0.2)' },
   callEndBtn: { alignItems: 'center', gap: 6, backgroundColor: '#ef4444', width: 72, height: 72, borderRadius: 36, justifyContent: 'center' },
   callCtrlLabel: { fontSize: 10, fontWeight: '800', color: '#fff', textAlign: 'center' },
 
   /* story modal */
-  storyOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center' },
+  storyOverlay: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
   storyCard: { width: '100%', height: '100%', padding: 20, justifyContent: 'space-between' },
   storyProgressRow: { flexDirection: 'row', gap: 4, marginTop: 8 },
-  storyProgressBar: { flex: 1, height: 3, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2 },
+  storyProgressBar: { flex: 1, height: 3, backgroundColor: '#334155', borderRadius: 2 },
   storyProgressActive: { backgroundColor: '#fff' },
   storyTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
-  storyAvatarSmall: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  storyAvatarSmall: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#334155', alignItems: 'center', justifyContent: 'center' },
   storyAvatarSmallText: { fontSize: 12, fontWeight: '900', color: '#fff' },
   storyOwnerName: { fontSize: 14, fontWeight: '800', color: '#fff' },
   storyTime: { fontSize: 12, color: 'rgba(255,255,255,0.6)' },
@@ -912,8 +1170,8 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   storyEmoji: { fontSize: 64 },
   storyText: { fontSize: 20, fontWeight: '800', color: '#fff', textAlign: 'center' },
   storyReplyRow: { flexDirection: 'row', gap: 10, alignItems: 'center', paddingBottom: 20 },
-  storyReplyInput: { flex: 1, height: 46, borderRadius: 23, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.4)', paddingHorizontal: 16, color: '#fff', fontSize: 14 },
-  storyReplySend: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  storyReplyInput: { flex: 1, height: 46, borderRadius: 23, borderWidth: 1.5, borderColor: '#334155', paddingHorizontal: 16, color: '#fff', fontSize: 14, backgroundColor: '#1e293b' },
+  storyReplySend: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center' },
 
   /* modals */
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
@@ -943,11 +1201,6 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
     overflow: 'hidden',
   },
   optionsItem: { paddingHorizontal: 14, paddingVertical: 12 },

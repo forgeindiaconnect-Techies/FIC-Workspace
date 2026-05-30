@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:mfe": "node dev-mfe.js",
     "expo": "npx expo start mobile",
     "dev:mobile": "npx expo start mobile",
     "expo:android": "npx expo start mobile --android",
@@ -31,6 +32,7 @@
     "@tiptap/starter-kit": "^3.22.5",
     "bcryptjs": "^3.0.3",
     "buffer": "^6.0.3",
+    "cloudinary": "^2.10.0",
     "clsx": "^2.1.1",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
@@ -40,6 +42,7 @@
     "framer-motion": "^12.38.0",
     "groq-sdk": "^1.1.2",
     "html2canvas": "^1.4.1",
+    "http-proxy": "^1.18.1",
     "jsonwebtoken": "^9.0.3",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.8.0",

@@ -1,20 +1,18 @@
-﻿import React from 'react';
+import React from 'react';
 import { View, StyleSheet, Platform, StatusBar, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomNav, TopBar } from './layout';
+import { TopBar } from './layout';
 import { Outlet, useLocation } from '../lib/router';
-import { getScreenType, getContentPadding, getBottomNavHeight } from '../lib/responsive';
+import { getScreenType, getContentPadding } from '../lib/responsive';
 
 export default function AppLayout() {
   const location = useLocation();
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const pageTitle = location.pathname.split('/')[1] || 'Workspace';
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   
   const screenType = getScreenType(width);
   const contentPadding = getContentPadding(screenType, width);
-  const bottomNavHeight = getBottomNavHeight(width);
 
   React.useEffect(() => {
     const checkFullscreen = () => {
@@ -27,6 +25,8 @@ export default function AppLayout() {
     return () => clearInterval(interval);
   }, [isFullscreen]);
 
+  const showTopBar = !isFullscreen && !location.pathname.startsWith('/mail') && !location.pathname.startsWith('/chat');
+
   return (
     <SafeAreaView style={[styles.safeArea, isFullscreen && styles.safeAreaFullscreen]} edges={isFullscreen ? [] : ['top', 'bottom', 'left', 'right']}>
       <StatusBar 
@@ -36,21 +36,20 @@ export default function AppLayout() {
         hidden={isFullscreen}
       />
       <View style={styles.container}>
-        {!isFullscreen && <TopBar title={pageTitle} />}
+        {showTopBar && <TopBar title={pageTitle} />}
         <View style={[
           styles.main,
           isFullscreen && styles.mainFullscreen,
           !isFullscreen && {
             paddingHorizontal: contentPadding.horizontal,
-            paddingTop: contentPadding.vertical,
-            paddingBottom: bottomNavHeight + contentPadding.vertical,
+            paddingTop: showTopBar ? contentPadding.vertical : 0,
+            paddingBottom: contentPadding.vertical,
           }
         ]}>
           <View style={styles.contentWrapper}>
             <Outlet />
           </View>
         </View>
-        {!isFullscreen && <BottomNav />}
       </View>
     </SafeAreaView>
   );

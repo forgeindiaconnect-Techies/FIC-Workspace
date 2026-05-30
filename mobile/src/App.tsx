@@ -8,7 +8,7 @@ import Home from "./pages/Home";
 import Meetings from "./pages/Meetings";
 import Mail from "./pages/Mail";
 import Chat from "./pages/Chat";
-import Tasks from "./pages/Tasks";
+
 import Settings from "./pages/Settings";
 import TeamManagement from "./pages/TeamManagement";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
@@ -82,7 +82,7 @@ export default function App() {
           <Route path="meetings" element={<Meetings />} />
           <Route path="mail" element={<Mail />} />
           <Route path="chat" element={<Chat />} />
-          <Route path="tasks" element={<Tasks />} />
+
           <Route path="settings" element={<Settings />} />
           <Route path="team" element={<TeamManagement />} />
           <Route path="superadmin" element={<SuperAdminDashboard />} />
