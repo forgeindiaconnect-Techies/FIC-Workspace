@@ -11,8 +11,8 @@ export function validateMongoUri(uri: string): string | null {
   const atCount = (withoutScheme.match(/@/g) || []).length;
   if (atCount > 1) {
     return (
-      'MONGO_URI looks malformed: password contains "@" — encode it as %40 ' +
-      '(example: Dhanushcj@123 → Dhanushcj%40123)'
+      'MONGO_URI looks malformed: password contains "@"  encode it as %40 ' +
+      '(example: Dhanushcj@123  Dhanushcj%40123)'
     );
   }
   return null;
@@ -43,8 +43,8 @@ export async function connectMongo(uri: string, log: { info: (m: string) => void
     let message = err.message;
     if (message.includes('bad auth')) {
       message =
-        'MongoDB authentication failed — wrong username/password in MONGO_URI. ' +
-        'In Atlas: Database Access → edit user → reset password (avoid @ in password), then update Render MONGO_URI.';
+        'MongoDB authentication failed  wrong username/password in MONGO_URI. ' +
+        'In Atlas: Database Access  edit user  reset password (avoid @ in password), then update Render MONGO_URI.';
     }
     lastConnectError = message;
     log.error('Mongoose failed connecting to MongoDB: ' + message);

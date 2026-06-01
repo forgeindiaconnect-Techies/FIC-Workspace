@@ -33,7 +33,7 @@ export function handleCallSignaling(ws: WebSocket) {
 
     const { type, data = {} } = msg;
 
-    // ── REGISTER ──────────────────────────────────────────────────────────
+    //  REGISTER 
     if (type === 'register') {
       const { token } = data;
       if (!token) return send(ws, { type: 'error', message: 'token required' });
@@ -63,7 +63,7 @@ export function handleCallSignaling(ws: WebSocket) {
       return send(ws, { type: 'error', message: 'not registered, send register first' });
     }
 
-    // ── CALL_USER (Caller → Callee) ────────────────────────────────────────
+    //  CALL_USER (Caller  Callee) 
     if (type === 'call_user') {
       const { targetEmail, offer, callerName } = data;
       if (!targetEmail || !offer) {
@@ -89,7 +89,7 @@ export function handleCallSignaling(ws: WebSocket) {
       return;
     }
 
-    // ── CALL_ANSWER (Callee → Caller) ─────────────────────────────────────
+    //  CALL_ANSWER (Callee  Caller) 
     if (type === 'call_answer') {
       const { targetEmail, answer } = data;
       if (!targetEmail || !answer) return;
@@ -107,7 +107,7 @@ export function handleCallSignaling(ws: WebSocket) {
       return;
     }
 
-    // ── CALL_DECLINED ────────────────────────────────────────────────────
+    //  CALL_DECLINED 
     if (type === 'call_declined') {
       const { targetEmail } = data;
       const normalizedTarget = (targetEmail || '').toLowerCase().trim();
@@ -119,7 +119,7 @@ export function handleCallSignaling(ws: WebSocket) {
       return;
     }
 
-    // ── CALL_ENDED ───────────────────────────────────────────────────────
+    //  CALL_ENDED 
     if (type === 'call_ended') {
       const { targetEmail } = data;
       const normalizedTarget = (targetEmail || '').toLowerCase().trim();
@@ -131,7 +131,7 @@ export function handleCallSignaling(ws: WebSocket) {
       return;
     }
 
-    // ── ICE_CANDIDATE (relay during connection setup) ────────────────────
+    //  ICE_CANDIDATE (relay during connection setup) 
     if (type === 'ice_candidate') {
       const { targetEmail, candidate } = data;
       if (!targetEmail || !candidate) return;

@@ -275,7 +275,7 @@ export async function kuralRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // ── Group routes (registered BEFORE parametric /:workspaceId/:channelId) ──
+  //  Group routes (registered BEFORE parametric /:workspaceId/:channelId) 
 
   fastify.get('/search', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -472,7 +472,7 @@ export async function kuralRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // ── Parametric catch-all routes (must come AFTER static routes) ──
+  //  Parametric catch-all routes (must come AFTER static routes) 
 
 
   fastify.get('/:workspaceId/:channelId', async (request: FastifyRequest, reply: FastifyReply) => {

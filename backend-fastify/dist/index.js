@@ -31,12 +31,12 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // backend-fastify/src/models/Transcript.ts
-var import_mongoose8, TranscriptSchema, Transcript;
+var import_mongoose10, TranscriptSchema, Transcript;
 var init_Transcript = __esm({
   "backend-fastify/src/models/Transcript.ts"() {
     "use strict";
-    import_mongoose8 = require("mongoose");
-    TranscriptSchema = new import_mongoose8.Schema({
+    import_mongoose10 = require("mongoose");
+    TranscriptSchema = new import_mongoose10.Schema({
       meetingId: { type: String, required: true, index: true },
       userId: { type: String, required: true },
       speakerName: { type: String, required: true },
@@ -44,7 +44,7 @@ var init_Transcript = __esm({
       timestamp: { type: Date, default: Date.now },
       createdAt: { type: Date, default: Date.now }
     });
-    Transcript = (0, import_mongoose8.model)("Transcript", TranscriptSchema);
+    Transcript = (0, import_mongoose10.model)("Transcript", TranscriptSchema);
   }
 });
 
@@ -99,19 +99,19 @@ var MutedUser_exports = {};
 __export(MutedUser_exports, {
   MutedUser: () => MutedUser
 });
-var import_mongoose17, MutedUserSchema, MutedUser;
+var import_mongoose19, MutedUserSchema, MutedUser;
 var init_MutedUser = __esm({
   "backend-fastify/src/models/MutedUser.ts"() {
     "use strict";
-    import_mongoose17 = require("mongoose");
-    MutedUserSchema = new import_mongoose17.Schema({
+    import_mongoose19 = require("mongoose");
+    MutedUserSchema = new import_mongoose19.Schema({
       userId: { type: String, required: true },
       userEmail: { type: String, required: true },
       mutedUserEmail: { type: String, required: true },
       createdAt: { type: Date, default: Date.now }
     });
     MutedUserSchema.index({ userEmail: 1, mutedUserEmail: 1 }, { unique: true });
-    MutedUser = (0, import_mongoose17.model)("MutedUser", MutedUserSchema);
+    MutedUser = (0, import_mongoose19.model)("MutedUser", MutedUserSchema);
   }
 });
 
@@ -322,7 +322,7 @@ function validateMongoUri(uri) {
   const withoutScheme = uri.replace(/^mongodb(\+srv)?:\/\//, "");
   const atCount = (withoutScheme.match(/@/g) || []).length;
   if (atCount > 1) {
-    return 'MONGO_URI looks malformed: password contains "@" \u2014 encode it as %40 (example: Dhanushcj@123 \u2192 Dhanushcj%40123)';
+    return 'MONGO_URI looks malformed: password contains "@"  encode it as %40 (example: Dhanushcj@123  Dhanushcj%40123)';
   }
   return null;
 }
@@ -348,7 +348,7 @@ async function connectMongo(uri, log) {
   } catch (err) {
     let message = err.message;
     if (message.includes("bad auth")) {
-      message = "MongoDB authentication failed \u2014 wrong username/password in MONGO_URI. In Atlas: Database Access \u2192 edit user \u2192 reset password (avoid @ in password), then update Render MONGO_URI.";
+      message = "MongoDB authentication failed  wrong username/password in MONGO_URI. In Atlas: Database Access  edit user  reset password (avoid @ in password), then update Render MONGO_URI.";
     }
     lastConnectError = message;
     log.error("Mongoose failed connecting to MongoDB: " + message);
@@ -734,7 +734,7 @@ async function authRoutes(fastify2) {
 
 // backend-fastify/src/routes/meetings.ts
 var import_bcrypt3 = __toESM(require("bcrypt"));
-var import_mongoose10 = require("mongoose");
+var import_mongoose11 = require("mongoose");
 
 // backend-fastify/src/models/Meeting.ts
 var import_mongoose5 = require("mongoose");
@@ -780,22 +780,9 @@ var RecordingSchema = new import_mongoose7.Schema({
 });
 var Recording = (0, import_mongoose7.model)("Recording", RecordingSchema);
 
-// backend-fastify/src/services/aiBot.ts
-var import_ws = __toESM(require("ws"));
-var import_fs2 = __toESM(require("fs"));
-var import_path = __toESM(require("path"));
-var import_os = __toESM(require("os"));
-var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
-var import_bcrypt2 = __toESM(require("bcrypt"));
-init_transcription();
-
-// backend-fastify/src/services/summarizer.ts
-var import_groq_sdk2 = __toESM(require("groq-sdk"));
-init_Transcript();
-
 // backend-fastify/src/models/Mail.ts
-var import_mongoose9 = __toESM(require("mongoose"));
-var mailSchema = new import_mongoose9.default.Schema({
+var import_mongoose8 = __toESM(require("mongoose"));
+var mailSchema = new import_mongoose8.default.Schema({
   workspaceId: { type: String, required: true, default: "antigraviity-hq" },
   ownerEmail: { type: String, required: true },
   // The user who owns this specific copy of the email
@@ -820,9 +807,32 @@ mailSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var Mail = import_mongoose9.default.model("Mail", mailSchema);
+var Mail = import_mongoose8.default.model("Mail", mailSchema);
+
+// backend-fastify/src/models/Room.ts
+var import_mongoose9 = require("mongoose");
+var RoomSchema = new import_mongoose9.Schema({
+  workspaceId: { type: String, required: true },
+  creatorId: { type: import_mongoose9.Schema.Types.ObjectId, ref: "User", required: true },
+  title: { type: String, required: true },
+  tag: { type: String, required: true },
+  color: { type: String, default: "#7c3aed" },
+  createdAt: { type: Date, default: Date.now }
+});
+var Room = (0, import_mongoose9.model)("Room", RoomSchema);
+
+// backend-fastify/src/services/aiBot.ts
+var import_ws = __toESM(require("ws"));
+var import_fs2 = __toESM(require("fs"));
+var import_path = __toESM(require("path"));
+var import_os = __toESM(require("os"));
+var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
+var import_bcrypt2 = __toESM(require("bcrypt"));
+init_transcription();
 
 // backend-fastify/src/services/summarizer.ts
+var import_groq_sdk2 = __toESM(require("groq-sdk"));
+init_Transcript();
 var groq2 = new import_groq_sdk2.default({ apiKey: process.env.GROQ_API_KEY });
 async function dispatchSummaryMail(meeting, summaryHtml) {
   try {
@@ -834,7 +844,7 @@ async function dispatchSummaryMail(meeting, summaryHtml) {
       // exclude the bot itself
     });
     if (users.length === 0) {
-      console.warn("[Summarizer] No human participants found \u2014 skipping mail dispatch.");
+      console.warn("[Summarizer] No human participants found  skipping mail dispatch.");
       return;
     }
     const recipientEmails = users.map((u) => u.email);
@@ -843,7 +853,7 @@ async function dispatchSummaryMail(meeting, summaryHtml) {
       senderName: "Nexus AI Assistant",
       senderEmail: "ai-assistant@nexus.app",
       recipientEmails,
-      subject: `\u{1F4CB} Meeting Summary: ${meeting.title}`,
+      subject: ` Meeting Summary: ${meeting.title}`,
       body: summaryHtml,
       isRead: false,
       isStarred: false,
@@ -853,7 +863,7 @@ async function dispatchSummaryMail(meeting, summaryHtml) {
     for (const email of recipientEmails) {
       await Mail.create({ ...mailDoc, ownerEmail: email, folder: "inbox" });
     }
-    console.log(`[Summarizer] \u2705 Summary mail dispatched to ${recipientEmails.length} participant(s): ${recipientEmails.join(", ")}`);
+    console.log(`[Summarizer]  Summary mail dispatched to ${recipientEmails.length} participant(s): ${recipientEmails.join(", ")}`);
   } catch (err) {
     console.error("[Summarizer] Mail dispatch failed:", err.message);
   }
@@ -878,7 +888,7 @@ async function summarizeMeeting(meetingId) {
     summaryHtml = `
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;border-radius:12px">
   <div style="background:linear-gradient(135deg,#1e40af,#7c3aed);padding:24px;border-radius:8px;margin-bottom:20px">
-    <h1 style="color:#fff;margin:0;font-size:22px">\u{1F4CB} Meeting Completed</h1>
+    <h1 style="color:#fff;margin:0;font-size:22px"> Meeting Completed</h1>
     <p style="color:#bfdbfe;margin:8px 0 0">${meeting.title}</p>
   </div>
   <div style="background:#fff;padding:20px;border-radius:8px;border:1px solid #e2e8f0">
@@ -1156,7 +1166,7 @@ async function meetingRoutes(fastify2) {
   }
   async function resolveMeetingIdentifier(idOrCode) {
     const value = String(idOrCode || "").trim();
-    if (import_mongoose10.Types.ObjectId.isValid(value)) {
+    if (import_mongoose11.Types.ObjectId.isValid(value)) {
       return Meeting.findById(value);
     }
     return Meeting.findOne({ joinCode: normalizeJoinCode(value) });
@@ -1173,7 +1183,8 @@ async function meetingRoutes(fastify2) {
         duration,
         scheduledAt,
         startTime,
-        recordingEnabled
+        recordingEnabled,
+        inviteEmails
       } = request.body;
       if (!title) {
         return reply.code(400).send({ error: "Meeting title is required." });
@@ -1186,18 +1197,18 @@ async function meetingRoutes(fastify2) {
       }
       const meeting = await Meeting.create({
         title,
-        hostId: new import_mongoose10.Types.ObjectId(request.user.id),
+        hostId: new import_mongoose11.Types.ObjectId(request.user.id),
         joinCode,
         passcodeHash,
         scheduledAt: scheduledAt || startTime ? new Date(scheduledAt || startTime) : /* @__PURE__ */ new Date(),
         durationMinutes: durationMinutes || duration || 60,
         recordingEnabled: !!recordingEnabled,
         status: "scheduled",
-        participantIds: [new import_mongoose10.Types.ObjectId(request.user.id)]
+        participantIds: [new import_mongoose11.Types.ObjectId(request.user.id)]
       });
       await Participant.create({
         meetingId: meeting._id,
-        userId: new import_mongoose10.Types.ObjectId(request.user.id),
+        userId: new import_mongoose11.Types.ObjectId(request.user.id),
         role: "host",
         joinedAt: /* @__PURE__ */ new Date(),
         audioMuted: false,
@@ -1224,10 +1235,52 @@ async function meetingRoutes(fastify2) {
           }
         })
       }).then((res) => {
-        console.log(`\u{1FA9D} [WEBHOOK] Successfully dispatched meeting.created: Status ${res.status}`);
+        console.log(` [WEBHOOK] Successfully dispatched meeting.created: Status ${res.status}`);
       }).catch((err) => {
-        console.error("\u{1FA9D} [WEBHOOK] dispatch failed:", err.message);
+        console.error(" [WEBHOOK] dispatch failed:", err.message);
       });
+      try {
+        const workspaceId = request.user?.workspaceId || "antigraviity-hq";
+        const allUsers = await User.find({ workspaceId });
+        const targetEmails = allUsers.map((u) => u.email).filter((e) => e !== request.user.email);
+        if (targetEmails.length > 0) {
+          const timeStr = scheduledAt || startTime ? new Date(scheduledAt || startTime).toLocaleString() : "Now";
+          const mailBody = `
+  <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b;">
+    <h2 style="color: #2563eb;">Meeting Invitation: ${meeting.title}</h2>
+    <p>Hi there,</p>
+    <p>You have been invited by <strong>${request.user.name}</strong> to join a Nexus Workspace meeting.</p>
+    
+    <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0;">
+      <p style="margin: 0 0 10px 0;"><strong>Date & Time:</strong> ${timeStr}</p>
+      <p style="margin: 0 0 10px 0;"><strong>Duration:</strong> ${meeting.durationMinutes} minutes</p>
+      <p style="margin: 0 0 10px 0;"><strong>Room Code:</strong> <span style="font-family: monospace; font-size: 16px; background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">${meeting.joinCode}</span></p>
+      ${plainPasscode ? `<p style="margin: 0;"><strong>Passcode:</strong> ${plainPasscode}</p>` : ""}
+    </div>
+
+    <p>To join the meeting, open the <strong>Meetings</strong> app in your workspace and enter the Room Code above.</p>
+    <br/>
+    <p>Best regards,<br/><strong>Nexus AI</strong></p>
+  </div>
+          `;
+          for (const email of targetEmails) {
+            Mail.create({
+              workspaceId,
+              ownerEmail: email,
+              folder: "inbox",
+              senderName: "Nexus AI",
+              senderEmail: "nexus-ai@workspace.app",
+              recipientEmails: [email],
+              subject: `Invitation: ${meeting.title}`,
+              body: mailBody,
+              attachments: [],
+              isRead: false
+            }).catch((e) => console.error("Failed to create invite email for", email, e));
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch workspace users for invitations", e);
+      }
       return reply.code(201).send(meeting);
     } catch (err) {
       return reply.code(500).send({ error: "Failed to create meeting room.", details: err.message });
@@ -1240,20 +1293,20 @@ async function meetingRoutes(fastify2) {
       const cleanCode = normalizeJoinCode(String(code || ""));
       let meeting = await resolveMeetingIdentifier(cleanCode);
       const persistentRoomTitles = {
-        "NEXUS-BOARDROOM": "\u{1F30C} General Boardroom",
-        "NEXUS-ENG": "\u{1F4BB} Developer Sandbox",
-        "NEXUS-DESIGN": "\u{1F3A8} UX Design Workshop"
+        "NEXUS-BOARDROOM": " General Boardroom",
+        "NEXUS-ENG": " Developer Sandbox",
+        "NEXUS-DESIGN": " UX Design Workshop"
       };
       if (!meeting && persistentRoomTitles[cleanCode]) {
         meeting = await Meeting.create({
           title: persistentRoomTitles[cleanCode],
-          hostId: new import_mongoose10.Types.ObjectId(request.user.id),
+          hostId: new import_mongoose11.Types.ObjectId(request.user.id),
           joinCode: cleanCode,
           scheduledAt: /* @__PURE__ */ new Date(),
           durationMinutes: 9999,
           // Persistent room has unlimited duration
           status: "live",
-          participantIds: [new import_mongoose10.Types.ObjectId(request.user.id)]
+          participantIds: [new import_mongoose11.Types.ObjectId(request.user.id)]
         });
       }
       if (!meeting) {
@@ -1271,7 +1324,7 @@ async function meetingRoutes(fastify2) {
           return reply.code(401).send({ error: "Invalid meeting passcode." });
         }
       }
-      const userId = new import_mongoose10.Types.ObjectId(request.user.id);
+      const userId = new import_mongoose11.Types.ObjectId(request.user.id);
       const hostId = meeting.hostId._id?.toString?.() || meeting.hostId.toString();
       await Participant.findOneAndUpdate(
         { meetingId: meeting._id, userId },
@@ -1320,7 +1373,7 @@ async function meetingRoutes(fastify2) {
   fastify2.get("/:id", { preHandler: authenticate }, async (request, reply) => {
     try {
       const { id } = request.params;
-      if (!import_mongoose10.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose11.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid meeting ID format." });
       }
       const meeting = await Meeting.findById(id).populate("hostId", "name email avatarUrl");
@@ -1343,7 +1396,7 @@ async function meetingRoutes(fastify2) {
     try {
       const { id } = request.params;
       const { title, scheduledAt, durationMinutes, recordingEnabled } = request.body;
-      if (!import_mongoose10.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose11.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid meeting ID." });
       }
       const meeting = await Meeting.findById(id);
@@ -1401,9 +1454,9 @@ async function meetingRoutes(fastify2) {
           }
         })
       }).then((res) => {
-        console.log(`\u{1FA9D} [WEBHOOK] Successfully dispatched meeting.started: Status ${res.status}`);
+        console.log(` [WEBHOOK] Successfully dispatched meeting.started: Status ${res.status}`);
       }).catch((err) => {
-        console.error("\u{1FA9D} [WEBHOOK] dispatch failed:", err.message);
+        console.error(" [WEBHOOK] dispatch failed:", err.message);
       });
       return reply.code(200).send({ success: true, status: "live", meeting });
     } catch (err) {
@@ -1447,7 +1500,7 @@ async function meetingRoutes(fastify2) {
       const fileName = `chunk_${id}_${userId}_${Date.now()}.${ext}`;
       const filePath = pathMod.join(os2.tmpdir(), fileName);
       fsMod.writeFileSync(filePath, rawBody);
-      console.log(`[AudioChunk] Saved ${rawBody.length} bytes \u2192 ${filePath}`);
+      console.log(`[AudioChunk] Saved ${rawBody.length} bytes  ${filePath}`);
       const text = await transcribeChunk2(id, userId, speakerName, filePath);
       try {
         fsMod.unlinkSync(filePath);
@@ -1485,9 +1538,9 @@ async function meetingRoutes(fastify2) {
           }
         })
       }).then((res) => {
-        console.log(`\u{1FA9D} [WEBHOOK] Successfully dispatched meeting.ended: Status ${res.status}`);
+        console.log(` [WEBHOOK] Successfully dispatched meeting.ended: Status ${res.status}`);
       }).catch((err) => {
-        console.error("\u{1FA9D} [WEBHOOK] dispatch failed:", err.message);
+        console.error(" [WEBHOOK] dispatch failed:", err.message);
       });
       await Participant.updateMany(
         { meetingId: meeting._id, leftAt: { $exists: false } },
@@ -1529,7 +1582,7 @@ async function meetingRoutes(fastify2) {
       await Participant.findOneAndUpdate(
         {
           meetingId: meeting._id,
-          userId: new import_mongoose10.Types.ObjectId(request.user.id),
+          userId: new import_mongoose11.Types.ObjectId(request.user.id),
           leftAt: { $exists: false }
         },
         { leftAt: /* @__PURE__ */ new Date() },
@@ -1564,7 +1617,7 @@ async function meetingRoutes(fastify2) {
     try {
       const { page = 1, limit = 10 } = request.query;
       const skip = (parseInt(page) - 1) * parseInt(limit);
-      const userId = new import_mongoose10.Types.ObjectId(request.user.id);
+      const userId = new import_mongoose11.Types.ObjectId(request.user.id);
       const meetings = await Meeting.find({
         $or: [
           { hostId: userId },
@@ -1623,7 +1676,7 @@ async function meetingRoutes(fastify2) {
   fastify2.post("/:id/summarize", { preHandler: authenticate }, async (request, reply) => {
     try {
       const { id } = request.params;
-      if (!import_mongoose10.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose11.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid meeting ID format." });
       }
       const meeting = await Meeting.findById(id);
@@ -1640,6 +1693,106 @@ async function meetingRoutes(fastify2) {
       return reply.code(200).send({ summary: summaryHtml });
     } catch (err) {
       return reply.code(500).send({ error: "Failed to generate AI summary.", details: err.message });
+    }
+  });
+  fastify2.get("/history", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { page = 1, limit = 10 } = request.query;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const userId = new import_mongoose11.Types.ObjectId(request.user.id);
+      const meetings = await Meeting.find({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      }).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).populate("hostId", "name email avatarUrl");
+      const total = await Meeting.countDocuments({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      });
+      return reply.code(200).send({
+        meetings,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to retrieve history logs.", details: err.message });
+    }
+  });
+  fastify2.get("/:id/participants", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const meeting = await resolveMeetingIdentifier(id);
+      if (!meeting) {
+        return reply.code(404).send({ error: "Meeting not found." });
+      }
+      const participants = await Participant.find({
+        meetingId: meeting._id,
+        leftAt: { $exists: false }
+      }).populate("userId", "name email avatarUrl");
+      const mapped = participants.map((p) => {
+        const userObj = p.userId || {};
+        return {
+          id: p._id.toString(),
+          userId: userObj._id?.toString() || p.userId?.toString() || "unknown",
+          name: userObj.name || "Anonymous Peer",
+          email: userObj.email || "",
+          avatar: (userObj.name || "AP").slice(0, 2).toUpperCase(),
+          role: p.role,
+          audioMuted: p.audioMuted,
+          videoMuted: p.videoMuted,
+          joinedAt: p.joinedAt
+        };
+      });
+      return reply.code(200).send(mapped);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to retrieve active participants.", details: err.message });
+    }
+  });
+  fastify2.get("/rooms", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const workspaceId = request.user?.workspaceId || "antigraviity-hq";
+      const rooms2 = await Room.find({ workspaceId }).sort({ createdAt: -1 });
+      return reply.code(200).send(rooms2);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to fetch rooms", details: err.message });
+    }
+  });
+  fastify2.post("/rooms", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { title, tag, color } = request.body;
+      const workspaceId = request.user?.workspaceId || "antigraviity-hq";
+      if (!title || !tag) return reply.code(400).send({ error: "Title and Tag are required." });
+      const room = await Room.create({
+        workspaceId,
+        creatorId: request.user.id,
+        title,
+        tag,
+        color: color || "#7c3aed"
+      });
+      return reply.code(201).send(room);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to create room", details: err.message });
+    }
+  });
+  fastify2.delete("/rooms/:id", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const room = await Room.findById(id);
+      if (!room) return reply.code(404).send({ error: "Room not found." });
+      if (room.creatorId.toString() !== request.user.id && request.user.role !== "company-admin") {
+        return reply.code(403).send({ error: "Unauthorized to delete this room." });
+      }
+      await Room.findByIdAndDelete(id);
+      return reply.code(200).send({ success: true });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to delete room", details: err.message });
     }
   });
 }
@@ -1722,10 +1875,14 @@ async function mailRoutes(fastify2) {
       const folder = request.query.folder || "inbox";
       const ownerEmail = request.user.email;
       const query = { ownerEmail };
-      if (folder !== "all") {
+      if (folder === "starred") {
+        query.isStarred = true;
+      } else if (folder !== "all") {
         query.folder = folder;
       }
+      console.log(`[Mail GET] folder: ${folder}, query:`, query);
       const mails = await Mail.find(query).sort({ sentAt: -1 });
+      console.log(`[Mail GET] found ${mails.length} mails`);
       return reply.code(200).send(mails);
     } catch (err) {
       return reply.code(500).send({ error: "Failed to fetch mail" });
@@ -1948,15 +2105,16 @@ Important: Provide ONLY the final generated email body text. Do not include intr
 }
 
 // backend-fastify/src/routes/kural.ts
-var import_mongoose14 = require("mongoose");
+var import_mongoose16 = require("mongoose");
 var import_cloudinary = require("cloudinary");
 
 // backend-fastify/src/models/KuralConversation.ts
-var import_mongoose11 = require("mongoose");
-var KuralConversationSchema = new import_mongoose11.Schema({
+var import_mongoose12 = require("mongoose");
+var KuralConversationSchema = new import_mongoose12.Schema({
   workspaceId: { type: String, required: true, index: true },
   type: { type: String, enum: ["direct", "channel"], default: "direct" },
   name: { type: String },
+  avatarUrl: { type: String },
   participantEmails: [{ type: String, required: true, lowercase: true, trim: true }],
   createdByEmail: { type: String, required: true, lowercase: true, trim: true },
   lastMessageContent: { type: String },
@@ -1970,12 +2128,12 @@ KuralConversationSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var KuralConversation = (0, import_mongoose11.model)("KuralConversation", KuralConversationSchema);
+var KuralConversation = (0, import_mongoose12.model)("KuralConversation", KuralConversationSchema);
 
 // backend-fastify/src/models/KuralMessage.ts
-var import_mongoose12 = require("mongoose");
-var KuralMessageSchema = new import_mongoose12.Schema({
-  conversationId: { type: import_mongoose12.Schema.Types.ObjectId, ref: "KuralConversation", required: true, index: true },
+var import_mongoose13 = require("mongoose");
+var KuralMessageSchema = new import_mongoose13.Schema({
+  conversationId: { type: import_mongoose13.Schema.Types.ObjectId, ref: "KuralConversation", required: true, index: true },
   workspaceId: { type: String, required: true, index: true },
   senderEmail: { type: String, required: true, lowercase: true, trim: true },
   senderName: { type: String, required: true },
@@ -1986,11 +2144,11 @@ var KuralMessageSchema = new import_mongoose12.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 KuralMessageSchema.index({ conversationId: 1, createdAt: 1 });
-var KuralMessage = (0, import_mongoose12.model)("KuralMessage", KuralMessageSchema);
+var KuralMessage = (0, import_mongoose13.model)("KuralMessage", KuralMessageSchema);
 
 // backend-fastify/src/models/Story.ts
-var import_mongoose13 = require("mongoose");
-var StorySchema = new import_mongoose13.Schema({
+var import_mongoose14 = require("mongoose");
+var StorySchema = new import_mongoose14.Schema({
   workspaceId: { type: String, required: true, index: true },
   userId: { type: String },
   userEmail: { type: String, required: true },
@@ -2016,7 +2174,27 @@ var StorySchema = new import_mongoose13.Schema({
   // Auto-delete after 24 hours
 });
 StorySchema.index({ workspaceId: 1, createdAt: -1 });
-var Story = (0, import_mongoose13.model)("Story", StorySchema);
+var Story = (0, import_mongoose14.model)("Story", StorySchema);
+
+// backend-fastify/src/models/CallLog.ts
+var import_mongoose15 = __toESM(require("mongoose"));
+var CallLogSchema = new import_mongoose15.Schema(
+  {
+    callerEmail: { type: String, required: true },
+    calleeEmail: { type: String, required: true },
+    callerName: { type: String, required: true },
+    calleeName: { type: String, required: true },
+    callType: { type: String, enum: ["audio", "video"], default: "audio" },
+    status: { type: String, enum: ["answered", "missed", "declined"], default: "answered" },
+    duration: { type: Number, default: 0 },
+    timestamp: { type: Date, default: Date.now },
+    deletedBy: { type: [String], default: [] }
+  },
+  { timestamps: true }
+);
+CallLogSchema.index({ callerEmail: 1, timestamp: -1 });
+CallLogSchema.index({ calleeEmail: 1, timestamp: -1 });
+var CallLog = import_mongoose15.default.model("CallLog", CallLogSchema);
 
 // backend-fastify/src/routes/kural.ts
 var cloudinaryFolder = process.env.CLOUDINARY_FOLDER || "chat_uploads";
@@ -2235,10 +2413,156 @@ async function kuralRoutes(fastify2) {
       return reply.code(500).send({ error: "Cloudinary upload failed.", details: err.message });
     }
   });
+  fastify2.get("/search", async (request, reply) => {
+    try {
+      const { email } = request.query;
+      if (!email) return reply.code(400).send({ error: "Email query parameter is required." });
+      const user = await User.findOne({ email: normalizeEmail(email) }).select("name email avatarUrl");
+      if (!user) return reply.code(404).send({ error: "User not found." });
+      return reply.code(200).send(user);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to search user.", details: err.message });
+    }
+  });
+  fastify2.post("/start-dm", async (request, reply) => {
+    try {
+      const { members = [], createdBy, workspaceId } = request.body;
+      const currentEmail = normalizeEmail(createdBy || request.user?.email || "");
+      const peerEmail = normalizeEmail(members.find((email) => normalizeEmail(email) !== currentEmail) || members[0] || currentEmail);
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+      if (!currentEmail || !peerEmail) {
+        return reply.code(400).send({ error: "Two participant emails are required to start a direct message." });
+      }
+      const conversation = await ensureDirectConversation(activeWorkspaceId, currentEmail, peerEmail);
+      return reply.code(200).send(conversation);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to start direct message.", details: err.message });
+    }
+  });
+  fastify2.post("/groups", async (request, reply) => {
+    try {
+      const { name, members = [], workspaceId } = request.body;
+      const currentEmail = normalizeEmail(request.user?.email || "");
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+      if (!name) return reply.code(400).send({ error: "Group name is required." });
+      const participantEmails = [.../* @__PURE__ */ new Set([currentEmail, ...members.map(normalizeEmail)])];
+      const conversation = await KuralConversation.create({
+        workspaceId: activeWorkspaceId,
+        type: "channel",
+        name,
+        participantEmails,
+        createdByEmail: currentEmail
+      });
+      return reply.code(201).send(conversation);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to create group.", details: err.message });
+    }
+  });
+  fastify2.post("/groups/:groupId/members", async (request, reply) => {
+    try {
+      const { groupId } = request.params;
+      const { emails = [] } = request.body;
+      const currentEmail = normalizeEmail(request.user?.email || "");
+      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) {
+        return reply.code(400).send({ error: "Invalid group ID." });
+      }
+      if (!Array.isArray(emails) || emails.length === 0) {
+        return reply.code(400).send({ error: "At least one email is required." });
+      }
+      const conversation = await KuralConversation.findOne({
+        _id: groupId,
+        participantEmails: currentEmail
+      });
+      console.log("--- ADD MEMBER DEBUG ---");
+      console.log("groupId:", groupId);
+      console.log("emails to add:", emails);
+      console.log("currentEmail:", currentEmail);
+      console.log("Found conversation:", conversation ? conversation._id : "null");
+      if (!conversation) {
+        return reply.code(404).send({ error: "Group not found or you are not a member." });
+      }
+      const newEmails = emails.map(normalizeEmail).filter((e) => e && !conversation.participantEmails.includes(e));
+      if (newEmails.length === 0) {
+        return reply.code(200).send({ message: "All users are already members.", conversation });
+      }
+      conversation.participantEmails.push(...newEmails);
+      await conversation.save();
+      return reply.code(200).send({ message: `${newEmails.length} member(s) added.`, conversation });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to add members.", details: err.message });
+    }
+  });
+  fastify2.patch("/groups/:groupId/name", async (request, reply) => {
+    try {
+      const { groupId } = request.params;
+      const { name } = request.body;
+      const currentEmail = normalizeEmail(request.user?.email || "");
+      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: "Invalid group ID." });
+      if (!name || name.trim() === "") return reply.code(400).send({ error: "Name is required." });
+      const conversation = await KuralConversation.findOne({ _id: groupId, participantEmails: currentEmail });
+      if (!conversation) return reply.code(404).send({ error: "Group not found or you are not a member." });
+      conversation.name = name.trim();
+      await conversation.save();
+      return reply.code(200).send({ message: "Group name updated.", conversation });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to update group name.", details: err.message });
+    }
+  });
+  fastify2.patch("/groups/:groupId/avatar", async (request, reply) => {
+    try {
+      const { groupId } = request.params;
+      const { avatarUrl } = request.body;
+      const currentEmail = normalizeEmail(request.user?.email || "");
+      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: "Invalid group ID." });
+      if (!avatarUrl) return reply.code(400).send({ error: "avatarUrl is required." });
+      const conversation = await KuralConversation.findOne({ _id: groupId, participantEmails: currentEmail });
+      if (!conversation) return reply.code(404).send({ error: "Group not found or you are not a member." });
+      conversation.avatarUrl = avatarUrl;
+      await conversation.save();
+      return reply.code(200).send({ message: "Group avatar updated.", conversation });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to update group avatar.", details: err.message });
+    }
+  });
+  fastify2.delete("/groups/:groupId/members/:email", async (request, reply) => {
+    try {
+      const { groupId, email } = request.params;
+      const currentEmail = normalizeEmail(request.user?.email || "");
+      const emailToRemove = normalizeEmail(email);
+      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: "Invalid group ID." });
+      if (!emailToRemove) return reply.code(400).send({ error: "Email to remove is required." });
+      const conversation = await KuralConversation.findOne({ _id: groupId, participantEmails: currentEmail });
+      if (!conversation) return reply.code(404).send({ error: "Group not found or you are not a member." });
+      conversation.participantEmails = conversation.participantEmails.filter((e) => e !== emailToRemove);
+      await conversation.save();
+      return reply.code(200).send({ message: "Member removed.", conversation });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to remove member.", details: err.message });
+    }
+  });
+  fastify2.get("/groups/:groupId", async (request, reply) => {
+    try {
+      const { groupId } = request.params;
+      const currentEmail = normalizeEmail(request.user?.email || "");
+      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) {
+        return reply.code(400).send({ error: "Invalid group ID." });
+      }
+      const conversation = await KuralConversation.findOne({
+        _id: groupId,
+        participantEmails: currentEmail
+      });
+      if (!conversation) {
+        return reply.code(404).send({ error: "Group not found." });
+      }
+      return reply.code(200).send(conversation);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to fetch group details.", details: err.message });
+    }
+  });
   fastify2.get("/:workspaceId/:channelId", async (request, reply) => {
     try {
       const { workspaceId, channelId } = request.params;
-      if (!import_mongoose14.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose16.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
@@ -2274,7 +2598,7 @@ async function kuralRoutes(fastify2) {
       const fileUrl = body.fileUrl || null;
       const fileType = body.fileType || null;
       const originalName = String(body.originalName || "").trim() || null;
-      if (!import_mongoose14.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose16.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       if (!content && !fileUrl) {
@@ -2317,51 +2641,6 @@ async function kuralRoutes(fastify2) {
       return reply.code(500).send({ error: "Failed to send Kural message.", details: err.message });
     }
   });
-  fastify2.post("/start-dm", async (request, reply) => {
-    try {
-      const { members = [], createdBy, workspaceId } = request.body;
-      const currentEmail = normalizeEmail(createdBy || request.user?.email || "");
-      const peerEmail = normalizeEmail(members.find((email) => normalizeEmail(email) !== currentEmail) || members[0] || currentEmail);
-      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
-      if (!currentEmail || !peerEmail) {
-        return reply.code(400).send({ error: "Two participant emails are required to start a direct message." });
-      }
-      const conversation = await ensureDirectConversation(activeWorkspaceId, currentEmail, peerEmail);
-      return reply.code(200).send(conversation);
-    } catch (err) {
-      return reply.code(500).send({ error: "Failed to start direct message.", details: err.message });
-    }
-  });
-  fastify2.post("/groups", async (request, reply) => {
-    try {
-      const { name, members = [], workspaceId } = request.body;
-      const currentEmail = normalizeEmail(request.user?.email || "");
-      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
-      if (!name) return reply.code(400).send({ error: "Group name is required." });
-      const participantEmails = [.../* @__PURE__ */ new Set([currentEmail, ...members.map(normalizeEmail)])];
-      const conversation = await KuralConversation.create({
-        workspaceId: activeWorkspaceId,
-        type: "channel",
-        name,
-        participantEmails,
-        createdByEmail: currentEmail
-      });
-      return reply.code(201).send(conversation);
-    } catch (err) {
-      return reply.code(500).send({ error: "Failed to create group.", details: err.message });
-    }
-  });
-  fastify2.get("/search", async (request, reply) => {
-    try {
-      const { email } = request.query;
-      if (!email) return reply.code(400).send({ error: "Email query parameter is required." });
-      const user = await User.findOne({ email: normalizeEmail(email) }).select("name email avatarUrl");
-      if (!user) return reply.code(404).send({ error: "User not found." });
-      return reply.code(200).send(user);
-    } catch (err) {
-      return reply.code(500).send({ error: "Failed to search user.", details: err.message });
-    }
-  });
   fastify2.get("/:workspaceId/stories", async (request, reply) => {
     try {
       const { workspaceId } = request.params;
@@ -2395,7 +2674,7 @@ async function kuralRoutes(fastify2) {
   fastify2.delete("/delete-conversation/:channelId", async (request, reply) => {
     try {
       const { channelId } = request.params;
-      if (!import_mongoose14.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose16.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
@@ -2413,6 +2692,62 @@ async function kuralRoutes(fastify2) {
       return reply.code(200).send({ message: "Kural conversation cleared." });
     } catch (err) {
       return reply.code(500).send({ error: "Failed to delete Kural conversation.", details: err.message });
+    }
+  });
+  fastify2.get("/call-logs", async (request, reply) => {
+    try {
+      const currentEmail = normalizeEmail(request.user?.email || "");
+      if (!currentEmail) return reply.code(401).send({ error: "Unauthorized" });
+      const logs = await CallLog.find({
+        $or: [{ callerEmail: currentEmail }, { calleeEmail: currentEmail }],
+        deletedBy: { $ne: currentEmail }
+      }).sort({ timestamp: -1 }).limit(100);
+      return reply.code(200).send(logs);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to fetch call logs", details: err.message });
+    }
+  });
+  fastify2.post("/call-logs", async (request, reply) => {
+    try {
+      const currentEmail = normalizeEmail(request.user?.email || "");
+      if (!currentEmail) return reply.code(401).send({ error: "Unauthorized" });
+      const { calleeEmail, callerName, calleeName, callType, status, duration } = request.body;
+      if (!calleeEmail || !callType || !status) {
+        return reply.code(400).send({ error: "calleeEmail, callType, and status are required" });
+      }
+      const log = await CallLog.create({
+        callerEmail: currentEmail,
+        calleeEmail: normalizeEmail(calleeEmail),
+        callerName: callerName || "Unknown Caller",
+        calleeName: calleeName || "Unknown Callee",
+        callType,
+        status,
+        duration: duration || 0
+      });
+      return reply.code(201).send(log);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to create call log", details: err.message });
+    }
+  });
+  fastify2.delete("/call-logs/:id", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const currentEmail = normalizeEmail(request.user?.email || "");
+      if (!import_mongoose16.Types.ObjectId.isValid(id)) {
+        return reply.code(400).send({ error: "Invalid CallLog ID" });
+      }
+      const log = await CallLog.findById(id);
+      if (!log) return reply.code(404).send({ error: "Call log not found" });
+      if (log.callerEmail !== currentEmail && log.calleeEmail !== currentEmail) {
+        return reply.code(403).send({ error: "Not authorized to delete this log" });
+      }
+      if (!log.deletedBy.includes(currentEmail)) {
+        log.deletedBy.push(currentEmail);
+        await log.save();
+      }
+      return reply.code(200).send({ message: "Call log deleted" });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to delete call log", details: err.message });
     }
   });
 }
@@ -2486,8 +2821,8 @@ async function memberRoutes(fastify2) {
 }
 
 // backend-fastify/src/models/Task.ts
-var import_mongoose15 = require("mongoose");
-var TaskSchema = new import_mongoose15.Schema({
+var import_mongoose17 = require("mongoose");
+var TaskSchema = new import_mongoose17.Schema({
   workspaceId: { type: String, required: true, index: true },
   title: { type: String, required: true },
   description: { type: String },
@@ -2515,7 +2850,7 @@ TaskSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var Task = (0, import_mongoose15.model)("Task", TaskSchema);
+var Task = (0, import_mongoose17.model)("Task", TaskSchema);
 
 // backend-fastify/src/routes/tasks.ts
 var defaultWorkspaceId3 = "antigraviity-hq";
@@ -2595,8 +2930,8 @@ async function taskRoutes(fastify2) {
 }
 
 // backend-fastify/src/models/Document.ts
-var import_mongoose16 = require("mongoose");
-var DocumentSchema = new import_mongoose16.Schema({
+var import_mongoose18 = require("mongoose");
+var DocumentSchema = new import_mongoose18.Schema({
   workspaceId: { type: String, required: true, index: true },
   title: { type: String, required: true },
   type: {
@@ -2616,7 +2951,7 @@ DocumentSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var WorkspaceDocument = (0, import_mongoose16.model)("WorkspaceDocument", DocumentSchema);
+var WorkspaceDocument = (0, import_mongoose18.model)("WorkspaceDocument", DocumentSchema);
 
 // backend-fastify/src/routes/docs.ts
 var defaultWorkspaceId4 = "antigraviity-hq";
@@ -2709,7 +3044,7 @@ async function superadminRoutes(fastify2) {
 }
 
 // backend-fastify/src/routes/status.ts
-var import_mongoose18 = require("mongoose");
+var import_mongoose20 = require("mongoose");
 function normalizeEmail2(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -2778,7 +3113,7 @@ async function statusRoutes(fastify2) {
     try {
       const { id } = request.params;
       const currentEmail = normalizeEmail2(request.user?.email || "");
-      if (!import_mongoose18.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose20.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid status id." });
       }
       const existingStatus = await Story.findById(id);
@@ -2798,7 +3133,7 @@ async function statusRoutes(fastify2) {
       const { id } = request.params;
       const { emoji } = request.body;
       const currentEmail = normalizeEmail2(request.user?.email || "");
-      if (!import_mongoose18.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose20.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid status id." });
       }
       const status = await Story.findByIdAndUpdate(
@@ -2817,7 +3152,7 @@ async function statusRoutes(fastify2) {
       const { id } = request.params;
       const { text } = request.body;
       const currentEmail = normalizeEmail2(request.user?.email || "");
-      if (!import_mongoose18.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose20.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid status id." });
       }
       const status = await Story.findById(id);
@@ -2896,7 +3231,7 @@ async function statusRoutes(fastify2) {
     try {
       const { id } = request.params;
       const currentEmail = normalizeEmail2(request.user?.email || "");
-      if (!import_mongoose18.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose20.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid status id." });
       }
       const status = await Story.findById(id);
@@ -3409,10 +3744,10 @@ async function bootstrap() {
     await server.listen({ port: PORT, host: "0.0.0.0" });
     console.log(`
 ======================================================`);
-    console.log(`\u{1F680} NEXUS ZOOM MEETINGS BACKEND SERVER RUNNING LIVE!`);
-    console.log(`\u{1F517} REST API Root : http://localhost:${PORT}/api`);
-    console.log(`\u{1F50C} WebRTC Socket : ws://localhost:${PORT}/ws/webrtc`);
-    console.log(`\u{1F3E5} Health Status : http://localhost:${PORT}/health`);
+    console.log(` NEXUS ZOOM MEETINGS BACKEND SERVER RUNNING LIVE!`);
+    console.log(` REST API Root : http://localhost:${PORT}/api`);
+    console.log(` WebRTC Socket : ws://localhost:${PORT}/ws/webrtc`);
+    console.log(` Health Status : http://localhost:${PORT}/health`);
     console.log(`======================================================
 `);
   } catch (err) {

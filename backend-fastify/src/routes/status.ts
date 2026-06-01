@@ -11,7 +11,7 @@ function normalizeEmail(value: string) {
 export async function statusRoutes(fastify: FastifyInstance) {
   fastify.addHook('preValidation', authenticate);
 
-  // GET /api/status/:workspaceId — list all statuses grouped by user
+  // GET /api/status/:workspaceId  list all statuses grouped by user
   fastify.get('/:workspaceId', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { workspaceId } = request.params as any;
@@ -50,7 +50,7 @@ export async function statusRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /api/status/:workspaceId — create a new status
+  // POST /api/status/:workspaceId  create a new status
   fastify.post('/:workspaceId', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { workspaceId } = request.params as any;
@@ -80,7 +80,7 @@ export async function statusRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /api/status/:id/view — mark a status as viewed
+  // POST /api/status/:id/view  mark a status as viewed
   fastify.post('/:id/view', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as any;
@@ -106,7 +106,7 @@ export async function statusRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /api/status/:id/reaction — add a reaction
+  // POST /api/status/:id/reaction  add a reaction
   fastify.post('/:id/reaction', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as any;
@@ -130,7 +130,7 @@ export async function statusRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /api/status/:id/reply — reply to a status (creates a DM)
+  // POST /api/status/:id/reply  reply to a status (creates a DM)
   fastify.post('/:id/reply', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as any;
@@ -185,7 +185,7 @@ export async function statusRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /api/status/mute — Mute a user's statuses
+  // POST /api/status/mute  Mute a user's statuses
   fastify.post('/mute', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { mutedUserEmail } = request.body as any;
@@ -203,7 +203,7 @@ export async function statusRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /api/status/unmute — Unmute a user's statuses
+  // POST /api/status/unmute  Unmute a user's statuses
   fastify.post('/unmute', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { mutedUserEmail } = request.body as any;
@@ -217,7 +217,7 @@ export async function statusRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /api/status/muted — Get list of muted user emails
+  // GET /api/status/muted  Get list of muted user emails
   fastify.get('/muted', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const currentEmail = normalizeEmail(request.user?.email || '');
@@ -229,7 +229,7 @@ export async function statusRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // DELETE /api/status/:id — Delete a status
+  // DELETE /api/status/:id  Delete a status
   fastify.delete('/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as any;

@@ -21,7 +21,7 @@ async function dispatchSummaryMail(meeting: any, summaryHtml: string) {
     });
 
     if (users.length === 0) {
-      console.warn('[Summarizer] No human participants found — skipping mail dispatch.');
+      console.warn('[Summarizer] No human participants found  skipping mail dispatch.');
       return;
     }
 
@@ -32,7 +32,7 @@ async function dispatchSummaryMail(meeting: any, summaryHtml: string) {
       senderName: 'Nexus AI Assistant',
       senderEmail: 'ai-assistant@nexus.app',
       recipientEmails,
-      subject: `📋 Meeting Summary: ${meeting.title}`,
+      subject: ` Meeting Summary: ${meeting.title}`,
       body: summaryHtml,
       isRead: false,
       isStarred: false,
@@ -47,7 +47,7 @@ async function dispatchSummaryMail(meeting: any, summaryHtml: string) {
       await Mail.create({ ...mailDoc, ownerEmail: email, folder: 'inbox' });
     }
 
-    console.log(`[Summarizer] ✅ Summary mail dispatched to ${recipientEmails.length} participant(s): ${recipientEmails.join(', ')}`);
+    console.log(`[Summarizer]  Summary mail dispatched to ${recipientEmails.length} participant(s): ${recipientEmails.join(', ')}`);
   } catch (err: any) {
     console.error('[Summarizer] Mail dispatch failed:', err.message);
   }
@@ -74,7 +74,7 @@ export async function summarizeMeeting(meetingId: string) {
   let summaryHtml: string;
 
   if (!hasTranscripts || !process.env.GROQ_API_KEY) {
-    // No transcripts or no API key — send a "meeting completed" notification instead
+    // No transcripts or no API key  send a "meeting completed" notification instead
     console.log(`[Summarizer] No transcripts found (or no API key). Sending completion notification.`);
     const duration = meeting.scheduledAt
       ? Math.round((Date.now() - new Date(meeting.scheduledAt).getTime()) / 60000)
@@ -83,7 +83,7 @@ export async function summarizeMeeting(meetingId: string) {
     summaryHtml = `
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;border-radius:12px">
   <div style="background:linear-gradient(135deg,#1e40af,#7c3aed);padding:24px;border-radius:8px;margin-bottom:20px">
-    <h1 style="color:#fff;margin:0;font-size:22px">📋 Meeting Completed</h1>
+    <h1 style="color:#fff;margin:0;font-size:22px"> Meeting Completed</h1>
     <p style="color:#bfdbfe;margin:8px 0 0">${meeting.title}</p>
   </div>
   <div style="background:#fff;padding:20px;border-radius:8px;border:1px solid #e2e8f0">
@@ -104,7 +104,7 @@ export async function summarizeMeeting(meetingId: string) {
   <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:16px">Sent by Nexus AI Assistant</p>
 </div>`;
   } else {
-    // We have transcripts — generate AI summary
+    // We have transcripts  generate AI summary
     const fullText = transcripts.map((t: any) => `[${t.timestamp.toISOString()}] ${t.speakerName}: ${t.text}`).join('\n');
     console.log(`[Summarizer] Summarizing ${transcripts.length} transcript entries (${fullText.length} chars)...`);
 

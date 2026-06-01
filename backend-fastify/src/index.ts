@@ -153,7 +153,7 @@ async function bootstrap() {
   await server.register(superadminRoutes, { prefix: '/api/superadmin' });
   await server.register(statusRoutes, { prefix: '/api/status' });
 
-  // 3b. ICE / TURN server config endpoint (public — returns STUN + Metered TURN via REST API)
+  // 3b. ICE / TURN server config endpoint (public  returns STUN + Metered TURN via REST API)
   server.get('/api/meet/ice-servers', async () => {
     try {
       const apiKey = process.env.TURN_API_KEY || '5b2b016149c3a46ecddbca3d89feffb889b2';
@@ -195,7 +195,7 @@ async function bootstrap() {
     handleAudioSocket(ws);
   });
 
-  // 4b. 1-to-1 VOICE CALL SIGNALING (Chat module — completely separate from /ws/webrtc)
+  // 4b. 1-to-1 VOICE CALL SIGNALING (Chat module  completely separate from /ws/webrtc)
   server.get('/ws/calls', { websocket: true }, (connection: any, req: any) => {
     server.log.info('New voice call signaling connection.');
     const ws = connection.socket || connection;
@@ -224,10 +224,10 @@ async function bootstrap() {
   try {
     await server.listen({ port: PORT, host: '0.0.0.0' });
     console.log(`\n======================================================`);
-    console.log(`🚀 NEXUS ZOOM MEETINGS BACKEND SERVER RUNNING LIVE!`);
-    console.log(`🔗 REST API Root : http://localhost:${PORT}/api`);
-    console.log(`🔌 WebRTC Socket : ws://localhost:${PORT}/ws/webrtc`);
-    console.log(`🏥 Health Status : http://localhost:${PORT}/health`);
+    console.log(` NEXUS ZOOM MEETINGS BACKEND SERVER RUNNING LIVE!`);
+    console.log(` REST API Root : http://localhost:${PORT}/api`);
+    console.log(` WebRTC Socket : ws://localhost:${PORT}/ws/webrtc`);
+    console.log(` Health Status : http://localhost:${PORT}/health`);
     console.log(`======================================================\n`);
   } catch (err) {
     server.log.error(err);

@@ -127,9 +127,9 @@ export async function meetingRoutes(fastify: FastifyInstance) {
           }
         })
       }).then(res => {
-        console.log(`🪝 [WEBHOOK] Successfully dispatched meeting.created: Status ${res.status}`);
+        console.log(` [WEBHOOK] Successfully dispatched meeting.created: Status ${res.status}`);
       }).catch(err => {
-        console.error('🪝 [WEBHOOK] dispatch failed:', err.message);
+        console.error(' [WEBHOOK] dispatch failed:', err.message);
       });
 
       // Send AI email invitations to all team members in the workspace
@@ -194,9 +194,9 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       let meeting = await resolveMeetingIdentifier(cleanCode);
 
       const persistentRoomTitles: Record<string, string> = {
-        'NEXUS-BOARDROOM': '🌌 General Boardroom',
-        'NEXUS-ENG': '💻 Developer Sandbox',
-        'NEXUS-DESIGN': '🎨 UX Design Workshop'
+        'NEXUS-BOARDROOM': ' General Boardroom',
+        'NEXUS-ENG': ' Developer Sandbox',
+        'NEXUS-DESIGN': ' UX Design Workshop'
       };
 
       if (!meeting && persistentRoomTitles[cleanCode]) {
@@ -387,9 +387,9 @@ export async function meetingRoutes(fastify: FastifyInstance) {
           }
         })
       }).then(res => {
-        console.log(`🪝 [WEBHOOK] Successfully dispatched meeting.started: Status ${res.status}`);
+        console.log(` [WEBHOOK] Successfully dispatched meeting.started: Status ${res.status}`);
       }).catch(err => {
-        console.error('🪝 [WEBHOOK] dispatch failed:', err.message);
+        console.error(' [WEBHOOK] dispatch failed:', err.message);
       });
 
       return reply.code(200).send({ success: true, status: 'live', meeting });
@@ -405,7 +405,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       const meeting = await resolveMeetingIdentifier(id);
       if (!meeting) return reply.code(404).send({ error: 'Meeting room not found.' });
 
-      // Already launched — don't double-start
+      // Already launched  don't double-start
       const proto = (request.headers['x-forwarded-proto'] as string)?.split(',')[0] || request.protocol || 'http';
       const host = (request.headers['x-forwarded-host'] as string)?.split(',')[0] || request.headers.host;
       const backendBaseUrl = process.env.BACKEND_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || (host ? `${proto}://${host}` : undefined);
@@ -421,7 +421,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 5c. UPLOAD AUDIO CHUNK FROM MOBILE (expo-av recording — raw binary body)
+  // 5c. UPLOAD AUDIO CHUNK FROM MOBILE (expo-av recording  raw binary body)
   fastify.post('/:id/audio-chunk', {
     preHandler: authenticate,
     config: { rawBody: true }
@@ -447,7 +447,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       const filePath = pathMod.join(os.tmpdir(), fileName);
       fsMod.writeFileSync(filePath, rawBody);
 
-      console.log(`[AudioChunk] Saved ${rawBody.length} bytes → ${filePath}`);
+      console.log(`[AudioChunk] Saved ${rawBody.length} bytes  ${filePath}`);
 
       const text = await transcribeChunk(id, userId, speakerName, filePath);
       try { fsMod.unlinkSync(filePath); } catch {}
@@ -491,9 +491,9 @@ export async function meetingRoutes(fastify: FastifyInstance) {
           }
         })
       }).then(res => {
-        console.log(`🪝 [WEBHOOK] Successfully dispatched meeting.ended: Status ${res.status}`);
+        console.log(` [WEBHOOK] Successfully dispatched meeting.ended: Status ${res.status}`);
       }).catch(err => {
-        console.error('🪝 [WEBHOOK] dispatch failed:', err.message);
+        console.error(' [WEBHOOK] dispatch failed:', err.message);
       });
 
       // Invalidate all lingering participants
@@ -562,122 +562,11 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       const activeParticipantCount = await Participant.countDocuments(query);
 
       if (activeParticipantCount === 0) {
-        // Everyone (except possibly the bot) has left — end meeting and trigger summary
+        // Everyone (except possibly the bot) has left  end meeting and trigger summary
         meeting.status = 'ended';
         await meeting.save();
         await new Promise((resolve) => setTimeout(resolve, 2500));
         if (meeting.aiEnabled) {
-          await stopAIBot(meeting._id.toString());
-        } else {
-          // Even without AI bot, trigger summarization if there are any transcripts
-          summarizeMeeting(meeting._id.toString()).catch(() => {});
-        }
-      }
-
-      return reply.code(200).send({ success: true, message: 'Left meeting successfully', activeParticipantCount });
-    } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to leave meeting.', details: err.message });
-    }
-  });
-
-  // 7. MEETING HISTORY (Paginated list of hosted or attended meetings)
-  fastify.get('/history', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { page = 1, limit = 10 } = request.query as any;
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-
-      const userId = new Types.ObjectId(request.user!.id);
-
-      // Find all meetings where the user was either the host or registered as participant
-      const meetings = await Meeting.find({
-        $or: [
-          { hostId: userId },
-          { participantIds: userId }
-        ]
-      })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .populate('hostId', 'name email avatarUrl');
-
-      const total = await Meeting.countDocuments({
-        $or: [
-          { hostId: userId },
-          { participantIds: userId }
-        ]
-      });
-
-      return reply.code(200).send({
-        meetings,
-        pagination: {
-          total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / parseInt(limit))
-        }
-      });
-    } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to retrieve history logs.', details: err.message });
-    }
-  });
-
-  // 8. GET ACTIVE PARTICIPANTS
-  fastify.get('/:id/participants', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { id } = request.params as any;
-      
-      const meeting = await resolveMeetingIdentifier(id);
-      if (!meeting) {
-        return reply.code(404).send({ error: 'Meeting not found.' });
-      }
-
-      const participants = await Participant.find({
-        meetingId: meeting._id,
-        leftAt: { $exists: false }
-      }).populate('userId', 'name email avatarUrl');
-
-      // Map DB schema participants into clean view-ready objects
-      const mapped = participants.map((p: any) => {
-        const userObj = p.userId || {};
-        return {
-          id: p._id.toString(),
-          userId: userObj._id?.toString() || p.userId?.toString() || 'unknown',
-          name: userObj.name || 'Anonymous Peer',
-          email: userObj.email || '',
-          avatar: (userObj.name || 'AP').slice(0, 2).toUpperCase(),
-          role: p.role,
-          audioMuted: p.audioMuted,
-          videoMuted: p.videoMuted,
-          joinedAt: p.joinedAt
-        };
-      });
-
-      return reply.code(200).send(mapped);
-    } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to retrieve active participants.', details: err.message });
-    }
-  });
-
-  // 9. GENERATE AI SUMMARY (Groq / Gemini Integration)
-  fastify.post('/:id/summarize', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { id } = request.params as any;
-      if (!Types.ObjectId.isValid(id)) {
-        return reply.code(400).send({ error: 'Invalid meeting ID format.' });
-      }
-
-      const meeting = await Meeting.findById(id);
-      if (!meeting) {
-        return reply.code(404).send({ error: 'Meeting room not found.' });
-      }
-
-      if (meeting.status !== 'ended') {
-        return reply.code(400).send({ error: 'Summaries can only be generated for completed meetings.' });
-      }
-
-      // If summary already generated, return it from cache
-      if (meeting.aiSummary) {
-        return reply.code(200).send({ summary: meeting.aiSummary });
           await stopAIBot(meeting._id.toString());
         } else {
           // Even without AI bot, trigger summarization if there are any transcripts
@@ -796,6 +685,84 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       return reply.code(200).send({ summary: summaryHtml });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to generate AI summary.', details: err.message });
+    }
+  });
+
+  // 7. MEETING HISTORY (Paginated list of hosted or attended meetings)
+  fastify.get('/history', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { page = 1, limit = 10 } = request.query as any;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      const userId = new Types.ObjectId(request.user!.id);
+
+      // Find all meetings where the user was either the host or registered as participant
+      const meetings = await Meeting.find({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate('hostId', 'name email avatarUrl');
+
+      const total = await Meeting.countDocuments({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      });
+
+      return reply.code(200).send({
+        meetings,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to retrieve history logs.', details: err.message });
+    }
+  });
+
+  // 8. GET ACTIVE PARTICIPANTS
+  fastify.get('/:id/participants', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as any;
+      
+      const meeting = await resolveMeetingIdentifier(id);
+      if (!meeting) {
+        return reply.code(404).send({ error: 'Meeting not found.' });
+      }
+
+      const participants = await Participant.find({
+        meetingId: meeting._id,
+        leftAt: { $exists: false }
+      }).populate('userId', 'name email avatarUrl');
+
+      // Map DB schema participants into clean view-ready objects
+      const mapped = participants.map((p: any) => {
+        const userObj = p.userId || {};
+        return {
+          id: p._id.toString(),
+          userId: userObj._id?.toString() || p.userId?.toString() || 'unknown',
+          name: userObj.name || 'Anonymous Peer',
+          email: userObj.email || '',
+          avatar: (userObj.name || 'AP').slice(0, 2).toUpperCase(),
+          role: p.role,
+          audioMuted: p.audioMuted,
+          videoMuted: p.videoMuted,
+          joinedAt: p.joinedAt
+        };
+      });
+
+      return reply.code(200).send(mapped);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to retrieve active participants.', details: err.message });
     }
   });
 

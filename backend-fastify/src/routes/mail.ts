@@ -280,7 +280,7 @@ Important: Provide ONLY the final generated email body text. Do not include intr
     }
   });
 
-  // Cloudinary Upload Proxy — keeps API secret server-side
+  // Cloudinary Upload Proxy  keeps API secret server-side
   fastify.post('/upload-attachment', async (request: any, reply) => {
     try {
       const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || 'dfou7lxtg';
