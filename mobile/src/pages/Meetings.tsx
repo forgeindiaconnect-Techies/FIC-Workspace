@@ -242,7 +242,7 @@ export default function Meetings() {
     }
   }, [aiAssistantActive, localStream]);
 
-  // MOBILE AUDIO RECORDING — uses expo-audio to record and upload chunks for AI transcription
+  // MOBILE AUDIO RECORDING  uses expo-audio to record and upload chunks for AI transcription
   const mobileRecordingRef = React.useRef<any>(null);
   const mobileUploadTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -503,7 +503,7 @@ export default function Meetings() {
   }, [configureCallAudio, facing, isVideoOff]);
 
   const createPeerConnection = React.useCallback(async (targetPeerId: string, peer: RemotePeer, shouldOffer: boolean) => {
-    // Use runtime getters — module-level constants may be stale in Expo Web
+    // Use runtime getters  module-level constants may be stale in Expo Web
     const rtcClass = getRTCPeerConnectionClass();
     const rtcAvailable = getIsWebRTCAvailable() || !!rtcClass;
     console.log(`[createPeerConnection] Started for ${targetPeerId}, shouldOffer=${shouldOffer}, rtcAvailable=${rtcAvailable}, rtcClass=${!!rtcClass}`, getWebRTCDiagnostics());
@@ -1461,11 +1461,11 @@ export default function Meetings() {
                       <TouchableOpacity onPress={() => setParticipantMenuTarget(null)}><X size={16} color="#64748b" /></TouchableOpacity>
                     </View>
                     {[
-                      { label: '🔇 Mute Participant', color: '#f1f5f9', onPress: () => { Alert.alert('Muted', `${participantMenuTarget.name} has been muted.`); setParticipantMenuTarget(null); }},
-                      { label: '📹 Stop Video', color: '#f1f5f9', onPress: () => { Alert.alert('Video Stopped', `${participantMenuTarget.name}'s video was stopped.`); setParticipantMenuTarget(null); }},
-                      { label: '👑 Make Co-Host', color: '#a78bfa', onPress: () => { Alert.alert('Role Updated', `${participantMenuTarget.name} is now a Co-Host.`); setParticipantMenuTarget(null); }},
-                      { label: '🎤 Assign Presenter', color: '#60a5fa', onPress: () => { Alert.alert('Role Updated', `${participantMenuTarget.name} is now the Presenter.`); setParticipantMenuTarget(null); }},
-                      { label: '🔄 Transfer Host', color: '#f59e0b', onPress: () => {
+                      { label: ' Mute Participant', color: '#f1f5f9', onPress: () => { Alert.alert('Muted', `${participantMenuTarget.name} has been muted.`); setParticipantMenuTarget(null); }},
+                      { label: ' Stop Video', color: '#f1f5f9', onPress: () => { Alert.alert('Video Stopped', `${participantMenuTarget.name}'s video was stopped.`); setParticipantMenuTarget(null); }},
+                      { label: ' Make Co-Host', color: '#a78bfa', onPress: () => { Alert.alert('Role Updated', `${participantMenuTarget.name} is now a Co-Host.`); setParticipantMenuTarget(null); }},
+                      { label: ' Assign Presenter', color: '#60a5fa', onPress: () => { Alert.alert('Role Updated', `${participantMenuTarget.name} is now the Presenter.`); setParticipantMenuTarget(null); }},
+                      { label: ' Transfer Host', color: '#f59e0b', onPress: () => {
                         showConfirm(
                           'Transfer Host',
                           `Transfer host rights to ${participantMenuTarget.name}?`,
@@ -1481,7 +1481,7 @@ export default function Meetings() {
                           'Cancel'
                         );
                       }},
-                      { label: '❌ Remove from Meeting', color: '#ef4444', onPress: () => {
+                      { label: ' Remove from Meeting', color: '#ef4444', onPress: () => {
                         showConfirm(
                           'Remove Participant',
                           `Remove ${participantMenuTarget.name}?`,
@@ -1497,7 +1497,7 @@ export default function Meetings() {
                           'Cancel'
                         );
                       }},
-                      { label: '🚫 Ban (Block Rejoin)', color: '#ef4444', onPress: () => {
+                      { label: ' Ban (Block Rejoin)', color: '#ef4444', onPress: () => {
                         showConfirm(
                           'Ban Participant',
                           `Ban ${participantMenuTarget.name} from rejoining?`,
@@ -1952,7 +1952,7 @@ export default function Meetings() {
             </View>
             <View style={s.roomInfo}>
               <Text style={s.roomTitle}>{room.title}</Text>
-              <Text style={s.roomSub}>{room.tag} • Workspace Room</Text>
+              <Text style={s.roomSub}>{room.tag}  Workspace Room</Text>
             </View>
             <View style={s.roomAction}>
               <Text style={s.roomActionText}>Enter</Text>

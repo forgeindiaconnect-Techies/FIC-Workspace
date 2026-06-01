@@ -109,7 +109,7 @@ export function TopBar({ title }: { title: string }) {
       const mapped = Array.isArray(inbox) ? inbox.slice(0, 30).map((m: any) => ({
         id: m._id,
         title: m.subject || '(No Subject)',
-        desc: `${m.senderName || m.senderEmail || 'Unknown'} — ${String(m.body || '').replace(/\s+/g, ' ').trim()}`.trim(),
+        desc: `${m.senderName || m.senderEmail || 'Unknown'}  ${String(m.body || '').replace(/\s+/g, ' ').trim()}`.trim(),
         time: m.sentAt ? new Date(m.sentAt).toLocaleString() : '',
         read: !!m.isRead,
       })) : [];

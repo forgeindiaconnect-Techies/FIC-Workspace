@@ -162,7 +162,7 @@ export const checkBackendHealth = async (): Promise<{ ok: boolean; message?: str
     const msg = err instanceof Error ? err.message : 'Network request failed';
     return {
       ok: false,
-      message: `${msg} — trying ${API_URL}`,
+      message: `${msg}  trying ${API_URL}`,
     };
   }
 };
@@ -356,7 +356,7 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
     throw new Error(
       `${detail}. Cannot reach ${API_URL}. ` +
         (forceLocalBackend || configuredApiUrl
-          ? 'Check Wi‑Fi, backend is running, and EXPO_PUBLIC_API_URL uses your PC LAN IP.'
+          ? 'Check WiFi, backend is running, and EXPO_PUBLIC_API_URL uses your PC LAN IP.'
           : 'Use server settings to switch to cloud, or set EXPO_PUBLIC_USE_LOCAL=true for local backend.')
     );
   }
@@ -678,6 +678,23 @@ export const api = {
     },
     async getGroupDetails(groupId: string) {
       return request(`/api/chat/groups/${groupId}`);
+    },
+    async updateGroupName(groupId: string, name: string) {
+      return request(`/api/chat/groups/${groupId}/name`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      });
+    },
+    async updateGroupAvatar(groupId: string, avatarUrl: string) {
+      return request(`/api/chat/groups/${groupId}/avatar`, {
+        method: 'PATCH',
+        body: JSON.stringify({ avatarUrl }),
+      });
+    },
+    async removeMemberFromGroup(groupId: string, email: string) {
+      return request(`/api/chat/groups/${groupId}/members/${encodeURIComponent(email)}`, {
+        method: 'DELETE',
+      });
     },
     async getStories(workspaceId: string) {
       return request(`/api/status/${workspaceId}`);

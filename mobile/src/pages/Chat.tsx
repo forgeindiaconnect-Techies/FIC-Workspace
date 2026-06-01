@@ -202,6 +202,16 @@ export default function Chat() {
   /* settings */
   const [settingsModal, setSettingsModal] = React.useState(false);
 
+  /* group management */
+  const [groupInfoModal, setGroupInfoModal] = React.useState(false);
+  const [groupDetails, setGroupDetails] = React.useState<any>(null);
+  const [groupInfoLoading, setGroupInfoLoading] = React.useState(false);
+  const [editGroupNameModal, setEditGroupNameModal] = React.useState(false);
+  const [newGroupName, setNewGroupName] = React.useState('');
+  const [addGroupMemberModal, setAddGroupMemberModal] = React.useState(false);
+  const [addGroupMemberEmail, setAddGroupMemberEmail] = React.useState('');
+  const [savingGroupAction, setSavingGroupAction] = React.useState(false);
+
   const { user } = getSession();
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
   const email = user?.email || 'admin@fic.com';
@@ -453,6 +463,106 @@ export default function Chat() {
       Alert.alert('Done', 'Group created!');
     } catch (e: any) { Alert.alert('Error', e.message); }
     finally { setSavingMember(false); }
+  };
+
+  /* -- group management -- */
+  const openGroupInfo = async (group: any) => {
+    setGroupInfoModal(true);
+    setGroupInfoLoading(true);
+    try {
+      const details = await api.chat.getGroupDetails(group.id);
+      setGroupDetails({ ...details, id: details._id || group.id });
+    } catch (e: any) {
+      setGroupDetails({ id: group.id, name: group.name, participantEmails: [] });
+    } finally {
+      setGroupInfoLoading(false);
+    }
+  };
+
+  const handleEditGroupName = async () => {
+    if (!newGroupName.trim() || !groupDetails?.id) return;
+    setSavingGroupAction(true);
+    try {
+      await api.chat.updateGroupName(groupDetails.id, newGroupName.trim());
+      setGroupDetails((prev: any) => ({ ...prev, name: newGroupName.trim() }));
+      setGroupMessages(prev => prev.map(g => g.id === groupDetails.id ? { ...g, name: newGroupName.trim() } : g));
+      setEditGroupNameModal(false);
+      setNewGroupName('');
+      Alert.alert('Done', 'Group name updated.');
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Could not update group name.');
+    } finally {
+      setSavingGroupAction(false);
+    }
+  };
+
+  const handleUpdateGroupDP = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setSavingGroupAction(true);
+    try {
+      const uploaded = await api.chat.uploadFile(asset.uri, asset.mimeType || 'image/jpeg', asset.fileName || 'group_dp.jpg');
+      await api.chat.updateGroupAvatar(groupDetails.id, uploaded.url);
+      setGroupDetails((prev: any) => ({ ...prev, avatarUrl: uploaded.url }));
+      Alert.alert('Done', 'Group photo updated.');
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Could not update group photo.');
+    } finally {
+      setSavingGroupAction(false);
+    }
+  };
+
+  const handleAddGroupMember = async () => {
+    if (!addGroupMemberEmail.trim() || !groupDetails?.id) return;
+    setSavingGroupAction(true);
+    try {
+      await api.chat.addMemberToGroup(groupDetails.id, [addGroupMemberEmail.trim().toLowerCase()]);
+      const updated = await api.chat.getGroupDetails(groupDetails.id);
+      setGroupDetails({ ...updated, id: updated._id || groupDetails.id });
+      setAddGroupMemberModal(false);
+      setAddGroupMemberEmail('');
+      Alert.alert('Done', 'Member added to group.');
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Could not add member.');
+    } finally {
+      setSavingGroupAction(false);
+    }
+  };
+
+  const handleRemoveGroupMember = async (memberEmail: string) => {
+    if (!groupDetails?.id) return;
+    Alert.alert(
+      'Remove Member',
+      `Remove ${memberEmail} from this group?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setSavingGroupAction(true);
+            try {
+              await api.chat.removeMemberFromGroup(groupDetails.id, memberEmail);
+              setGroupDetails((prev: any) => ({
+                ...prev,
+                participantEmails: prev.participantEmails.filter((e: string) => e !== memberEmail),
+              }));
+              Alert.alert('Done', 'Member removed.');
+            } catch (e: any) {
+              Alert.alert('Error', e.message || 'Could not remove member.');
+            } finally {
+              setSavingGroupAction(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   /* -- post story -- */
@@ -780,7 +890,7 @@ export default function Chat() {
             {statusViewerData.userEmail !== email ? (
               <View style={tw`absolute bottom-0 left-0 right-0 bg-black/40 pt-2 pb-6 px-4`}>
                 <View style={tw`flex-row justify-between mb-4 px-2`}>
-                  {['😂', '😮', '😍', '😢', '👏', '🔥'].map(emoji => (
+                  {['', '', '', '', '', ''].map(emoji => (
                     <TouchableOpacity 
                       key={emoji} 
                       onPress={() => handleStatusReaction(emoji)}
@@ -1010,6 +1120,170 @@ export default function Chat() {
   );
 
   /* ------------------------------------------------------------
+     GROUP INFO MODAL
+  ------------------------------------------------------------ */
+  const renderGroupInfoModal = () => (
+    <Modal visible={groupInfoModal} animationType="slide" transparent onRequestClose={() => setGroupInfoModal(false)}>
+      <View style={s.modalOverlay}>
+        <View style={[s.modalCard, { maxHeight: '90%' }]}>
+          {/* Header */}
+          <View style={s.modalTopRow}>
+            <Text style={s.modalTitle}>Group Info</Text>
+            <TouchableOpacity onPress={() => setGroupInfoModal(false)}>
+              <X size={20} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+
+          {groupInfoLoading ? (
+            <View style={{ alignItems: 'center', padding: 32 }}>
+              <ActivityIndicator color="#0053B2" size="large" />
+            </View>
+          ) : groupDetails ? (
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Group DP + Name */}
+              <View style={{ alignItems: 'center', paddingVertical: 16, gap: 12 }}>
+                <TouchableOpacity onPress={handleUpdateGroupDP} style={{ position: 'relative' }}>
+                  <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: '#7c3aed', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {groupDetails.avatarUrl ? (
+                      <Image source={{ uri: groupDetails.avatarUrl }} style={{ width: 88, height: 88, borderRadius: 44 }} />
+                    ) : (
+                      <Text style={{ fontSize: 28, fontWeight: '900', color: '#fff' }}>{avatarFor(groupDetails.name || 'G')}</Text>
+                    )}
+                  </View>
+                  <View style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: 14, backgroundColor: '#0053B2', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
+                    <Camera size={14} color="#fff" />
+                  </View>
+                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 20, fontWeight: '900', color: '#0f172a' }}>{groupDetails.name}</Text>
+                  <TouchableOpacity onPress={() => { setNewGroupName(groupDetails.name || ''); setEditGroupNameModal(true); }}>
+                    <Edit2 size={18} color="#0053B2" />
+                  </TouchableOpacity>
+                </View>
+                <Text style={{ fontSize: 13, color: '#64748b' }}>{(groupDetails.participantEmails || []).length} members</Text>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                <TouchableOpacity
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#0053B2', paddingVertical: 12, borderRadius: 12 }}
+                  onPress={() => setAddGroupMemberModal(true)}
+                >
+                  <UserPlus size={16} color="#fff" />
+                  <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>Add Member</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#f1f5f9', paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0' }}
+                  onPress={() => { setNewGroupName(groupDetails.name || ''); setEditGroupNameModal(true); }}
+                >
+                  <Edit3 size={16} color="#475569" />
+                  <Text style={{ color: '#475569', fontWeight: '800', fontSize: 13 }}>Edit Name</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Members List */}
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Members</Text>
+              {(groupDetails.participantEmails || []).map((memberEmail: string) => (
+                <View key={memberEmail} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', gap: 12 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colorFor(memberEmail), alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#fff' }}>{avatarFor(memberEmail)}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#0f172a' }} numberOfLines={1}>{memberEmail}</Text>
+                    {memberEmail === groupDetails.createdByEmail && (
+                      <Text style={{ fontSize: 11, color: '#0053B2', fontWeight: '700' }}>Admin</Text>
+                    )}
+                  </View>
+                  {memberEmail !== email && (
+                    <TouchableOpacity
+                      onPress={() => handleRemoveGroupMember(memberEmail)}
+                      style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Trash2 size={14} color="#ef4444" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
+        </View>
+      </View>
+    </Modal>
+  );
+
+  /* ------------------------------------------------------------
+     EDIT GROUP NAME MODAL
+  ------------------------------------------------------------ */
+  const renderEditGroupNameModal = () => (
+    <Modal visible={editGroupNameModal} animationType="fade" transparent onRequestClose={() => setEditGroupNameModal(false)}>
+      <View style={s.modalOverlay}>
+        <View style={s.modalCard}>
+          <View style={s.modalTopRow}>
+            <Text style={s.modalTitle}>Edit Group Name</Text>
+            <TouchableOpacity onPress={() => setEditGroupNameModal(false)}><X size={20} color="#64748b" /></TouchableOpacity>
+          </View>
+          <View style={s.formGroup}>
+            <Text style={s.fieldLabel}>New Name</Text>
+            <TextInput
+              style={s.modalInput}
+              value={newGroupName}
+              onChangeText={setNewGroupName}
+              placeholder="Enter group name"
+              placeholderTextColor="#94a3b8"
+              autoFocus
+            />
+          </View>
+          <View style={s.modalBtnRow}>
+            <TouchableOpacity style={s.cancelBtn} onPress={() => setEditGroupNameModal(false)}>
+              <Text style={s.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.primaryBtn} onPress={handleEditGroupName} disabled={savingGroupAction}>
+              {savingGroupAction ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.primaryBtnText}>Save</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  /* ------------------------------------------------------------
+     ADD GROUP MEMBER MODAL
+  ------------------------------------------------------------ */
+  const renderAddGroupMemberModal = () => (
+    <Modal visible={addGroupMemberModal} animationType="fade" transparent onRequestClose={() => setAddGroupMemberModal(false)}>
+      <View style={s.modalOverlay}>
+        <View style={s.modalCard}>
+          <View style={s.modalTopRow}>
+            <Text style={s.modalTitle}>Add Member</Text>
+            <TouchableOpacity onPress={() => setAddGroupMemberModal(false)}><X size={20} color="#64748b" /></TouchableOpacity>
+          </View>
+          <View style={s.formGroup}>
+            <Text style={s.fieldLabel}>Member Email</Text>
+            <TextInput
+              style={s.modalInput}
+              value={addGroupMemberEmail}
+              onChangeText={setAddGroupMemberEmail}
+              placeholder="user@company.com"
+              placeholderTextColor="#94a3b8"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoFocus
+            />
+          </View>
+          <View style={s.modalBtnRow}>
+            <TouchableOpacity style={s.cancelBtn} onPress={() => setAddGroupMemberModal(false)}>
+              <Text style={s.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.primaryBtn} onPress={handleAddGroupMember} disabled={savingGroupAction}>
+              {savingGroupAction ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.primaryBtnText}>Add</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  /* ------------------------------------------------------------
      SETTINGS MODAL
   ------------------------------------------------------------ */
   const renderSettingsModal = () => (
@@ -1125,8 +1399,8 @@ export default function Chat() {
           {filteredChats.map(chat => (
             <TouchableOpacity key={chat.id} onPress={() => setSelectedChat(chat)}
               style={tw`flex-row items-center px-4 py-0 w-full bg-white`}>
-              <View style={tw`w-[56px] h-[56px] rounded-full bg-[#E9EDEF] items-center justify-center mr-4 my-3 overflow-hidden`}>
-                <Text style={tw`text-[#8696A0] text-xl font-bold uppercase`}>{chat.avatar}</Text>
+              <View style={[tw`w-[56px] h-[56px] rounded-full items-center justify-center mr-4 my-3 overflow-hidden`, { backgroundColor: chat.type === 'group' ? '#7c3aed' : '#E9EDEF' }]}>
+                <Text style={[tw`text-xl font-bold uppercase`, { color: chat.type === 'group' ? '#fff' : '#8696A0' }]}>{chat.avatar}</Text>
               </View>
               <View style={tw`flex-1 justify-center border-b border-[#D1D7DB]/50 h-[85px] pr-2`}>
                 <View style={tw`flex-row justify-between items-center mb-0.5`}>
@@ -1135,11 +1409,22 @@ export default function Chat() {
                 </View>
                 <View style={tw`flex-row justify-between items-center`}>
                   <Text style={tw`text-[15px] text-[#667781] flex-1`} numberOfLines={1}>{chat.lastMsg}</Text>
-                  {chat.unread > 0 && (
-                    <View style={tw`w-[20px] h-[20px] bg-[#0053B2] rounded-full items-center justify-center mt-0.5 ml-2`}>
-                      <Text style={tw`text-[11px] font-bold text-white`}>{chat.unread}</Text>
-                    </View>
-                  )}
+                  <View style={tw`flex-row items-center gap-2 ml-2`}>
+                    {chat.unread > 0 && (
+                      <View style={tw`w-[20px] h-[20px] bg-[#0053B2] rounded-full items-center justify-center`}>
+                        <Text style={tw`text-[11px] font-bold text-white`}>{chat.unread}</Text>
+                      </View>
+                    )}
+                    {chat.type === 'group' && (
+                      <TouchableOpacity
+                        onPress={() => openGroupInfo(chat)}
+                        style={tw`w-7 h-7 rounded-full bg-[#F0F2F5] items-center justify-center`}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Settings size={14} color="#667781" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               </View>
             </TouchableOpacity>
@@ -1300,6 +1585,11 @@ export default function Chat() {
             <TouchableOpacity onPress={() => {}}>
               <Camera size={22} color="#000" />
             </TouchableOpacity>
+            {selectedChat?.type === 'group' && (
+              <TouchableOpacity onPress={() => openGroupInfo(selectedChat)}>
+                <Users size={22} color="#0053B2" />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={() => setChatOptionsOpen(true)}>
               <MoreVertical size={22} color="#000" />
             </TouchableOpacity>
@@ -1419,7 +1709,7 @@ export default function Chat() {
      EMOJI PICKER
   ------------------------------------------------------------ */
   const renderEmojiPicker = () => {
-    const emojis = ['😀','😂','🥰','😎','🥺','😭','🤔','🔥','❤️','✨','👍','🎉','👀','🙌','💯'];
+    const emojis = ['','','','','','','','','','','','','','',''];
     if (!emojiPickerOpen) return null;
     return (
       <View style={tw`absolute bottom-[90px] left-4 bg-white border border-[#E0E0E0] rounded-[20px] p-4 w-[300px] shadow-lg flex-row flex-wrap gap-3 z-50`}>
@@ -1448,6 +1738,9 @@ export default function Chat() {
       {renderStatusViewerModal()}
       {renderAddMemberModal()}
       {renderCreateGroupModal()}
+      {renderGroupInfoModal()}
+      {renderEditGroupNameModal()}
+      {renderAddGroupMemberModal()}
       {(!isMobile || !selectedChat) && renderSidebar()}
       {(!isMobile || selectedChat) && renderActiveChat()}
       {renderEmojiPicker()}

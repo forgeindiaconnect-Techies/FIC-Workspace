@@ -57,7 +57,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      {/* Global incoming call overlay — appears on any screen */}
+      {/* Global incoming call overlay  appears on any screen */}
       <IncomingCallOverlay />
   {(loading || !fontsLoaded) ? (
       <View

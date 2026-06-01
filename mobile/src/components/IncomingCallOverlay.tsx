@@ -63,7 +63,7 @@ export default function IncomingCallOverlay() {
     };
   }, []);
 
-  // ── Ring sound ─────────────────────────────────────────────────────────
+  //  Ring sound 
 
   const startRing = async () => {
     try {
@@ -95,7 +95,7 @@ export default function IncomingCallOverlay() {
     } catch {}
   };
 
-  // ── Pulse animation ────────────────────────────────────────────────────
+  //  Pulse animation 
 
   const startPulse = () => {
     Animated.loop(
@@ -106,7 +106,7 @@ export default function IncomingCallOverlay() {
     ).start();
   };
 
-  // ── Handlers ───────────────────────────────────────────────────────────
+  //  Handlers 
 
   const handleAnswer = async () => {
     clearTimeout(timeoutRef.current);
@@ -135,7 +135,7 @@ export default function IncomingCallOverlay() {
     }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  //  Render 
 
   if (callState === 'idle') return null;
 

@@ -763,7 +763,7 @@ export default function Mail() {
                 </View>
               )}
               <TouchableOpacity style={tw`flex-row items-center h-[32px] px-[12px] bg-[#D4E0F8] rounded-[8px]`} onPress={handleAiSuggest}>
-                {aiGenerating ? <ActivityIndicator size="small" color="#0052CC" /> : <Text style={tw`font-bold text-[12px] text-[#0052CC]`}>✨ AI</Text>}
+                {aiGenerating ? <ActivityIndicator size="small" color="#0052CC" /> : <Text style={tw`font-bold text-[12px] text-[#0052CC]`}> AI</Text>}
               </TouchableOpacity>
             </View>
           </View>

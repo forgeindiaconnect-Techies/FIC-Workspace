@@ -5,13 +5,13 @@
  * Completely separate from the Meetings WebRTC (/ws/webrtc).
  *
  * Usage:
- *   callManager.init(socketUrl, token)   — called on login
- *   callManager.destroy()                 — called on logout
- *   callManager.startCall(targetEmail, targetName) — initiate a call
- *   callManager.answerCall()              — callee answers
- *   callManager.declineCall()             — callee declines
- *   callManager.hangUp()                  — either party ends
- *   callManager.toggleMute()              — mute/unmute mic
+ *   callManager.init(socketUrl, token)    called on login
+ *   callManager.destroy()                  called on logout
+ *   callManager.startCall(targetEmail, targetName)  initiate a call
+ *   callManager.answerCall()               callee answers
+ *   callManager.declineCall()              callee declines
+ *   callManager.hangUp()                   either party ends
+ *   callManager.toggleMute()               mute/unmute mic
  *
  *   callManager.onIncomingCall = (caller) => {}
  *   callManager.onCallAnswered  = () => {}
@@ -53,7 +53,7 @@ class CallManager {
   private callStartTime: number | null = null;
   private callRole: 'caller' | 'callee' | null = null;
 
-  // ── Public event hooks ───────────────────────────────────────────────────
+  //  Public event hooks 
   onIncomingCall: ((caller: CallerInfo) => void) | null = null;
   onCallAnswered: (() => void) | null = null;
   onCallDeclined: (() => void) | null = null;
@@ -65,7 +65,7 @@ class CallManager {
   get isMuted() { return this._isMuted; }
   private _isMuted = false;
 
-  // ── Init / destroy ───────────────────────────────────────────────────────
+  //  Init / destroy 
 
   init(socketUrl: string, token: string) {
     this.socketUrl = socketUrl;
@@ -112,7 +112,7 @@ class CallManager {
   private connect() {
     if (!this.socketUrl || !this.token) return;
 
-    // Convert http/https → ws/wss
+    // Convert http/https  ws/wss
     const wsBase = this.socketUrl
       .replace(/^http:/, 'ws:')
       .replace(/^https:/, 'wss:');
@@ -180,7 +180,7 @@ class CallManager {
     this.onStateChange?.(s);
   }
 
-  // ── Inbound message handler ──────────────────────────────────────────────
+  //  Inbound message handler 
 
   private async handleMessage(msg: any) {
     const { type } = msg;
@@ -249,7 +249,7 @@ class CallManager {
     }
   }
 
-  // ── Outbound call ────────────────────────────────────────────────────────
+  //  Outbound call 
 
   async startCall(targetEmail: string, targetName: string, callerName: string): Promise<boolean> {
     if (this._state !== 'idle') return false;
@@ -326,7 +326,7 @@ class CallManager {
     }
   }
 
-  // ── Answer (callee) ──────────────────────────────────────────────────────
+  //  Answer (callee) 
 
   async answerCall(): Promise<boolean> {
     if (this._state !== 'ringing' || !this.pendingOffer || !this.peerEmail) {
@@ -391,7 +391,7 @@ class CallManager {
     }
   }
 
-  // ── Decline (callee) ────────────────────────────────────────────────────
+  //  Decline (callee) 
 
   declineCall(): boolean {
     if (this._state !== 'ringing') {
@@ -406,7 +406,7 @@ class CallManager {
     return true;
   }
 
-  // ── Hang up (either party) ───────────────────────────────────────────────
+  //  Hang up (either party) 
 
   hangUp(): boolean {
     if (this._state === 'idle') {
@@ -427,7 +427,7 @@ class CallManager {
     return true;
   }
 
-  // ── Mute toggle ─────────────────────────────────────────────────────────
+  //  Mute toggle 
 
   toggleMute() {
     if (!this.localStream) return;
@@ -436,7 +436,7 @@ class CallManager {
     return this._isMuted;
   }
 
-  // ── Cleanup ──────────────────────────────────────────────────────────────
+  //  Cleanup 
 
   private cleanupPeer() {
     this.localStream?.getTracks().forEach((t: any) => t.stop());
