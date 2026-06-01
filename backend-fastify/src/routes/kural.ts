@@ -379,6 +379,73 @@ export async function kuralRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Update group name
+  fastify.patch('/groups/:groupId/name', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { groupId } = request.params as any;
+      const { name } = request.body as any;
+      const currentEmail = normalizeEmail(request.user?.email || '');
+
+      if (!Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: 'Invalid group ID.' });
+      if (!name || name.trim() === '') return reply.code(400).send({ error: 'Name is required.' });
+
+      const conversation = await KuralConversation.findOne({ _id: groupId, participantEmails: currentEmail });
+      if (!conversation) return reply.code(404).send({ error: 'Group not found or you are not a member.' });
+
+      conversation.name = name.trim();
+      await conversation.save();
+
+      return reply.code(200).send({ message: 'Group name updated.', conversation });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to update group name.', details: err.message });
+    }
+  });
+
+  // Update group avatar
+  fastify.patch('/groups/:groupId/avatar', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { groupId } = request.params as any;
+      const { avatarUrl } = request.body as any;
+      const currentEmail = normalizeEmail(request.user?.email || '');
+
+      if (!Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: 'Invalid group ID.' });
+      if (!avatarUrl) return reply.code(400).send({ error: 'avatarUrl is required.' });
+
+      const conversation = await KuralConversation.findOne({ _id: groupId, participantEmails: currentEmail });
+      if (!conversation) return reply.code(404).send({ error: 'Group not found or you are not a member.' });
+
+      conversation.avatarUrl = avatarUrl;
+      await conversation.save();
+
+      return reply.code(200).send({ message: 'Group avatar updated.', conversation });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to update group avatar.', details: err.message });
+    }
+  });
+
+  // Remove member from group
+  fastify.delete('/groups/:groupId/members/:email', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { groupId, email } = request.params as any;
+      const currentEmail = normalizeEmail(request.user?.email || '');
+      const emailToRemove = normalizeEmail(email);
+
+      if (!Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: 'Invalid group ID.' });
+      if (!emailToRemove) return reply.code(400).send({ error: 'Email to remove is required.' });
+
+      const conversation = await KuralConversation.findOne({ _id: groupId, participantEmails: currentEmail });
+      if (!conversation) return reply.code(404).send({ error: 'Group not found or you are not a member.' });
+
+      // Ensure that there is at least one participant left, or perhaps just remove them.
+      conversation.participantEmails = conversation.participantEmails.filter(e => e !== emailToRemove);
+      await conversation.save();
+
+      return reply.code(200).send({ message: 'Member removed.', conversation });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to remove member.', details: err.message });
+    }
+  });
+
   // Get group details
   fastify.get('/groups/:groupId', async (request: FastifyRequest, reply: FastifyReply) => {
     try {

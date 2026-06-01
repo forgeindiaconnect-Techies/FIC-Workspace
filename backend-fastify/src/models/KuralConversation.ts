@@ -4,6 +4,7 @@ export interface IKuralConversation extends Document {
   workspaceId: string;
   type: 'direct' | 'channel';
   name?: string;
+  avatarUrl?: string;
   participantEmails: string[];
   createdByEmail: string;
   lastMessageContent?: string;
@@ -16,6 +17,7 @@ const KuralConversationSchema = new Schema<IKuralConversation>({
   workspaceId: { type: String, required: true, index: true },
   type: { type: String, enum: ['direct', 'channel'], default: 'direct' },
   name: { type: String },
+  avatarUrl: { type: String },
   participantEmails: [{ type: String, required: true, lowercase: true, trim: true }],
   createdByEmail: { type: String, required: true, lowercase: true, trim: true },
   lastMessageContent: { type: String },
