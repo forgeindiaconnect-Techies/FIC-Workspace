@@ -2,6 +2,8 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
+config.resolver.unstable_enablePackageExports = false;
+
 const WEB_NATIVE_STUBS = new Set([
   'react-native-webrtc',
   '@config-plugins/react-native-webrtc',

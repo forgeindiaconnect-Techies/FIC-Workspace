@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, Modal, Animated, Easing
 } from 'react-native';
 import { Phone, PhoneOff } from 'lucide-react-native';
-import { Audio } from 'expo-av';
+import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { callManager, CallState, CallerInfo } from '../lib/callManager';
 
 const RING_TIMEOUT_MS = 30_000;
@@ -11,7 +11,7 @@ const RING_TIMEOUT_MS = 30_000;
 export default function IncomingCallOverlay() {
   const [callState, setCallState] = useState<CallState>('idle');
   const [caller, setCaller] = useState<CallerInfo | null>(null);
-  const ringRef = useRef<Audio.Sound | null>(null);
+  const ringRef = useRef<AudioPlayer | null>(null);
   const timeoutRef = useRef<any>(null);
 
   // Pulse animation for avatar ring
@@ -67,22 +67,19 @@ export default function IncomingCallOverlay() {
 
   const startRing = async () => {
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: false,
-        playThroughEarpieceAndroid: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
       });
 
       // Use a built-in system sound or a bundled asset
-      // We generate a simple beep pattern using expo-av oscillator workaround
+      // We generate a simple beep pattern using expo-audio oscillator workaround
       // For production, replace with: require('../../assets/ringtone.mp3')
-      const { sound } = await Audio.Sound.createAsync(
-        // Using a simple online ring tone URL for now (replace with bundled asset in production)
-        { uri: 'https://www.soundjay.com/phone/sounds/telephone-ring-01a.mp3' },
-        { shouldPlay: true, isLooping: true, volume: 1.0 }
-      );
-      ringRef.current = sound;
+      const player = createAudioPlayer('https://www.soundjay.com/phone/sounds/telephone-ring-01a.mp3');
+      player.loop = true;
+      player.volume = 1.0;
+      player.play();
+      ringRef.current = player;
     } catch (e) {
       console.warn('[IncomingCallOverlay] Ring sound failed', e);
     }
@@ -91,8 +88,8 @@ export default function IncomingCallOverlay() {
   const stopRing = async () => {
     try {
       if (ringRef.current) {
-        await ringRef.current.stopAsync();
-        await ringRef.current.unloadAsync();
+        ringRef.current.pause();
+        ringRef.current.remove();
         ringRef.current = null;
       }
     } catch {}

@@ -4,6 +4,7 @@
     "slug": "nexus-workspace",
     "version": "1.1.0",
     "orientation": "portrait",
+    "icon": "./assets/forge-icon.jpg",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
@@ -17,6 +18,10 @@
     },
     "android": {
       "package": "com.nexus.workspace",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/forge-icon.jpg",
+        "backgroundColor": "#ffffff"
+      },
       "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.CAMERA",
@@ -42,7 +47,7 @@
         }
       ],
       [
-        "expo-av",
+        "expo-audio",
         {
           "microphonePermission": "Allow Nexus to access your microphone for audio in meetings."
         }

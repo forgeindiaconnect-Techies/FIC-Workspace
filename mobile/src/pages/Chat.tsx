@@ -96,7 +96,7 @@ const AudioMessagePlayer = ({ url, self }: { url: string, self: boolean }) => {
 
   return (
     <View style={tw`flex-row items-center gap-3 mb-1 min-w-[200px]`}>
-      <TouchableOpacity onPress={togglePlay} style={tw`w-10 h-10 rounded-full items-center justify-center ${self ? 'bg-white/20' : 'bg-[#3CCF6F]'}`}>
+      <TouchableOpacity onPress={togglePlay} style={tw`w-10 h-10 rounded-full items-center justify-center ${self ? 'bg-white/20' : 'bg-[#0053B2]'}`}>
         {isPlaying ? (
           <Pause size={18} color={self ? '#fff' : '#fff'} fill={self ? '#fff' : '#fff'} />
         ) : (
@@ -105,7 +105,7 @@ const AudioMessagePlayer = ({ url, self }: { url: string, self: boolean }) => {
       </TouchableOpacity>
       <View style={tw`flex-1`}>
         <View style={tw`h-1.5 bg-black/10 rounded-full w-full mb-1.5 overflow-hidden`}>
-          <View style={[tw`h-full rounded-full`, { width: `${progress}%`, backgroundColor: self ? '#fff' : '#3CCF6F' }]} />
+          <View style={[tw`h-full rounded-full`, { width: `${progress}%`, backgroundColor: self ? '#fff' : '#0053B2' }]} />
         </View>
         <View style={tw`flex-row justify-between`}>
           <Text style={tw`text-[10px] ${self ? 'text-white/80' : 'text-black/50'}`}>{formatTime(position)}</Text>
@@ -471,7 +471,7 @@ export default function Chat() {
       <View style={s.callOverlay}>
         <View style={s.callCard}>
           {/* avatar */}
-          <View style={[s.callAvatar, { backgroundColor: selectedChat ? colorFor(selectedChat.id) : '#0f766e' }]}>
+          <View style={[s.callAvatar, { backgroundColor: selectedChat ? colorFor(selectedChat.id) : '#0053B2' }]}>
             <Text style={s.callAvatarText}>{selectedChat ? (selectedChat.avatar || avatarFor(selectedChat.name)) : 'ME'}</Text>
           </View>
           <Text style={s.callName}>{selectedChat?.name || 'Unknown'}</Text>
@@ -548,7 +548,7 @@ export default function Chat() {
               <Camera size={24} color="#fff" />
             </TouchableOpacity>
 
-            <TouchableOpacity style={tw`w-14 h-14 bg-[#25D366] rounded-full items-center justify-center`} disabled={uploadingFile || (!inputVal.trim())} onPress={async () => {
+            <TouchableOpacity style={tw`w-14 h-14 bg-[#0053B2] rounded-full items-center justify-center`} disabled={uploadingFile || (!inputVal.trim())} onPress={async () => {
               if (!inputVal.trim()) return;
               await handlePostStatus({ mediaType: 'text', content: inputVal, bgColor: '#FF5722' });
               setStatusCreatorOpen(false);
@@ -748,7 +748,7 @@ export default function Chat() {
                 />
               ) : activeStatus.mediaType === 'voice' && activeStatus.mediaUrl ? (
                 <View style={tw`w-full h-full items-center justify-center`}>
-                  <View style={tw`w-24 h-24 rounded-full bg-[#3CCF6F] items-center justify-center mb-8`}>
+                  <View style={tw`w-24 h-24 rounded-full bg-[#0053B2] items-center justify-center mb-8`}>
                     <Mic size={48} color="#fff" />
                   </View>
                   <View style={tw`flex-row items-center gap-1 h-12`}>
@@ -857,11 +857,11 @@ export default function Chat() {
             if (myGroup && myGroup.statuses.length > 0) setStatusViewerData(myGroup);
             else setStatusCreatorOpen(true);
           }}>
-            <View style={tw`w-[56px] h-[56px] rounded-full items-center justify-center mr-4 border-2 ${myGroup ? 'border-[#25D366]' : 'border-transparent'}`}>
+            <View style={tw`w-[56px] h-[56px] rounded-full items-center justify-center mr-4 border-2 ${myGroup ? 'border-[#0053B2]' : 'border-transparent'}`}>
                <View style={tw`w-[50px] h-[50px] rounded-full bg-[#E9EDEF] items-center justify-center overflow-hidden relative`}>
                  <Text style={tw`text-[#8696A0] text-xl font-bold uppercase`}>{avatarFor(user?.name || email)}</Text>
                  {!myGroup && (
-                   <View style={tw`absolute bottom-0 right-0 w-5 h-5 bg-[#25D366] rounded-full items-center justify-center border-2 border-white`}>
+                   <View style={tw`absolute bottom-0 right-0 w-5 h-5 bg-[#0053B2] rounded-full items-center justify-center border-2 border-white`}>
                      <Plus size={12} color="#fff" />
                    </View>
                  )}
@@ -888,7 +888,7 @@ export default function Chat() {
                 setStatusViewerData(group);
                 group.statuses.forEach((s: any) => { if (!s.views.includes(email)) api.chat.viewStatus(s._id); });
               }}>
-                <View style={tw`w-[56px] h-[56px] rounded-full items-center justify-center mr-4 border-2 border-[#25D366]`}>
+                <View style={tw`w-[56px] h-[56px] rounded-full items-center justify-center mr-4 border-2 border-[#0053B2]`}>
                   <View style={tw`w-[50px] h-[50px] rounded-full bg-[#E9EDEF] items-center justify-center overflow-hidden`}>
                     <Text style={tw`text-[#8696A0] text-xl font-bold uppercase`}>{avatarFor(group.userName)}</Text>
                   </View>
@@ -1047,7 +1047,7 @@ export default function Chat() {
       <View style={tw`flex-row justify-between items-center px-4 h-16 bg-white border-b border-[#D1D7DB]`}>
         <View style={tw`flex-row items-center gap-2`}>
           <Image source={require('../../assets/Chat.png')} style={tw`w-10 h-10`} resizeMode="contain" />
-          <Text style={tw`text-[22px] font-bold text-[#25D366] tracking-tight`}>KURAL</Text>
+          <Text style={tw`text-[22px] font-bold text-[#0053B2] tracking-tight`}>KURAL</Text>
         </View>
         <View style={tw`flex-row items-center gap-1`}>
           <TouchableOpacity style={tw`w-10 h-10 rounded-full justify-center items-center bg-transparent`} onPress={() => navigate('/home')}>
@@ -1059,7 +1059,7 @@ export default function Chat() {
           <TouchableOpacity style={tw`w-10 h-10 rounded-full justify-center items-center bg-transparent`} onPress={() => setPlusMenu(p => !p)}>
             <Plus size={20} color="#667781" />
           </TouchableOpacity>
-          <TouchableOpacity style={tw`w-10 h-10 rounded-full justify-center items-center bg-transparent`} onPress={() => setSettingsModal(true)}>
+          <TouchableOpacity style={tw`w-10 h-10 rounded-full justify-center items-center bg-transparent`} onPress={() => navigate('/settings')}>
             <Settings size={20} color="#667781" />
           </TouchableOpacity>
         </View>
@@ -1117,7 +1117,7 @@ export default function Chat() {
 
       {/* List */}
       {loadingChannels ? (
-        <View style={tw`flex-1 p-8 items-center justify-center`}><ActivityIndicator color="#25D366" size="large" /></View>
+        <View style={tw`flex-1 p-8 items-center justify-center`}><ActivityIndicator color="#0053B2" size="large" /></View>
       ) : tab === 'status' ? (
         renderStatusTab()
       ) : (
@@ -1131,12 +1131,12 @@ export default function Chat() {
               <View style={tw`flex-1 justify-center border-b border-[#D1D7DB]/50 h-[85px] pr-2`}>
                 <View style={tw`flex-row justify-between items-center mb-0.5`}>
                   <Text style={tw`text-[16px] font-semibold text-[#111B21] flex-1`} numberOfLines={1}>{chat.name}</Text>
-                  <Text style={tw`text-[12px] font-medium ml-2 ${chat.unread > 0 ? 'text-[#25D366]' : 'text-[#667781]'}`}>{chat.time}</Text>
+                  <Text style={tw`text-[12px] font-medium ml-2 ${chat.unread > 0 ? 'text-[#0053B2]' : 'text-[#667781]'}`}>{chat.time}</Text>
                 </View>
                 <View style={tw`flex-row justify-between items-center`}>
                   <Text style={tw`text-[15px] text-[#667781] flex-1`} numberOfLines={1}>{chat.lastMsg}</Text>
                   {chat.unread > 0 && (
-                    <View style={tw`w-[20px] h-[20px] bg-[#25D366] rounded-full items-center justify-center mt-0.5 ml-2`}>
+                    <View style={tw`w-[20px] h-[20px] bg-[#0053B2] rounded-full items-center justify-center mt-0.5 ml-2`}>
                       <Text style={tw`text-[11px] font-bold text-white`}>{chat.unread}</Text>
                     </View>
                   )}
@@ -1154,7 +1154,7 @@ export default function Chat() {
 
       {/* Floating Action Button */}
       {isMobile && !selectedChat && (
-        <TouchableOpacity style={tw`absolute bottom-[96px] right-4 w-14 h-14 bg-[#25D366] rounded-2xl items-center justify-center z-50`} onPress={() => setAddMemberModal(true)}>
+        <TouchableOpacity style={tw`absolute bottom-[96px] right-4 w-14 h-14 bg-[#0053B2] rounded-2xl items-center justify-center z-50`} onPress={() => setAddMemberModal(true)}>
           <MessageSquare size={24} color="#ffffff" fill="#ffffff" />
         </TouchableOpacity>
       )}
@@ -1162,28 +1162,28 @@ export default function Chat() {
       {/* Bottom Navbar */}
       <View style={tw`absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-[#D1D7DB] flex-row justify-around items-center px-2 pb-2 z-40`}>
         <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('chats')}>
-          <View style={tw`w-16 h-8 ${tab === 'chats' ? 'bg-[#25D366]/20' : 'bg-transparent'} rounded-full items-center justify-center mb-1`}>
-            <MessageSquare size={20} color={tab === 'chats' ? '#25D366' : '#667781'} fill={tab === 'chats' ? '#25D366' : 'transparent'} />
+          <View style={tw`w-16 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
+            <MessageSquare size={20} color={tab === 'chats' ? '#0053B2' : '#667781'} fill={tab === 'chats' ? '#0053B2' : 'transparent'} />
           </View>
-          <Text style={tw`text-[12px] font-medium ${tab === 'chats' ? 'text-[#25D366] font-bold' : 'text-[#667781]'}`}>Chats</Text>
+          <Text style={tw`text-[12px] font-medium ${tab === 'chats' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Chats</Text>
         </TouchableOpacity>
         <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('status')}>
-          <View style={tw`w-16 h-8 ${tab === 'status' ? 'bg-[#25D366]/20' : 'bg-transparent'} rounded-full items-center justify-center mb-1`}>
-            <View style={tw`w-5 h-5 rounded-full border-2 ${tab === 'status' ? 'border-[#25D366]' : 'border-[#667781]'} border-dashed`} />
+          <View style={tw`w-16 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
+            <View style={tw`w-5 h-5 rounded-full border-2 ${tab === 'status' ? 'border-[#0053B2]' : 'border-[#667781]'} border-dashed`} />
           </View>
-          <Text style={tw`text-[12px] font-medium ${tab === 'status' ? 'text-[#25D366] font-bold' : 'text-[#667781]'}`}>Status</Text>
+          <Text style={tw`text-[12px] font-medium ${tab === 'status' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Status</Text>
         </TouchableOpacity>
         <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('groups')}>
-          <View style={tw`w-16 h-8 ${tab === 'groups' ? 'bg-[#25D366]/20' : 'bg-transparent'} rounded-full items-center justify-center mb-1`}>
-            <Users size={22} color={tab === 'groups' ? '#25D366' : '#667781'} />
+          <View style={tw`w-16 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
+            <Users size={22} color={tab === 'groups' ? '#0053B2' : '#667781'} />
           </View>
-          <Text style={tw`text-[12px] font-medium ${tab === 'groups' ? 'text-[#25D366] font-bold' : 'text-[#667781]'}`}>Groups</Text>
+          <Text style={tw`text-[12px] font-medium ${tab === 'groups' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Groups</Text>
         </TouchableOpacity>
         <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('calls')}>
-          <View style={tw`w-16 h-8 ${tab === 'calls' ? 'bg-[#25D366]/20' : 'bg-transparent'} rounded-full items-center justify-center mb-1`}>
-             <PhoneOff size={20} color={tab === 'calls' ? '#25D366' : '#667781'} />
+          <View style={tw`w-16 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
+             <PhoneOff size={20} color={tab === 'calls' ? '#0053B2' : '#667781'} />
           </View>
-          <Text style={tw`text-[12px] font-medium ${tab === 'calls' ? 'text-[#25D366] font-bold' : 'text-[#667781]'}`}>Calls</Text>
+          <Text style={tw`text-[12px] font-medium ${tab === 'calls' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Calls</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1261,7 +1261,7 @@ export default function Chat() {
           </View>
           <Text style={tw`text-[28px] font-semibold text-black mb-4`}>Messages</Text>
           <Text style={tw`text-[14px] text-[#828282] text-center max-w-[400px]`}>Select a conversation to start messaging.</Text>
-          <TouchableOpacity style={tw`mt-8 bg-[#3CCF6F] px-6 py-3 rounded-full flex-row items-center gap-2`} onPress={() => setAddMemberModal(true)}>
+          <TouchableOpacity style={tw`mt-8 bg-[#0053B2] px-6 py-3 rounded-full flex-row items-center gap-2`} onPress={() => setAddMemberModal(true)}>
             <UserPlus size={18} color="#fff" />
             <Text style={tw`text-white font-bold`}>New Message</Text>
           </TouchableOpacity>
@@ -1319,7 +1319,7 @@ export default function Chat() {
 
         {/* Messages */}
         {loadingMessages ? (
-          <View style={tw`flex-1 items-center justify-center`}><ActivityIndicator color="#3CCF6F" size="large" /></View>
+          <View style={tw`flex-1 items-center justify-center`}><ActivityIndicator color="#0053B2" size="large" /></View>
         ) : (
           <ScrollView style={tw`flex-1 px-4`} contentContainerStyle={tw`py-4 pb-[100px]`}>
             <Text style={tw`text-[#828282] text-[12px] text-center my-4`}>Today</Text>
@@ -1340,7 +1340,7 @@ export default function Chat() {
                   )}
                   {!msg.self && !showAv && <View style={tw`w-8`} />}
                   
-                  <View style={tw`max-w-[70%] px-4 py-2 ${msg.self ? 'bg-[#3CCF6F]' : 'bg-[#E9E9EB]'} ${msg.self ? 'rounded-[18px] rounded-br-[4px]' : 'rounded-[18px] rounded-bl-[4px]'}`}>
+                  <View style={tw`max-w-[70%] px-4 py-2 ${msg.self ? 'bg-[#0053B2]' : 'bg-[#E9E9EB]'} ${msg.self ? 'rounded-[18px] rounded-br-[4px]' : 'rounded-[18px] rounded-bl-[4px]'}`}>
                     {msg.fileUrl && (
                       <View style={tw`mb-2 rounded-lg overflow-hidden`}>
                         {msg.fileType?.startsWith('image/') ? (
@@ -1376,7 +1376,7 @@ export default function Chat() {
                 </View>
                 <View style={tw`flex-row items-center gap-4`}>
                   <TouchableOpacity onPress={() => stopRecording(false)}><Text style={tw`text-gray-500`}>Cancel</Text></TouchableOpacity>
-                  <TouchableOpacity onPress={() => stopRecording(true)} style={tw`w-8 h-8 bg-[#3CCF6F] rounded-full items-center justify-center`}><Send size={14} color="#fff" /></TouchableOpacity>
+                  <TouchableOpacity onPress={() => stopRecording(true)} style={tw`w-8 h-8 bg-[#0053B2] rounded-full items-center justify-center`}><Send size={14} color="#fff" /></TouchableOpacity>
                 </View>
               </View>
             ) : (
@@ -1403,7 +1403,7 @@ export default function Chat() {
                      </TouchableOpacity>
                    </View>
                 ) : (
-                   <TouchableOpacity style={tw`ml-2 w-8 h-8 bg-[#3CCF6F] rounded-full items-center justify-center`} onPress={handleSend} disabled={!inputVal.trim()}>
+                   <TouchableOpacity style={tw`ml-2 w-8 h-8 bg-[#0053B2] rounded-full items-center justify-center`} onPress={handleSend} disabled={!inputVal.trim()}>
                      <Send size={14} color="#fff" />
                    </TouchableOpacity>
                 )}
@@ -1448,7 +1448,6 @@ export default function Chat() {
       {renderStatusViewerModal()}
       {renderAddMemberModal()}
       {renderCreateGroupModal()}
-      {renderSettingsModal()}
       {(!isMobile || !selectedChat) && renderSidebar()}
       {(!isMobile || selectedChat) && renderActiveChat()}
       {renderEmojiPicker()}
@@ -1467,8 +1466,8 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   sidebarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 },
   sidebarTitle: { fontSize: 26, fontWeight: '900', color: '#0f172a' },
   secureBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  secureBadgeText: { fontSize: 11, color: '#0f766e', fontWeight: '700' },
-  plusBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#0f766e', alignItems: 'center', justifyContent: 'center' },
+  secureBadgeText: { fontSize: 11, color: '#0053B2', fontWeight: '700' },
+  plusBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#0053B2', alignItems: 'center', justifyContent: 'center' },
 
   /* plus menu */
   plusMenu: { marginHorizontal: 16, marginBottom: 8, backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden' },
@@ -1596,7 +1595,7 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   callName: { fontSize: 22, fontWeight: '900', color: '#fff' },
   callStatus: { fontSize: 14, color: '#94a3b8', fontWeight: '700' },
   callWaveRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, height: 40, marginVertical: 8 },
-  callWaveBar: { width: 4, backgroundColor: '#0f766e', borderRadius: 2, minHeight: 8 },
+  callWaveBar: { width: 4, backgroundColor: '#0053B2', borderRadius: 2, minHeight: 8 },
   callControls: { flexDirection: 'row', gap: 20, marginTop: 8 },
   callCtrlBtn: { alignItems: 'center', gap: 6, backgroundColor: '#334155', width: 64, height: 64, borderRadius: 32, justifyContent: 'center' },
   callCtrlRed: { backgroundColor: 'rgba(239,68,68,0.2)' },
@@ -1632,7 +1631,7 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   modalBtnRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
   cancelBtn: { flex: 1, height: 46, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center' },
   cancelBtnText: { fontSize: 14, fontWeight: '800', color: '#64748b' },
-  primaryBtn: { flex: 1, height: 46, borderRadius: 12, backgroundColor: '#0f766e', alignItems: 'center', justifyContent: 'center' },
+  primaryBtn: { flex: 1, height: 46, borderRadius: 12, backgroundColor: '#0053B2', alignItems: 'center', justifyContent: 'center' },
   primaryBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
   groupIconPicker: { alignItems: 'center', gap: 8, paddingVertical: 8 },
   groupIconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#7c3aed', alignItems: 'center', justifyContent: 'center' },

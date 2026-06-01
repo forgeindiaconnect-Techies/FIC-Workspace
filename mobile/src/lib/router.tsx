@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface NavigationContextType {
   pathname: string;
@@ -14,7 +14,18 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   const [history, setHistory] = useState<string[]>(['/login']);
   const [outlet, setOutlet] = useState<React.ReactNode | null>(null);
 
-  const navigate = (to: string, options?: { replace?: boolean }) => {
+  const navigate = (to: string | number, options?: { replace?: boolean }) => {
+    if (typeof to === 'number') {
+      if (to === -1 && history.length > 1) {
+        const prev = history[history.length - 2];
+        setPathname(prev);
+        setHistory(h => h.slice(0, -1));
+      }
+      return;
+    }
+    
+    if (typeof to !== 'string' || !to) return;
+    
     let normalized = to;
     if (!to.startsWith('/')) {
       normalized = '/' + to;

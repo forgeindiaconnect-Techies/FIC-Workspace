@@ -6,6 +6,7 @@ import { User } from '../models/User';
 import { KuralConversation } from '../models/KuralConversation';
 import { KuralMessage } from '../models/KuralMessage';
 import { Story } from '../models/Story';
+import { CallLog } from '../models/CallLog';
 import { authenticate } from '../middlewares/auth';
 
 const cloudinaryFolder = process.env.CLOUDINARY_FOLDER || 'chat_uploads';
@@ -274,6 +275,139 @@ export async function kuralRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // ── Group routes (registered BEFORE parametric /:workspaceId/:channelId) ──
+
+  fastify.get('/search', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { email } = request.query as any;
+      if (!email) return reply.code(400).send({ error: 'Email query parameter is required.' });
+
+      const user = await User.findOne({ email: normalizeEmail(email) }).select('name email avatarUrl');
+      if (!user) return reply.code(404).send({ error: 'User not found.' });
+
+      return reply.code(200).send(user);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to search user.', details: err.message });
+    }
+  });
+
+  fastify.post('/start-dm', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { members = [], createdBy, workspaceId } = request.body as any;
+      const currentEmail = normalizeEmail(createdBy || request.user?.email || '');
+      const peerEmail = normalizeEmail(members.find((email: string) => normalizeEmail(email) !== currentEmail) || members[0] || currentEmail);
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+
+      if (!currentEmail || !peerEmail) {
+        return reply.code(400).send({ error: 'Two participant emails are required to start a direct message.' });
+      }
+
+      const conversation = await ensureDirectConversation(activeWorkspaceId, currentEmail, peerEmail);
+      return reply.code(200).send(conversation);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to start direct message.', details: err.message });
+    }
+  });
+
+  fastify.post('/groups', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { name, members = [], workspaceId } = request.body as any;
+      const currentEmail = normalizeEmail(request.user?.email || '');
+      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
+
+      if (!name) return reply.code(400).send({ error: 'Group name is required.' });
+
+      const participantEmails = [...new Set([currentEmail, ...members.map(normalizeEmail)])];
+
+      const conversation = await KuralConversation.create({
+        workspaceId: activeWorkspaceId,
+        type: 'channel',
+        name,
+        participantEmails,
+        createdByEmail: currentEmail
+      });
+
+      return reply.code(201).send(conversation);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to create group.', details: err.message });
+    }
+  });
+
+  // Add members to an existing group
+  fastify.post('/groups/:groupId/members', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { groupId } = request.params as any;
+      const { emails = [] } = request.body as any;
+      const currentEmail = normalizeEmail(request.user?.email || '');
+
+      if (!Types.ObjectId.isValid(groupId)) {
+        return reply.code(400).send({ error: 'Invalid group ID.' });
+      }
+
+      if (!Array.isArray(emails) || emails.length === 0) {
+        return reply.code(400).send({ error: 'At least one email is required.' });
+      }
+
+      // Find group without type filter to handle both 'channel' and 'group' types
+      const conversation = await KuralConversation.findOne({
+        _id: groupId,
+        participantEmails: currentEmail
+      });
+
+      console.log('--- ADD MEMBER DEBUG ---');
+      console.log('groupId:', groupId);
+      console.log('emails to add:', emails);
+      console.log('currentEmail:', currentEmail);
+      console.log('Found conversation:', conversation ? conversation._id : 'null');
+
+      if (!conversation) {
+        return reply.code(404).send({ error: 'Group not found or you are not a member.' });
+      }
+
+      const newEmails = emails.map(normalizeEmail).filter((e: string) => e && !conversation.participantEmails.includes(e));
+
+      if (newEmails.length === 0) {
+        return reply.code(200).send({ message: 'All users are already members.', conversation });
+      }
+
+      conversation.participantEmails.push(...newEmails);
+      await conversation.save();
+
+      return reply.code(200).send({ message: `${newEmails.length} member(s) added.`, conversation });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to add members.', details: err.message });
+    }
+  });
+
+  // Get group details
+  fastify.get('/groups/:groupId', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { groupId } = request.params as any;
+      const currentEmail = normalizeEmail(request.user?.email || '');
+
+      if (!Types.ObjectId.isValid(groupId)) {
+        return reply.code(400).send({ error: 'Invalid group ID.' });
+      }
+
+      // Find group without type filter
+      const conversation = await KuralConversation.findOne({
+        _id: groupId,
+        participantEmails: currentEmail
+      });
+
+      if (!conversation) {
+        return reply.code(404).send({ error: 'Group not found.' });
+      }
+
+      return reply.code(200).send(conversation);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to fetch group details.', details: err.message });
+    }
+  });
+
+  // ── Parametric catch-all routes (must come AFTER static routes) ──
+
+
   fastify.get('/:workspaceId/:channelId', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { workspaceId, channelId } = request.params as any;
@@ -370,62 +504,8 @@ export async function kuralRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.post('/start-dm', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { members = [], createdBy, workspaceId } = request.body as any;
-      const currentEmail = normalizeEmail(createdBy || request.user?.email || '');
-      // Fallback to currentEmail if they are chatting with themselves
-      const peerEmail = normalizeEmail(members.find((email: string) => normalizeEmail(email) !== currentEmail) || members[0] || currentEmail);
-      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
-
-      if (!currentEmail || !peerEmail) {
-        return reply.code(400).send({ error: 'Two participant emails are required to start a direct message.' });
-      }
-
-      const conversation = await ensureDirectConversation(activeWorkspaceId, currentEmail, peerEmail);
-      return reply.code(200).send(conversation);
-    } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to start direct message.', details: err.message });
-    }
-  });
-
-  fastify.post('/groups', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { name, members = [], workspaceId } = request.body as any;
-      const currentEmail = normalizeEmail(request.user?.email || '');
-      const activeWorkspaceId = workspaceId || request.user?.workspaceId || defaultWorkspaceId;
-
-      if (!name) return reply.code(400).send({ error: 'Group name is required.' });
-
-      const participantEmails = [...new Set([currentEmail, ...members.map(normalizeEmail)])];
-
-      const conversation = await KuralConversation.create({
-        workspaceId: activeWorkspaceId,
-        type: 'channel',
-        name,
-        participantEmails,
-        createdByEmail: currentEmail
-      });
-
-      return reply.code(201).send(conversation);
-    } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to create group.', details: err.message });
-    }
-  });
-
-  fastify.get('/search', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { email } = request.query as any;
-      if (!email) return reply.code(400).send({ error: 'Email query parameter is required.' });
-
-      const user = await User.findOne({ email: normalizeEmail(email) }).select('name email avatarUrl');
-      if (!user) return reply.code(404).send({ error: 'User not found.' });
-
-      return reply.code(200).send(user);
-    } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to search user.', details: err.message });
-    }
-  });
+  // (start-dm, groups, groups/:groupId/members, groups/:groupId, search
+  //  are all registered above before parametric routes)
 
   fastify.get('/:workspaceId/stories', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -493,6 +573,77 @@ export async function kuralRoutes(fastify: FastifyInstance) {
       return reply.code(200).send({ message: 'Kural conversation cleared.' });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to delete Kural conversation.', details: err.message });
+    }
+  });
+
+  // Call History Endpoints
+  fastify.get('/call-logs', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const currentEmail = normalizeEmail(request.user?.email || '');
+      if (!currentEmail) return reply.code(401).send({ error: 'Unauthorized' });
+
+      const logs = await CallLog.find({
+        $or: [{ callerEmail: currentEmail }, { calleeEmail: currentEmail }],
+        deletedBy: { $ne: currentEmail }
+      }).sort({ timestamp: -1 }).limit(100);
+
+      return reply.code(200).send(logs);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to fetch call logs', details: err.message });
+    }
+  });
+
+  fastify.post('/call-logs', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const currentEmail = normalizeEmail(request.user?.email || '');
+      if (!currentEmail) return reply.code(401).send({ error: 'Unauthorized' });
+
+      const { calleeEmail, callerName, calleeName, callType, status, duration } = request.body as any;
+
+      if (!calleeEmail || !callType || !status) {
+        return reply.code(400).send({ error: 'calleeEmail, callType, and status are required' });
+      }
+
+      const log = await CallLog.create({
+        callerEmail: currentEmail,
+        calleeEmail: normalizeEmail(calleeEmail),
+        callerName: callerName || 'Unknown Caller',
+        calleeName: calleeName || 'Unknown Callee',
+        callType,
+        status,
+        duration: duration || 0
+      });
+
+      return reply.code(201).send(log);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to create call log', details: err.message });
+    }
+  });
+
+  fastify.delete('/call-logs/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as any;
+      const currentEmail = normalizeEmail(request.user?.email || '');
+
+      if (!Types.ObjectId.isValid(id)) {
+        return reply.code(400).send({ error: 'Invalid CallLog ID' });
+      }
+
+      const log = await CallLog.findById(id);
+      if (!log) return reply.code(404).send({ error: 'Call log not found' });
+
+      if (log.callerEmail !== currentEmail && log.calleeEmail !== currentEmail) {
+        return reply.code(403).send({ error: 'Not authorized to delete this log' });
+      }
+
+      if (!log.deletedBy.includes(currentEmail)) {
+        log.deletedBy.push(currentEmail);
+        await log.save();
+      }
+
+      return reply.code(200).send({ message: 'Call log deleted' });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to delete call log', details: err.message });
     }
   });
 }

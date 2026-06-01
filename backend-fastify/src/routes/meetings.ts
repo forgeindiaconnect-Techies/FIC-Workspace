@@ -5,6 +5,8 @@ import { Meeting } from '../models/Meeting';
 import { Participant } from '../models/Participant';
 import { Recording } from '../models/Recording';
 import { User } from '../models/User';
+import { Mail } from '../models/Mail';
+import { Room } from '../models/Room';
 import { authenticate } from '../middlewares/auth';
 import { launchAIBot, stopAIBot } from '../services/aiBot';
 import { summarizeMeeting } from '../services/summarizer';
@@ -66,7 +68,8 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         duration,
         scheduledAt,
         startTime,
-        recordingEnabled
+        recordingEnabled,
+        inviteEmails
       } = request.body as any;
       if (!title) {
         return reply.code(400).send({ error: 'Meeting title is required.' });
@@ -128,6 +131,52 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       }).catch(err => {
         console.error('🪝 [WEBHOOK] dispatch failed:', err.message);
       });
+
+      // Send AI email invitations to all team members in the workspace
+      try {
+        const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+        const allUsers = await User.find({ workspaceId });
+        const targetEmails = allUsers.map(u => u.email).filter(e => e !== request.user!.email);
+
+        if (targetEmails.length > 0) {
+          const timeStr = (scheduledAt || startTime) ? new Date(scheduledAt || startTime).toLocaleString() : 'Now';
+          const mailBody = `
+  <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b;">
+    <h2 style="color: #2563eb;">Meeting Invitation: ${meeting.title}</h2>
+    <p>Hi there,</p>
+    <p>You have been invited by <strong>${request.user!.name}</strong> to join a Nexus Workspace meeting.</p>
+    
+    <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0;">
+      <p style="margin: 0 0 10px 0;"><strong>Date & Time:</strong> ${timeStr}</p>
+      <p style="margin: 0 0 10px 0;"><strong>Duration:</strong> ${meeting.durationMinutes} minutes</p>
+      <p style="margin: 0 0 10px 0;"><strong>Room Code:</strong> <span style="font-family: monospace; font-size: 16px; background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">${meeting.joinCode}</span></p>
+      ${plainPasscode ? `<p style="margin: 0;"><strong>Passcode:</strong> ${plainPasscode}</p>` : ''}
+    </div>
+
+    <p>To join the meeting, open the <strong>Meetings</strong> app in your workspace and enter the Room Code above.</p>
+    <br/>
+    <p>Best regards,<br/><strong>Nexus AI</strong></p>
+  </div>
+          `;
+
+          for (const email of targetEmails) {
+            Mail.create({
+              workspaceId,
+              ownerEmail: email,
+              folder: 'inbox',
+              senderName: 'Nexus AI',
+              senderEmail: 'nexus-ai@workspace.app',
+              recipientEmails: [email],
+              subject: `Invitation: ${meeting.title}`,
+              body: mailBody,
+              attachments: [],
+              isRead: false
+            }).catch((e: any) => console.error('Failed to create invite email for', email, e));
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch workspace users for invitations', e);
+      }
 
       return reply.code(201).send(meeting);
     } catch (err: any) {
@@ -629,6 +678,117 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       // If summary already generated, return it from cache
       if (meeting.aiSummary) {
         return reply.code(200).send({ summary: meeting.aiSummary });
+          await stopAIBot(meeting._id.toString());
+        } else {
+          // Even without AI bot, trigger summarization if there are any transcripts
+          summarizeMeeting(meeting._id.toString()).catch(() => {});
+        }
+      }
+
+      return reply.code(200).send({ success: true, message: 'Left meeting successfully', activeParticipantCount });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to leave meeting.', details: err.message });
+    }
+  });
+
+  // 7. MEETING HISTORY (Paginated list of hosted or attended meetings)
+  fastify.get('/history', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { page = 1, limit = 10 } = request.query as any;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      const userId = new Types.ObjectId(request.user!.id);
+
+      // Find all meetings where the user was either the host or registered as participant
+      const meetings = await Meeting.find({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate('hostId', 'name email avatarUrl');
+
+      const total = await Meeting.countDocuments({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      });
+
+      return reply.code(200).send({
+        meetings,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to retrieve history logs.', details: err.message });
+    }
+  });
+
+  // 8. GET ACTIVE PARTICIPANTS
+  fastify.get('/:id/participants', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as any;
+      
+      const meeting = await resolveMeetingIdentifier(id);
+      if (!meeting) {
+        return reply.code(404).send({ error: 'Meeting not found.' });
+      }
+
+      const participants = await Participant.find({
+        meetingId: meeting._id,
+        leftAt: { $exists: false }
+      }).populate('userId', 'name email avatarUrl');
+
+      // Map DB schema participants into clean view-ready objects
+      const mapped = participants.map((p: any) => {
+        const userObj = p.userId || {};
+        return {
+          id: p._id.toString(),
+          userId: userObj._id?.toString() || p.userId?.toString() || 'unknown',
+          name: userObj.name || 'Anonymous Peer',
+          email: userObj.email || '',
+          avatar: (userObj.name || 'AP').slice(0, 2).toUpperCase(),
+          role: p.role,
+          audioMuted: p.audioMuted,
+          videoMuted: p.videoMuted,
+          joinedAt: p.joinedAt
+        };
+      });
+
+      return reply.code(200).send(mapped);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to retrieve active participants.', details: err.message });
+    }
+  });
+
+  // 9. GENERATE AI SUMMARY (Groq / Gemini Integration)
+  fastify.post('/:id/summarize', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as any;
+      if (!Types.ObjectId.isValid(id)) {
+        return reply.code(400).send({ error: 'Invalid meeting ID format.' });
+      }
+
+      const meeting = await Meeting.findById(id);
+      if (!meeting) {
+        return reply.code(404).send({ error: 'Meeting room not found.' });
+      }
+
+      if (meeting.status !== 'ended') {
+        return reply.code(400).send({ error: 'Summaries can only be generated for completed meetings.' });
+      }
+
+      // If summary already generated, return it from cache
+      if (meeting.aiSummary) {
+        return reply.code(200).send({ summary: meeting.aiSummary });
       }
 
       const summaryHtml = await summarizeMeeting(meeting._id.toString());
@@ -636,6 +796,56 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       return reply.code(200).send({ summary: summaryHtml });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to generate AI summary.', details: err.message });
+    }
+  });
+
+  // 10. GET WORKSPACE ROOMS
+  fastify.get('/rooms', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+      const rooms = await Room.find({ workspaceId }).sort({ createdAt: -1 });
+      return reply.code(200).send(rooms);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to fetch rooms', details: err.message });
+    }
+  });
+
+  // 11. CREATE ROOM
+  fastify.post('/rooms', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { title, tag, color } = request.body as any;
+      const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+      if (!title || !tag) return reply.code(400).send({ error: 'Title and Tag are required.' });
+
+      const room = await Room.create({
+        workspaceId,
+        creatorId: request.user!.id,
+        title,
+        tag,
+        color: color || '#7c3aed'
+      });
+      return reply.code(201).send(room);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to create room', details: err.message });
+    }
+  });
+
+  // 12. DELETE ROOM
+  fastify.delete('/rooms/:id', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as any;
+      const room = await Room.findById(id);
+      if (!room) return reply.code(404).send({ error: 'Room not found.' });
+
+      // Ensure user is creator or an admin
+      if (room.creatorId.toString() !== request.user!.id && request.user!.role !== 'company-admin') {
+        return reply.code(403).send({ error: 'Unauthorized to delete this room.' });
+      }
+
+      await Room.findByIdAndDelete(id);
+      return reply.code(200).send({ success: true });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to delete room', details: err.message });
     }
   });
 }

@@ -87,11 +87,12 @@ export default function Settings() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigate(-1 as any)}>
-          <ArrowLeft size={24} color="#1e293b" />
+      {/* New TopBar */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', height: 56, paddingHorizontal: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
+        <TouchableOpacity onPress={() => navigate('/chat')} style={{ padding: 8, marginRight: 8, borderRadius: 20, backgroundColor: '#f8fafc' }}>
+          <ArrowLeft size={20} color="#0053B2" />
         </TouchableOpacity>
-        <Text style={styles.title}>Settings</Text>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: '#0f172a' }}>Settings</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>

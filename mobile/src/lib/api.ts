@@ -560,6 +560,18 @@ export const api = {
         }),
       });
     },
+    async getRooms() {
+      return request('/api/meetings/rooms');
+    },
+    async createRoom(data: { title: string; tag: string; color?: string }) {
+      return request('/api/meetings/rooms', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    async deleteRoom(id: string) {
+      return request(`/api/meetings/rooms/${id}`, { method: 'DELETE' });
+    },
     async validateMeeting(roomId: string, password?: string) {
       const encodedRoomId = encodeURIComponent(roomId.trim());
       const query = password ? `?passcode=${encodeURIComponent(password)}` : '';
@@ -658,6 +670,15 @@ export const api = {
         body: JSON.stringify({ workspaceId, name, members }),
       });
     },
+    async addMemberToGroup(groupId: string, emails: string[]) {
+      return request(`/api/chat/groups/${groupId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ emails }),
+      });
+    },
+    async getGroupDetails(groupId: string) {
+      return request(`/api/chat/groups/${groupId}`);
+    },
     async getStories(workspaceId: string) {
       return request(`/api/status/${workspaceId}`);
     },
@@ -720,6 +741,20 @@ async sendMessage(workspaceId: string, channelId: string, content: string, fileD
     },
     async deleteConversation(channelId: string) {
       return request(`/api/chat/delete-conversation/${channelId}`, {
+        method: 'DELETE',
+      });
+    },
+    async getCallLogs() {
+      return request('/api/chat/call-logs');
+    },
+    async createCallLog(data: { calleeEmail: string; callerName?: string; calleeName?: string; callType: string; status: string; duration?: number }) {
+      return request('/api/chat/call-logs', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    async deleteCallLog(id: string) {
+      return request(`/api/chat/call-logs/${id}`, {
         method: 'DELETE',
       });
     },

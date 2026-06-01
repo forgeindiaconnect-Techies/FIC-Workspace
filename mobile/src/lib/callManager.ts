@@ -21,6 +21,7 @@
  */
 
 import { getRTCPeerConnectionClass, getMediaDevices, getIceServers } from './webrtc';
+import { api } from './api';
 
 export type CallState =
   | 'idle'
@@ -42,10 +43,15 @@ class CallManager {
 
   private _state: CallState = 'idle';
   private peerEmail: string | null = null;   // who we're calling / being called by
+  private peerName: string | null = null;
+  private localName: string | null = null;
   private pendingOffer: any = null;           // SDP offer stored while ringing
   private socketUrl: string = '';
   private token: string = '';
   private reconnectTimer: any = null;
+
+  private callStartTime: number | null = null;
+  private callRole: 'caller' | 'callee' | null = null;
 
   // ── Public event hooks ───────────────────────────────────────────────────
   onIncomingCall: ((caller: CallerInfo) => void) | null = null;
@@ -140,7 +146,7 @@ class CallManager {
     };
 
     this.ws.onerror = (err) => {
-      console.error('[CallManager] WebSocket error', err);
+      console.warn('[CallManager] WebSocket error', err);
     };
   }
 
@@ -186,6 +192,8 @@ class CallManager {
         return;
       }
       this.peerEmail = callerEmail;
+      this.peerName = callerName || callerEmail;
+      this.callRole = 'callee';
       this.pendingOffer = offer;
       this.setState('ringing');
       console.log('[CallManager] Incoming call from', callerEmail);
@@ -200,12 +208,14 @@ class CallManager {
         const sdp = RTCSessionDesc ? new RTCSessionDesc(answer) : answer;
         await this.pc.setRemoteDescription(sdp).catch(console.warn);
         this.setState('connected');
+        this.callStartTime = Date.now();
         this.onCallAnswered?.();
       }
       return;
     }
 
     if (type === 'call_declined') {
+      this.logCallHistory('declined');
       this.cleanupPeer();
       this.setState('ended');
       this.onCallDeclined?.();
@@ -214,6 +224,8 @@ class CallManager {
     }
 
     if (type === 'call_ended') {
+      const status = this.callStartTime ? 'answered' : 'missed';
+      this.logCallHistory(status);
       this.cleanupPeer();
       this.setState('ended');
       this.onCallEnded?.();
@@ -253,16 +265,19 @@ class CallManager {
 
     const connected = await this.waitForSocketOpen(12000);
     if (!connected) {
-      console.error('[CallManager] Socket not connected (timeout waiting for /ws/calls)');
+      console.warn('[CallManager] Socket not connected (timeout waiting for /ws/calls)');
       return false;
     }
     
     this.peerEmail = targetEmail;
+    this.peerName = targetName;
+    this.localName = callerName;
+    this.callRole = 'caller';
     this.setState('calling');
 
     const PC = getRTCPeerConnectionClass();
     if (!PC) { 
-      console.error('[CallManager] RTCPeerConnection not available');
+      console.warn('[CallManager] RTCPeerConnection not available');
       this.setState('idle'); 
       return false; 
     }
@@ -304,7 +319,7 @@ class CallManager {
       });
       return true;
     } catch (err) {
-      console.error('[CallManager] Offer creation failed', err);
+      console.warn('[CallManager] Offer creation failed', err);
       this.cleanupPeer();
       this.setState('idle');
       return false;
@@ -321,7 +336,7 @@ class CallManager {
 
     const PC = getRTCPeerConnectionClass();
     if (!PC) {
-      console.error('[CallManager] RTCPeerConnection not available');
+      console.warn('[CallManager] RTCPeerConnection not available');
       return false;
     }
 
@@ -364,11 +379,12 @@ class CallManager {
       });
 
       this.setState('connected');
+      this.callStartTime = Date.now();
       this.onCallAnswered?.();
       this.pendingOffer = null;
       return true;
     } catch (err) {
-      console.error('[CallManager] Answer failed', err);
+      console.warn('[CallManager] Answer failed', err);
       this.cleanupPeer();
       this.setState('idle');
       return false;
@@ -399,6 +415,12 @@ class CallManager {
     }
     if (!this.peerEmail) return false;
 
+    if (this._state === 'calling') {
+      this.logCallHistory('missed');
+    } else if (this._state === 'connected' && this.callRole === 'caller') {
+      this.logCallHistory('answered');
+    }
+
     this.send({ type: 'call_ended', data: { targetEmail: this.peerEmail } });
     this.cleanupPeer();
     this.setState('idle');
@@ -424,7 +446,30 @@ class CallManager {
     this.pc = null;
     this.pendingOffer = null;
     this.peerEmail = null;
+    this.peerName = null;
+    this.callRole = null;
+    this.callStartTime = null;
     this._isMuted = false;
+  }
+
+  private async logCallHistory(status: 'answered' | 'missed' | 'declined') {
+    if (this.callRole !== 'caller' || !this.peerEmail) return;
+    
+    const durationMs = this.callStartTime ? Date.now() - this.callStartTime : 0;
+    const durationSec = Math.floor(durationMs / 1000);
+    
+    try {
+      await api.chat.createCallLog({
+        calleeEmail: this.peerEmail,
+        calleeName: this.peerName || this.peerEmail,
+        callerName: this.localName || 'Caller',
+        callType: 'audio',
+        status,
+        duration: durationSec
+      });
+    } catch (err) {
+      console.warn('[CallManager] Failed to log call history', err);
+    }
   }
 }
 

@@ -25,7 +25,7 @@ export default function AppLayout() {
     return () => clearInterval(interval);
   }, [isFullscreen]);
 
-  const showTopBar = !isFullscreen && !location.pathname.startsWith('/mail') && !location.pathname.startsWith('/chat');
+  const showTopBar = !isFullscreen && !location.pathname.startsWith('/mail') && !location.pathname.startsWith('/chat') && !location.pathname.startsWith('/home') && !location.pathname.startsWith('/settings');
 
   return (
     <SafeAreaView style={[styles.safeArea, isFullscreen && styles.safeAreaFullscreen]} edges={isFullscreen ? [] : ['top', 'bottom', 'left', 'right']}>

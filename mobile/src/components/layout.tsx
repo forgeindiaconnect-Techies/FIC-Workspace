@@ -23,7 +23,8 @@ import {
   User as UserIcon,
   Settings,
   LogOut,
-  Bell
+  Bell,
+  Grid
 } from "lucide-react-native";
 import tw from 'twrnc';
 import { useNavigate, useLocation } from "../lib/router";
@@ -97,6 +98,7 @@ export function TopBar({ title }: { title: string }) {
   
   const [showMenu, setShowMenu] = React.useState(false);
   const [showNotifications, setShowNotifications] = React.useState(false);
+  const [appsMenu, setAppsMenu] = React.useState(false);
 
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -160,15 +162,28 @@ export function TopBar({ title }: { title: string }) {
       }
     ]}>
       <View style={[styles.logoRow, screenType === 'small' && styles.logoRowSmall]}>
-        <Text style={[tw`text-[28px] -tracking-[0.01em]`, { fontFamily: 'AbhayaLibre_600SemiBold', lineHeight: 36 }]}>
-          <Text style={tw`text-[#1806DA]`}>WORK</Text>
-          <Text style={tw`text-[#FDD201]`}>SPACE</Text>
-        </Text>
+        {title.toLowerCase() === 'meetings' ? (
+          <Text style={[tw`text-[14px] text-[#2563eb] capitalize`, { fontFamily: 'Outfit_600SemiBold' }]}>
+            Meet
+          </Text>
+        ) : (
+          <Text style={[tw`text-[28px] -tracking-[0.01em]`, { fontFamily: 'AbhayaLibre_600SemiBold', lineHeight: 36 }]}>
+            <Text style={tw`text-[#1806DA]`}>WORK</Text>
+            <Text style={tw`text-[#FDD201]`}>SPACE</Text>
+          </Text>
+        )}
       </View>
       
       <View style={tw`flex-row items-center gap-4`}>
-        <TouchableOpacity style={tw`mr-1 p-1`} onPress={() => navigate('/home')}>
-          <HomeIcon size={22} color="#000000" strokeWidth={2} />
+        <TouchableOpacity style={tw`mr-1 p-1`} onPress={() => setAppsMenu(true)}>
+          <Grid size={22} color="#000000" strokeWidth={2} />
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={tw`mr-1 p-1 relative`} onPress={() => setShowNotifications(true)}>
+          <Bell size={22} color="#000000" strokeWidth={2} />
+          {unreadCount > 0 && (
+            <View style={tw`absolute top-1 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border border-white`} />
+          )}
         </TouchableOpacity>
         
         <TouchableOpacity style={tw`w-8 h-8 rounded-full overflow-hidden border border-gray-200`} onPress={() => setShowMenu(true)}>
@@ -260,6 +275,41 @@ export function TopBar({ title }: { title: string }) {
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
+
+      {appsMenu && (
+        <Modal transparent visible={appsMenu} onRequestClose={() => setAppsMenu(false)} animationType="fade">
+          <TouchableWithoutFeedback onPress={() => setAppsMenu(false)}>
+            <View style={styles.menuOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={[
+                  styles.dropdownMenu,
+                  {
+                    width: Math.min(200, width - 32),
+                    right: screenType === 'small' ? 14 : 64,
+                    top: topBarHeight + safeInsets.top + 8,
+                    padding: 8,
+                    borderRadius: 16,
+                  }
+                ]}>
+                  <Text style={tw`text-xs font-bold text-gray-500 uppercase px-4 py-2 border-b border-gray-100`}>Switch App</Text>
+                  {[
+                    { icon: <Image source={require('../../assets/Mail.png')} style={tw`w-5 h-5`} />, label: 'Mail', action: () => { navigate('/mail'); setAppsMenu(false); } },
+                    { icon: <Image source={require('../../assets/Meet.png')} style={tw`w-5 h-5`} />, label: 'Meet', action: () => { navigate('/meetings'); setAppsMenu(false); } },
+                    { icon: <Image source={require('../../assets/Chat.png')} style={tw`w-5 h-5`} />, label: 'Kural', action: () => { navigate('/chat'); setAppsMenu(false); } },
+                    ...(user?.role === 'company-admin' || user?.email === 'admin@fic.com' ? [{ icon: <UserIcon size={16} color="#7c3aed" />, label: 'Team', action: () => { navigate('/team'); setAppsMenu(false); } }] : []),
+                    ...(user?.role === 'super-admin' ? [{ icon: <Settings size={16} color="#dc2626" />, label: 'Subscriptions', action: () => { navigate('/superadmin'); setAppsMenu(false); } }] : [])
+                  ].map(item => (
+                    <TouchableOpacity key={item.label} style={tw`flex-row items-center px-4 py-3.5 gap-3 border-b border-[#f1f5f9]`} onPress={item.action}>
+                      <View style={tw`w-8 h-8 rounded-[10px] bg-[#f8fafc] items-center justify-center mr-3`}>{item.icon}</View>
+                      <Text style={tw`text-[14px] font-bold text-[#0f172a]`}>{item.label}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               </TouchableWithoutFeedback>
             </View>

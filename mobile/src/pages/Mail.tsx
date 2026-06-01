@@ -12,7 +12,8 @@ import {
   ActivityIndicator,
   Alert,
   useWindowDimensions,
-  Image
+  Image,
+  TouchableWithoutFeedback
 } from 'react-native';
 import RenderHtml from 'react-native-render-html';
 import * as Print from 'expo-print';
@@ -42,7 +43,9 @@ import {
   Bold,
   Italic,
   List,
-  ChevronDown
+  ChevronDown,
+  Users,
+  ShieldCheck
 } from 'lucide-react-native';
 import { useNavigate } from '../lib/router';
 import tw from 'twrnc';
@@ -181,7 +184,8 @@ export default function Mail() {
     setLoading(true);
     try {
       const data = await api.mail.getMails(folder);
-      setMailList(Array.isArray(data) ? data : []);
+      let list = Array.isArray(data) ? data : [];
+      setMailList(list);
     } catch (err) {
       console.warn("Could not fetch emails:", err);
       setMailList([]);
@@ -391,9 +395,12 @@ export default function Mail() {
                 >
                   {/* Name and Time row */}
                   <View style={tw`flex-row justify-between items-center w-full h-[24px]`}>
-                    <Text style={tw`font-bold text-[16px] text-[#191C1E]`} numberOfLines={1}>
-                      {activeFolder === 'sent' ? `To: ${email.recipientEmails.join(', ')}` : email.senderName}
-                    </Text>
+                    <View style={tw`flex-row items-center flex-1 pr-2`}>
+                      {email.isStarred && <Star size={14} color="#fbbf24" fill="#fbbf24" style={tw`mr-1`} />}
+                      <Text style={tw`font-bold text-[16px] text-[#191C1E] flex-1`} numberOfLines={1}>
+                        {activeFolder === 'sent' ? `To: ${email.recipientEmails.join(', ')}` : email.senderName}
+                      </Text>
+                    </View>
                     <Text style={tw`font-medium text-[12px] tracking-[0.24px] ${isUnread ? 'text-[#003D9B]' : 'text-[#737685]'}`}>
                       {displayDate}
                     </Text>
@@ -595,9 +602,6 @@ export default function Mail() {
       {!selectedEmail && (
         <View style={tw`flex-row items-center justify-between px-[16px] h-[64px] bg-[#F8F9FB]`}>
           <View style={tw`flex-row items-center gap-[4px]`}>
-            <TouchableOpacity onPress={() => navigate('/home')} style={tw`w-[34px] h-[28px] rounded-full items-center justify-center`}>
-              <Home size={18} color="#003D9B" strokeWidth={2.5} />
-            </TouchableOpacity>
             <TouchableOpacity onPress={() => setDrawerOpen(true)} style={tw`w-[34px] h-[28px] rounded-full items-center justify-center p-[8px]`}>
               <Menu size={18} color="#003D9B" strokeWidth={2.5} />
             </TouchableOpacity>
@@ -766,32 +770,47 @@ export default function Mail() {
         </View>
       </Modal>
 
-      {/* App Switcher Modal */}
-      <Modal visible={appSwitcherOpen} transparent animationType="fade" onRequestClose={() => setAppSwitcherOpen(false)}>
-        <TouchableOpacity style={tw`flex-1 bg-[rgba(0,0,0,0.3)]`} activeOpacity={1} onPress={() => setAppSwitcherOpen(false)}>
-          <View style={[tw`absolute top-[64px] right-[16px] w-[280px] bg-[#FFFFFF] rounded-[16px] p-[16px]`, { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 5 }]}>
-            <Text style={tw`text-[14px] font-bold text-[#434654] mb-[16px] uppercase tracking-[0.5px]`}>Workspace Apps</Text>
-            <View style={tw`flex-row flex-wrap justify-between gap-y-[16px]`}>
-              <TouchableOpacity onPress={() => { setAppSwitcherOpen(false); navigate('/home'); }} style={tw`w-[76px] items-center gap-[8px]`}>
-                <View style={tw`w-[48px] h-[48px] bg-[#F1F5F9] rounded-[12px] items-center justify-center`}><Home size={24} color="#003D9B" /></View>
-                <Text style={tw`text-[12px] font-medium text-[#434654]`}>Home</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setAppSwitcherOpen(false); navigate('/mail'); }} style={tw`w-[76px] items-center gap-[8px]`}>
-                <View style={tw`w-[48px] h-[48px] bg-[#D4E0F8] rounded-[12px] items-center justify-center`}><MailIcon size={24} color="#0052CC" /></View>
-                <Text style={tw`text-[12px] font-bold text-[#0052CC]`}>Mail</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setAppSwitcherOpen(false); navigate('/chat'); }} style={tw`w-[76px] items-center gap-[8px]`}>
-                <View style={tw`w-[48px] h-[48px] bg-[#F1F5F9] rounded-[12px] items-center justify-center`}><MessageSquare size={24} color="#003D9B" /></View>
-                <Text style={tw`text-[12px] font-medium text-[#434654]`}>Chat</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setAppSwitcherOpen(false); navigate('/meetings'); }} style={tw`w-[76px] items-center gap-[8px]`}>
-                <View style={tw`w-[48px] h-[48px] bg-[#F1F5F9] rounded-[12px] items-center justify-center`}><Video size={24} color="#003D9B" /></View>
-                <Text style={tw`text-[12px] font-medium text-[#434654]`}>Meetings</Text>
-              </TouchableOpacity>
+      {/* App Switcher Dropdown */}
+      {appSwitcherOpen && (
+        <Modal transparent visible={appSwitcherOpen} onRequestClose={() => setAppSwitcherOpen(false)} animationType="fade">
+          <TouchableWithoutFeedback onPress={() => setAppSwitcherOpen(false)}>
+            <View style={{ flex: 1 }}>
+              <TouchableWithoutFeedback>
+                <View style={[
+                  tw`absolute bg-white overflow-hidden`,
+                  {
+                    width: Math.min(200, width - 32),
+                    right: isMobile ? 14 : 24,
+                    top: isMobile ? 60 : 70,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 10 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 20,
+                    elevation: 10,
+                  }
+                ]}>
+                  <Text style={tw`text-xs font-bold text-gray-500 uppercase px-4 py-2 border-b border-gray-100`}>Switch App</Text>
+                  {[
+                    { icon: <Image source={require('../../assets/Mail.png')} style={tw`w-5 h-5`} />, label: 'Mail', action: () => { navigate('/mail'); setAppSwitcherOpen(false); } },
+                    { icon: <Image source={require('../../assets/Meet.png')} style={tw`w-5 h-5`} />, label: 'Meet', action: () => { navigate('/meetings'); setAppSwitcherOpen(false); } },
+                    { icon: <Image source={require('../../assets/Chat.png')} style={tw`w-5 h-5`} />, label: 'Kural', action: () => { navigate('/chat'); setAppSwitcherOpen(false); } },
+                    ...(user?.role === 'company-admin' || user?.email === 'admin@fic.com' ? [{ icon: <Users size={16} color="#7c3aed" />, label: 'Team', action: () => { navigate('/team'); setAppSwitcherOpen(false); } }] : []),
+                    ...(user?.role === 'super-admin' ? [{ icon: <ShieldCheck size={16} color="#dc2626" />, label: 'Subscriptions', action: () => { navigate('/superadmin'); setAppSwitcherOpen(false); } }] : [])
+                  ].map(item => (
+                    <TouchableOpacity key={item.label} style={tw`flex-row items-center px-4 py-3.5 gap-3 border-b border-[#f1f5f9]`} onPress={item.action}>
+                      <View style={tw`w-8 h-8 rounded-[10px] bg-[#f8fafc] items-center justify-center mr-3`}>{item.icon}</View>
+                      <Text style={tw`text-[14px] font-bold text-[#0f172a]`}>{item.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </TouchableWithoutFeedback>
             </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
 
       {/* Navigation Drawer */}
       <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>

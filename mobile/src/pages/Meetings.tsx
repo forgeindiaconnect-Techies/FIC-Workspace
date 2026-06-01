@@ -9,7 +9,7 @@ import {
   Video, Calendar, Clock, Users, Play, Bell, BellRing,
   Mic, MicOff, VideoOff, PhoneOff, Copy, Lock, Shield,
   X, Send, MessageSquare, LogIn, ChevronRight, Wifi,
-  FlipHorizontal, MonitorUp, Settings, Sparkles, Wand2, Globe, PhoneForwarded, MoreVertical, Link as LinkIcon, Check, Plus
+  FlipHorizontal, MonitorUp, Settings, Sparkles, Wand2, Globe, PhoneForwarded, MoreVertical, Link as LinkIcon, Check, Plus, Trash2
 } from 'lucide-react-native';
 import { api, getSession, SOCKET_URL } from '../lib/api';
 import {
@@ -24,7 +24,6 @@ import {
   getIceServers,
   getDisplayMedia,
 } from '../lib/webrtc';
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 
 // expo-camera: works in Expo Go AND in APK builds (no custom native code needed)
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
@@ -33,7 +32,6 @@ import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions 
 
 const MOCK_MEETINGS: any[] = [];
 const MOCK_HISTORY: any[] = [];
-const ROOMS: any[] = [];
 
 const fmtDur = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -55,6 +53,7 @@ export default function Meetings() {
 
   const [meetings, setMeetings] = React.useState<any[]>(MOCK_MEETINGS);
   const [history] = React.useState<any[]>(MOCK_HISTORY);
+  const [rooms, setRooms] = React.useState<any[]>([]);
   const [reminders, setReminders] = React.useState<string[]>([]);
   const [activeRoom, setActiveRoom] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
@@ -90,6 +89,12 @@ export default function Meetings() {
   const [schedDate, setSchedDate] = React.useState('2026-06-01');
   const [schedTime, setSchedTime] = React.useState('10:00 AM');
   const [schedDur, setSchedDur] = React.useState('45');
+  const [newRoomTitle, setNewRoomTitle] = React.useState('');
+  const [newRoomTag, setNewRoomTag] = React.useState('');
+
+  React.useEffect(() => {
+    api.meetings.getRooms().then(setRooms).catch(() => {});
+  }, []);
 
   // In-call state
   const [isMuted, setIsMuted] = React.useState(false);
@@ -237,8 +242,8 @@ export default function Meetings() {
     }
   }, [aiAssistantActive, localStream]);
 
-  // MOBILE AUDIO RECORDING — uses expo-av to record and upload chunks for AI transcription
-  const mobileRecordingRef = React.useRef<Audio.Recording | null>(null);
+  // MOBILE AUDIO RECORDING — uses expo-audio to record and upload chunks for AI transcription
+  const mobileRecordingRef = React.useRef<any>(null);
   const mobileUploadTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   React.useEffect(() => {
@@ -249,18 +254,18 @@ export default function Meetings() {
     const meetingId = activeRoom.id || activeRoom.signalingId;
     const speakerName = user?.name || 'User';
 
+    const { AudioRecorder, RecordingPresets, setAudioModeAsync } = require('expo-audio');
+
     const startRecording = async () => {
       try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-          interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-          interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
         });
 
-        const recording = new Audio.Recording();
-        await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-        await recording.startAsync();
+        const recording = new AudioRecorder(RecordingPresets.HIGH_QUALITY);
+        await recording.prepareToRecordAsync();
+        recording.record();
         mobileRecordingRef.current = recording;
         console.log('[MobileAudio] Recording started for meeting', meetingId);
       } catch (err) {
@@ -272,15 +277,15 @@ export default function Meetings() {
       if (stopped || isMutedRef.current || !mobileRecordingRef.current) return;
       try {
         // Stop current segment and upload it
-        await mobileRecordingRef.current.stopAndUnloadAsync();
-        const uri = mobileRecordingRef.current.getURI();
+        await mobileRecordingRef.current.stop();
+        const uri = mobileRecordingRef.current.uri;
         mobileRecordingRef.current = null;
 
         if (uri && meetingId) {
           console.log('[MobileAudio] Uploading chunk from', uri);
           api.meetings.uploadAudioChunk(meetingId, uri, speakerName)
-            .then(res => console.log('[MobileAudio] Chunk transcribed:', res?.text?.slice(0, 60)))
-            .catch(e => console.warn('[MobileAudio] Upload failed:', e.message));
+            .then((res: any) => console.log('[MobileAudio] Chunk transcribed:', res?.text?.slice(0, 60)))
+            .catch((e: any) => console.warn('[MobileAudio] Upload failed:', e.message));
         }
 
         // Immediately start next recording segment
@@ -354,14 +359,12 @@ export default function Meetings() {
 
   const configureCallAudio = React.useCallback(async () => {
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-        staysActiveInBackground: true,
-        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-        shouldDuckAndroid: false,
-        playThroughEarpieceAndroid: false,
+      const { setAudioModeAsync } = require('expo-audio');
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        interruptionMode: 'doNotMix',
+        shouldRouteThroughEarpiece: false,
       });
     } catch (err) {
       console.warn('[Audio] Could not enable call audio mode:', err);
@@ -370,14 +373,12 @@ export default function Meetings() {
 
   const resetCallAudio = React.useCallback(async () => {
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
-        staysActiveInBackground: false,
-        interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
+      const { setAudioModeAsync } = require('expo-audio');
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        interruptionMode: 'mixWithOthers',
+        shouldRouteThroughEarpiece: false,
       });
     } catch (err) {
       console.warn('[Audio] Could not reset call audio mode:', err);
@@ -1940,20 +1941,23 @@ export default function Meetings() {
 
       <View style={s.section}>
         <Text style={s.sectionTitle}>Persistent Rooms</Text>
-        {ROOMS.map(room => (
-          <TouchableOpacity key={room.id} style={s.roomCard} onPress={() => enterPersistentRoom(room)}>
-            <View style={[s.roomTag, { backgroundColor: room.color + '20' }]}>
-              <Text style={[s.roomTagText, { color: room.color }]}>{room.tag}</Text>
+        {rooms.length === 0 ? (
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text style={{ color: '#94a3b8' }}>No persistent rooms yet.</Text>
+          </View>
+        ) : rooms.slice(0, 3).map(room => (
+          <TouchableOpacity key={room._id} style={s.roomCard} onPress={() => enterPersistentRoom(room)}>
+            <View style={[s.roomIcon, { backgroundColor: (room.color || '#7c3aed') + '15' }]}>
+              <Users size={24} color={room.color || '#7c3aed'} />
             </View>
-            <View style={s.roomCardInfo}>
-              <Text style={s.roomCardTitle}>{room.title}</Text>
-              <Text style={s.roomCardId}>{room.id}</Text>
+            <View style={s.roomInfo}>
+              <Text style={s.roomTitle}>{room.title}</Text>
+              <Text style={s.roomSub}>{room.tag} • Workspace Room</Text>
             </View>
-            <View style={[s.memberBadge, { backgroundColor: room.members > 0 ? '#dcfce7' : '#f1f5f9' }]}>
-              <View style={[s.memberDot, { backgroundColor: room.members > 0 ? '#22c55e' : '#94a3b8' }]} />
-              <Text style={[s.memberText, { color: room.members > 0 ? '#15803d' : '#64748b' }]}>{room.members} online</Text>
+            <View style={s.roomAction}>
+              <Text style={s.roomActionText}>Enter</Text>
+              <ChevronRight size={16} color="#64748b" />
             </View>
-            <ChevronRight size={16} color="#94a3b8" />
           </TouchableOpacity>
         ))}
       </View>
@@ -2070,24 +2074,95 @@ export default function Meetings() {
           ))}
           <View style={s.modalBtnRow}>
             <TouchableOpacity style={s.cancelBtn} onPress={() => setScheduleModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
-            <TouchableOpacity style={s.primaryBtn} onPress={async()=>{try{await api.meetings.registerLiveMeeting({title:schedTitle,startTime:new Date(`${schedDate}T12:00:00`),duration:parseInt(schedDur)||45});Alert.alert('Scheduled',`"${schedTitle}" scheduled.`);}catch{Alert.alert('Saved',`"${schedTitle}" saved locally.`);}setScheduleModal(false);}}><Text style={s.primaryBtnText}>Confirm</Text></TouchableOpacity>
+            <TouchableOpacity style={s.primaryBtn} onPress={async()=>{
+              try {
+                await api.meetings.registerLiveMeeting({
+                  title: schedTitle, 
+                  startTime: new Date(`${schedDate}T12:00:00`), 
+                  duration: parseInt(schedDur)||45
+                });
+                Alert.alert('Scheduled', `"${schedTitle}" scheduled. Invitations sent!`);
+              } catch {
+                Alert.alert('Saved', `"${schedTitle}" saved locally.`);
+              }
+              setScheduleModal(false);
+            }}>
+              <Text style={s.primaryBtnText}>Confirm</Text>
+            </TouchableOpacity>
           </View>
         </View></View>
       </Modal>
 
       {/* ROOMS */}
       <Modal visible={roomsModal} animationType="slide" transparent onRequestClose={() => setRoomsModal(false)}>
-        <View style={s.modalOverlay}><View style={s.modalCard}>
-          <View style={s.modalTopRow}><Text style={s.modalTitle}>Persistent Rooms</Text><TouchableOpacity onPress={() => setRoomsModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
-          {ROOMS.map(room=>(
-            <TouchableOpacity key={room.id} style={s.roomModalItem} onPress={()=>{setRoomsModal(false);enterPersistentRoom(room);}}>
-              <View style={[s.roomTag,{backgroundColor:room.color+'20'}]}><Text style={[s.roomTagText,{color:room.color}]}>{room.tag}</Text></View>
-              <View style={{flex:1}}><Text style={s.roomModalTitle}>{room.title}</Text><Text style={s.roomModalId}>{room.id}</Text></View>
-              <View style={[s.memberBadge,{backgroundColor:room.members>0?'#dcfce7':'#f1f5f9'}]}><Text style={[s.memberText,{color:room.members>0?'#15803d':'#64748b'}]}>{room.members} online</Text></View>
+        <View style={s.modalOverlay}>
+          <View style={[s.modalCard, { maxHeight: '90%' }]}>
+            <View style={s.modalTopRow}>
+              <Text style={s.modalTitle}>Persistent Rooms</Text>
+              <TouchableOpacity onPress={() => setRoomsModal(false)}><X size={20} color="#64748b" /></TouchableOpacity>
+            </View>
+            <ScrollView style={{ flex: 1, maxHeight: 300, marginBottom: 16 }}>
+              {rooms.length === 0 ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: '#94a3b8' }}>No persistent rooms yet.</Text>
+                </View>
+              ) : rooms.map(room => (
+                <View key={room._id} style={[s.roomModalItem, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                  <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => { setRoomsModal(false); enterPersistentRoom(room); }}>
+                    <View style={[s.roomTag, { backgroundColor: (room.color || '#7c3aed') + '20' }]}>
+                      <Text style={[s.roomTagText, { color: room.color || '#7c3aed' }]}>{room.tag}</Text>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={s.roomModalTitle}>{room.title}</Text>
+                      <Text style={s.roomModalId}>Workspace Room</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={{ padding: 8 }} 
+                    onPress={async () => {
+                      try {
+                        await api.meetings.deleteRoom(room._id);
+                        setRooms(prev => prev.filter(r => r._id !== room._id));
+                      } catch (e: any) {
+                        Alert.alert('Error', e.message || 'Failed to delete room');
+                      }
+                    }}
+                  >
+                    <Trash2 size={18} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={{ borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 16, marginBottom: 16 }}>
+              <Text style={[s.fieldLabel, { marginBottom: 8 }]}>Create New Room</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                <TextInput style={[s.modalInput, { flex: 2, marginBottom: 0 }]} value={newRoomTitle} onChangeText={setNewRoomTitle} placeholder="Room Name" placeholderTextColor="#94a3b8" />
+                <TextInput style={[s.modalInput, { flex: 1, marginBottom: 0 }]} value={newRoomTag} onChangeText={setNewRoomTag} placeholder="Tag (e.g. UX)" placeholderTextColor="#94a3b8" />
+              </View>
+              <TouchableOpacity 
+                style={[s.primaryBtn, { opacity: (newRoomTitle && newRoomTag) ? 1 : 0.5 }]} 
+                disabled={!newRoomTitle || !newRoomTag}
+                onPress={async () => {
+                  try {
+                    const room = await api.meetings.createRoom({ title: newRoomTitle, tag: newRoomTag, color: '#3b82f6' });
+                    setRooms([room, ...rooms]);
+                    setNewRoomTitle('');
+                    setNewRoomTag('');
+                  } catch (e: any) {
+                    Alert.alert('Error', e.message || 'Failed to create room');
+                  }
+                }}
+              >
+                <Text style={s.primaryBtnText}>Create Room</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={s.cancelBtn} onPress={() => setRoomsModal(false)}>
+              <Text style={s.cancelBtnText}>Close</Text>
             </TouchableOpacity>
-          ))}
-          <TouchableOpacity style={s.cancelBtn} onPress={()=>setRoomsModal(false)}><Text style={s.cancelBtnText}>Close</Text></TouchableOpacity>
-        </View></View>
+          </View>
+        </View>
       </Modal>
 
       {/* SUMMARY */}
@@ -2137,6 +2212,11 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   roomCardInfo: { flex: 1 },
   roomCardTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
   roomCardId: { fontSize: 11, color: '#94a3b8', fontWeight: '600', marginTop: 2 },
+  roomIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  roomInfo: { flex: 1, minWidth: 0 },
+  roomSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  roomAction: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  roomActionText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
   memberBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   memberDot: { width: 7, height: 7, borderRadius: 4 },
   memberText: { fontSize: 11, fontWeight: '700' },

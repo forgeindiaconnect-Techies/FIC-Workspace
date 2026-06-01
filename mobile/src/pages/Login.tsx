@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -146,28 +146,11 @@ export default function Login() {
       <ScrollView contentContainerStyle={tw`flex-grow items-center justify-center p-6`}>
 
         {/* Branding Section */}
-        <View style={tw`items-center mb-10 mt-8`}>
-          {/* Logo Placeholder - Matches 62x63 dimensions requested */}
-          <View style={tw`w-[62px] h-[63px] rounded-xl items-center justify-center mb-4 overflow-hidden`}>
+        <View style={tw`items-center mb-4 mt-8`}>
+          {/* Logo */}
+          <View style={tw`w-[200px] h-[200px] rounded-xl items-center justify-center overflow-hidden`}>
             <Image source={require('../../assets/logo.png')} style={tw`w-full h-full`} resizeMode="contain" />
           </View>
-          <Text
-  style={[
-    tw`text-[48px] text-center tracking-tight`,
-    { fontFamily: 'AbhayaLibre_600SemiBold' }
-  ]}
->
-  <Text style={tw`text-[#1806DA]`}>
-    FORGE
-  </Text>
-
-  <Text style={tw`text-[#FDD201]`}>
-    {"  "}INDIA
-  </Text>
-</Text>
-          <Text style={tw`text-[#1806DA] text-[19px] text-center mt-1 font-serif`}>
-            CONNECT PVT LIMITED
-          </Text>
         </View>
 
         {/* Content Form Section */}

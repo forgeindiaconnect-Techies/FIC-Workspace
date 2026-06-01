@@ -33,8 +33,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+import { useFonts } from 'expo-font';
+import { Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold } from '@expo-google-fonts/outfit';
+
 export default function App() {
   const [loading, setLoading] = React.useState(true);
+  const [fontsLoaded] = useFonts({
+    Outfit_400Regular,
+    Outfit_500Medium,
+    Outfit_600SemiBold,
+  });
 
   React.useEffect(() => {
     waitForSession().finally(() => {
@@ -51,7 +59,7 @@ export default function App() {
     <SafeAreaProvider>
       {/* Global incoming call overlay — appears on any screen */}
       <IncomingCallOverlay />
-  {loading ? (
+  {(loading || !fontsLoaded) ? (
       <View
         style={{
           flex: 1,
