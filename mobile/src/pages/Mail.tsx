@@ -610,6 +610,9 @@ export default function Mail() {
             {activeFolder}
           </Text>
           <View style={tw`flex-row items-center gap-[12px]`}>
+            <TouchableOpacity onPress={() => navigate('/home')} style={tw`w-[34px] h-[28px] items-center justify-center`}>
+              <Home size={18} color="#003D9B" strokeWidth={2.5} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => setAppSwitcherOpen(true)} style={tw`w-[34px] h-[28px] items-center justify-center`}>
               <Grid size={18} color="#003D9B" strokeWidth={2.5} />
             </TouchableOpacity>

@@ -30,6 +30,11 @@ export default function App() {
     const handleMfeMessage = (event) => {
       const { type, action } = event.data || {};
       
+      if (type === 'NAVIGATE_HOME') {
+        setActiveApp('dashboard');
+        return;
+      }
+
       if (type === 'MFE_READY' || action === 'request_auth') {
         const sourceMfeId = event.data.mfeId;
         console.log(`[Shell MFE] Received ready event from child MFE: ${sourceMfeId}`);

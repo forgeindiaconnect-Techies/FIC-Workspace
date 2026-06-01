@@ -9,7 +9,7 @@ import {
   Settings, Users, Monitor, MessageSquare, Link, X, 
   Shield, Maximize2, Send, Paperclip, Disc, Hand, MoreVertical, Copy, Check, Loader2, AlertCircle,
   Share2, LayoutGrid, Ghost, ChevronUp, Smile, Pin, Clock, Radio, Hexagon
-, Wand2, Sparkles, FlipHorizontal, Lock, Play, PhoneOff, ChevronRight, ChevronLeft} from 'lucide-react';
+, Wand2, Sparkles, FlipHorizontal, Lock, Play, PhoneOff, ChevronRight, ChevronLeft, Home} from 'lucide-react';
 
 // --- SUB-COMPONENTS ---
 
@@ -776,6 +776,11 @@ const MeetingApp = () => {
       {/* 1. LOBBY STATE */}
       {appState === 'lobby' && (
         <div className="h-screen w-screen flex flex-col items-center justify-center p-8 bg-[#0a0b0d]">
+           <div className="absolute top-6 left-6">
+             <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-zinc-400 hover:text-white hover:bg-white/10 transition-all">
+               <Home size={14} /> Home
+             </button>
+           </div>
            <div className="w-full max-w-2xl space-y-10 animate-fade">
               <div className="relative aspect-video bg-[#1a1b1e] rounded-[40px] overflow-hidden border-2 border-white/5 shadow-2xl">
                  <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover mirror ${!videoOn ? 'hidden' : ''}`} />
@@ -844,9 +849,14 @@ const MeetingApp = () => {
           
           {/* TOP HEADER */}
           <div className="h-[60px] px-4 flex items-center justify-between border-b border-slate-800/50 bg-[#1e293b]">
-            <button onClick={handleEndCall} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 transition-colors">
-              <ChevronLeft size={24} className="text-slate-50" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={handleEndCall} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 transition-colors">
+                <ChevronLeft size={24} className="text-slate-50" />
+              </button>
+              <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 transition-colors">
+                <Home size={18} className="text-slate-50" />
+              </button>
+            </div>
             <div className="flex flex-col items-center justify-center flex-1 mx-4">
               <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-rose-500/10 rounded-full border border-rose-500/20 mb-1">
                 <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse" />

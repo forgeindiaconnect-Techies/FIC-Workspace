@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import MeetingLayout from '../components/MeetingLayout';
 import { 
   Plus, Calendar, Clock, Users, ChevronRight, LogIn, Disc, 
-  Monitor, Check, X, Loader2, Bell, BellRing, Copy, Video, Play, PlayCircle, Shield, Radio, Search
+  Monitor, Check, X, Loader2, Bell, BellRing, Copy, Video, Play, PlayCircle, Shield, Radio, Search, Home
 } from 'lucide-react';
 
 const ROOMS = [
@@ -219,6 +219,10 @@ const MeetingHome = () => {
       <div className="h-full bg-slate-50 dark:bg-[#0a0f1e] overflow-y-auto font-sans text-slate-900 dark:text-zinc-100 flex flex-col items-center">
         <div className="w-full max-w-4xl px-4 py-8 space-y-10">
           
+          <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="flex items-center gap-2 text-sm font-bold text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors mb-2">
+            <Home size={16} /> Back to Home
+          </button>
+
           {/* Quick Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <button onClick={() => setCreateModal(true)} className="flex flex-col items-start gap-4 bg-blue-600 hover:bg-blue-700 transition-colors rounded-[24px] p-5 text-left shadow-lg shadow-blue-600/20 active:scale-95">

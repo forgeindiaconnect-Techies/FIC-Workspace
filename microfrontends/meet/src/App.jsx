@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Video, Plus, UserPlus, PhoneOff, Mic, MicOff, VideoOff, Users, Clock, Loader2, ArrowRight, X } from 'lucide-react';
+import { Video, Plus, UserPlus, PhoneOff, Mic, MicOff, VideoOff, Users, Clock, Loader2, ArrowRight, X, Home } from 'lucide-react';
 
 const API_URL = 'http://localhost:3001/api';
 
@@ -248,6 +248,9 @@ function MeetingsClient({ auth, token }) {
     <div className="flex h-full gap-0 overflow-hidden bg-[#090d16] text-zinc-100">
       {/* Left panel: Quick Launcher Actions */}
       <div className="w-96 shrink-0 flex flex-col border-r border-zinc-850 p-8 gap-8 overflow-y-auto bg-[#0e1424]/40">
+        <button onClick={() => { window.parent.postMessage({ type: 'NAVIGATE_HOME' }, '*'); }} className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2.5 rounded-2xl font-bold text-xs tracking-wide transition-all">
+          <Home size={14} /> Back to Home
+        </button>
         <div>
           <span className="text-[9px] font-black uppercase tracking-widest text-green-500 mb-1.5 block">Huddle Portal</span>
           <h2 className="text-2xl font-black text-white leading-tight tracking-tight">Instant Collaborative Video</h2>

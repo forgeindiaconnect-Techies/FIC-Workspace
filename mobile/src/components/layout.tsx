@@ -175,6 +175,9 @@ export function TopBar({ title }: { title: string }) {
       </View>
       
       <View style={tw`flex-row items-center gap-4`}>
+        <TouchableOpacity style={tw`mr-1 p-1`} onPress={() => navigate('/home')}>
+          <HomeIcon size={22} color="#000000" strokeWidth={2} />
+        </TouchableOpacity>
         <TouchableOpacity style={tw`mr-1 p-1`} onPress={() => setAppsMenu(true)}>
           <Grid size={22} color="#000000" strokeWidth={2} />
         </TouchableOpacity>

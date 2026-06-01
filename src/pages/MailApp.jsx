@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
-import { Mail as MailIcon, Send, Star, FileText, Trash2, Plus, Paperclip, Search, X, MoreHorizontal, Reply, Forward, Archive, Loader2 } from 'lucide-react';
+import { Mail as MailIcon, Send, Star, FileText, Trash2, Plus, Paperclip, Search, X, MoreHorizontal, Reply, Forward, Archive, Loader2, Home } from 'lucide-react';
 
 const MailApp = () => {
   const auth = JSON.parse(localStorage.getItem('auth') || '{}');
   const workspaceId = auth.workspaceId || 'demo';
   const currentUserEmail = auth.email || 'guest@example.com';
+  const navigate = useNavigate();
   
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -136,6 +138,9 @@ const MailApp = () => {
       <div className="flex h-full gap-0 overflow-hidden">
         {/* Sidebar */}
         <div className="w-44 shrink-0 flex flex-col border-r px-3 py-4 gap-1" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+          <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="sidebar-item mb-1" style={{ color: 'var(--text-2)' }}>
+            <Home size={15} /> Home
+          </button>
           <button onClick={() => setComposing(true)} className="btn btn-primary w-full mb-4">
             <Plus size={15} /> Compose
           </button>

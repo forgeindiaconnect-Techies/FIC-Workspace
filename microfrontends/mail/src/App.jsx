@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mail as MailIcon, Send, Star, FileText, Trash2, Plus, Paperclip, Search, X, Loader2, Download, Image as ImageIcon, ArrowLeft, MoreVertical, MoreHorizontal, Tag, Reply, Forward, Edit2 } from 'lucide-react';
+import { Mail as MailIcon, Send, Star, FileText, Trash2, Plus, Paperclip, Search, X, Loader2, Download, Image as ImageIcon, ArrowLeft, MoreVertical, MoreHorizontal, Tag, Reply, Forward, Edit2, Home } from 'lucide-react';
 
 const API_URL = 'http://localhost:3001/api';
 
@@ -238,6 +238,9 @@ function MailClient({ auth, token }) {
     <div className="flex h-screen gap-0 overflow-hidden bg-white text-[#191C1E] font-sans">
       {/* Sidebar */}
       <div className={`w-52 shrink-0 flex flex-col border-r border-[#C3C6D6]/50 bg-[#F8F9FB] p-4 gap-1.5 ${selected ? 'hidden md:flex' : 'flex'}`}>
+        <button onClick={() => { window.parent.postMessage({ type: 'NAVIGATE_HOME' }, '*'); }} className="w-full flex items-center justify-center gap-2 bg-[#E7E8EA] hover:bg-[#D4D6DB] text-[#576377] py-2.5 rounded-2xl font-bold text-xs tracking-wide mb-2 transition-all">
+          <Home size={14} /> Home
+        </button>
         <button onClick={() => { setComposing(true); setComposeAttachments([]); }} className="w-full flex items-center justify-center gap-2 bg-[#003D9B] hover:bg-[#002f7a] text-white py-3 rounded-2xl font-bold text-xs tracking-wide shadow-md shadow-[#003D9B]/20 mb-4 transition-all">
           <Plus size={16} /> Compose Mail
         </button>
