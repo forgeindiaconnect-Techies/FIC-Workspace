@@ -48,9 +48,12 @@ app.use((req, res, next) => {
     url.startsWith('/api/members') ||
     url.startsWith('/api/tasks') ||
     url.startsWith('/api/docs') ||
+    url.startsWith('/api/show') ||
     url.startsWith('/api/status')
   ) {
     proxy.web(req, res, { target: SERVICES.chat });
+  } else if (url.startsWith('/socket.io')) {
+    proxy.web(req, res, { target: SERVICES.sockets });
   } else {
     next();
   }
@@ -86,7 +89,7 @@ app.use((req, res) => {
 server.on('upgrade', (req, socket, head) => {
   const url = req.url;
   console.log(`[Gateway WS Upgrade] Routing upgrade for url: ${url}`);
-  if (url.startsWith('/ws')) {
+  if (url.startsWith('/ws') || url.startsWith('/socket.io')) {
     proxy.ws(req, socket, head, { target: SERVICES.sockets.replace('http://', 'ws://') });
   } else {
     socket.destroy();

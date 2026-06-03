@@ -89,7 +89,7 @@ export default function Settings() {
     <View style={styles.container}>
       {/* New TopBar */}
       <View style={{ flexDirection: 'row', alignItems: 'center', height: 56, paddingHorizontal: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
-        <TouchableOpacity onPress={() => navigate('/chat')} style={{ padding: 8, marginRight: 8, borderRadius: 20, backgroundColor: '#f8fafc' }}>
+        <TouchableOpacity onPress={() => navigate(-1)} style={{ padding: 8, marginRight: 8, borderRadius: 20, backgroundColor: '#f8fafc' }}>
           <ArrowLeft size={20} color="#0053B2" />
         </TouchableOpacity>
         <Text style={{ fontSize: 18, fontWeight: '700', color: '#0f172a' }}>Settings</Text>

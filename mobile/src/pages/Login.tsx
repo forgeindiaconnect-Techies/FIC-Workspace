@@ -45,9 +45,9 @@ export default function Login() {
         setServerStatus(null);
       }
 
-      const { token } = getSession();
-      if (token) {
-        callManager.init(getSocketUrl(), token);
+      const { token, user } = getSession();
+      if (token && user?.email) {
+        callManager.init(getSocketUrl(), token, user.email);
       }
     })();
   }, []);
@@ -77,7 +77,21 @@ export default function Login() {
         setError('Passwords do not match');
         return;
       }
-      setShowPayment(true);
+      
+      setLoading(true);
+      setError(null);
+      try {
+        await api.auth.signupSubscription(name.trim(), organisationName.trim(), email.trim(), password, 'starter');
+        const { token, user } = getSession();
+        if (token && user?.email) {
+          callManager.init(getSocketUrl(), token, user.email);
+        }
+        setLoading(false);
+        navigate('/home');
+      } catch (err: any) {
+        setLoading(false);
+        setError(err.message || 'Subscription failed');
+      }
       return;
     }
 
@@ -90,9 +104,9 @@ export default function Login() {
         setError('MFA is required. Complete verification in the web app first.');
         return;
       }
-      const { token } = getSession();
-      if (token) {
-        callManager.init(getSocketUrl(), token);
+      const { token, user } = getSession();
+      if (token && user?.email) {
+        callManager.init(getSocketUrl(), token, user.email);
       }
       setLoading(false);
       navigate('/home');
@@ -107,9 +121,9 @@ export default function Login() {
     setError(null);
     try {
       await api.auth.signupSubscription(name.trim(), organisationName.trim(), email.trim(), password, subscriptionTier);
-      const { token } = getSession();
-      if (token) {
-        callManager.init(getSocketUrl(), token);
+      const { token, user } = getSession();
+      if (token && user?.email) {
+        callManager.init(getSocketUrl(), token, user.email);
       }
       setLoading(false);
       setShowPayment(false);
@@ -126,9 +140,9 @@ export default function Login() {
     setError(null);
     try {
       await api.auth.login('demo@fic.com', 'password123');
-      const { token } = getSession();
-      if (token) {
-        callManager.init(getSocketUrl(), token);
+      const { token, user } = getSession();
+      if (token && user?.email) {
+        callManager.init(getSocketUrl(), token, user.email);
       }
       setLoading(false);
       navigate('/home');
@@ -270,44 +284,7 @@ export default function Login() {
 
         </View>
 
-        {/* Payment Modal for Signup */}
-        {showPayment && (
-          <View style={tw`absolute inset-0 bg-black/80 flex items-center justify-center z-50 p-6`}>
-            <View style={tw`bg-[#FFFFFF] border border-[#E0E0E0] rounded-2xl p-6 w-full max-w-[360px] items-center`}>
-              <CreditCard size={48} color="#2D6EFF" style={tw`mb-4`} />
-              <Text style={tw`text-[#000000] text-xl font-bold mb-6`}>Complete Subscription</Text>
-
-              <View style={tw`w-full gap-3 mb-6`}>
-                {[
-                  { id: 'starter', name: 'Starter (1-20 users)', price: 'Rs.99 / mo' },
-                  { id: 'pro', name: 'Pro (21-40 users)', price: 'Rs.199 / mo' },
-                  { id: 'enterprise', name: 'Enterprise (41+)', price: 'Rs.299 / mo' }
-                ].map(tier => (
-                  <TouchableOpacity
-                    key={tier.id}
-                    style={tw`flex-row justify-between p-4 rounded-xl border ${subscriptionTier === tier.id ? 'border-[#2D6EFF] bg-[#2D6EFF]/10' : 'border-[#E0E0E0] bg-[#FAFAFA]'}`}
-                    onPress={() => setSubscriptionTier(tier.id)}
-                  >
-                    <Text style={tw`${subscriptionTier === tier.id ? 'text-[#2D6EFF]' : 'text-[#828282]'} font-medium`}>{tier.name}</Text>
-                    <Text style={tw`${subscriptionTier === tier.id ? 'text-[#2D6EFF]' : 'text-[#000000]'} font-bold`}>{tier.price}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <TouchableOpacity
-                style={tw`bg-[#2D6EFF] w-full h-[48px] rounded-xl items-center justify-center mb-3`}
-                onPress={handlePaymentComplete}
-                disabled={loading}
-              >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={tw`text-white font-bold`}>Pay & Subscribe</Text>}
-              </TouchableOpacity>
-
-              <TouchableOpacity style={tw`w-full h-[40px] items-center justify-center`} onPress={() => setShowPayment(false)} disabled={loading}>
-                <Text style={tw`text-[#828282] font-medium`}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        {/* Payment Modal removed */}
 
       </ScrollView>
     </KeyboardAvoidingView>

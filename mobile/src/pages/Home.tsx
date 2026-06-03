@@ -2,9 +2,9 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import tw from 'twrnc';
-import { Bell, User as UserIcon, Mail, Video, MessageCircle, Users, ShieldCheck, Grid } from 'lucide-react-native';
+import { Bell, User as UserIcon, Mail, Video, MessageCircle, Users, ShieldCheck, Grid, FileText } from 'lucide-react-native';
 import { useNavigate } from '../lib/router';
-import { getSession, api } from '../lib/api';
+import { getSession, api, clearSession } from '../lib/api';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Modal, TouchableWithoutFeedback, useWindowDimensions, StyleSheet, Platform } from 'react-native';
@@ -20,6 +20,9 @@ const apps: AppItem[] = [
   { id: 'mail', icon: Mail, image: require('../../assets/Mail.png'), label: 'Mail' },
   { id: 'meetings', icon: Video, image: require('../../assets/Meet.png'), label: 'Meet' },
   { id: 'chat', icon: MessageCircle, image: require('../../assets/Chat.png'), label: 'Kural' },
+  { id: 'docs', icon: FileText, label: 'Docs' },
+  { id: 'sheets', icon: Grid, label: 'Sheets' },
+  { id: 'show', icon: Video, label: 'Show' },
 ];
 
 const GradientText = (props: any) => {
@@ -40,6 +43,7 @@ export default function Home() {
   const screenType = width < 768 ? 'small' : 'large';
 
   const [showNotifications, setShowNotifications] = React.useState(false);
+  const [showProfileMenu, setShowProfileMenu] = React.useState(false);
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -98,8 +102,12 @@ export default function Home() {
             {/* Notification Badge */}
             {unreadCount > 0 && <View style={tw`absolute top-[1px] right-[2px] w-[10px] h-[10px] bg-red-500 rounded-full border-2 border-[#FAFAFA]`} />}
           </TouchableOpacity>
-          <TouchableOpacity style={tw`w-[40px] h-[40px] rounded-[24px] bg-[#EDF1FD] items-center justify-center`} onPress={() => navigate('/settings')}>
-            <UserIcon size={24} color="#262D36" strokeWidth={2} />
+          <TouchableOpacity style={tw`w-[40px] h-[40px] rounded-[24px] bg-[#EDF1FD] items-center justify-center`} onPress={() => setShowProfileMenu(true)}>
+            {user?.avatarUrl ? (
+               <Image source={{ uri: user.avatarUrl }} style={tw`w-full h-full rounded-[24px]`} />
+            ) : (
+               <UserIcon size={24} color="#262D36" strokeWidth={2} />
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -153,6 +161,41 @@ export default function Home() {
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
+
+      {showProfileMenu && (
+        <Modal transparent visible={showProfileMenu} onRequestClose={() => setShowProfileMenu(false)} animationType="fade">
+          <TouchableWithoutFeedback onPress={() => setShowProfileMenu(false)}>
+            <View style={styles.menuOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={[
+                  styles.notificationsMenu,
+                  {
+                    width: 200,
+                    right: screenType === 'small' ? 12 : 24,
+                    top: topBarHeight,
+                  }
+                ]}>
+                  <TouchableOpacity style={tw`p-4 border-b border-[#f1f5f9] flex-row items-center gap-3`} onPress={() => { setShowProfileMenu(false); navigate('/settings'); }}>
+                    <UserIcon size={18} color="#475569" />
+                    <Text style={tw`text-[15px] text-[#1e293b] font-semibold`}>Settings</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={tw`p-4 flex-row items-center gap-3`} onPress={() => { 
+                    setShowProfileMenu(false); 
+                    clearSession(); 
+                    if (Platform.OS === 'web') {
+                      window.location.href = '/login';
+                    } else {
+                      navigate('/login');
+                    }
+                  }}>
+                    <Text style={tw`text-[15px] text-red-500 font-semibold`}>Logout</Text>
+                  </TouchableOpacity>
                 </View>
               </TouchableWithoutFeedback>
             </View>

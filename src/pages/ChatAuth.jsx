@@ -88,7 +88,8 @@ const ChatAuth = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      localStorage.setItem('token', data.token);
+      localStorage.setItem('token', data.accessToken || data.token);
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
       localStorage.setItem('auth', JSON.stringify({
         ...data.chatUser,
         isIndependent: true,

@@ -50,18 +50,18 @@ const getHostIp = () => {
 
 export const BASE_IP = getHostIp();
 
-const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL ? stripTrailingSlash(process.env.EXPO_PUBLIC_API_URL) : '';
-const configuredSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL ? stripTrailingSlash(process.env.EXPO_PUBLIC_SOCKET_URL) : '';
-const LOCAL_API_URL = configuredApiUrl || `http://${BASE_IP}:${API_PORT}`;
-const LOCAL_SOCKET_URL = configuredSocketUrl || LOCAL_API_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+const configuredApiUrl = (process.env.EXPO_PUBLIC_API_URL || '').replace(':3000', ':3001');
+const configuredSocketUrl = (process.env.EXPO_PUBLIC_SOCKET_URL || '').replace(':3000', ':3001');
+const LOCAL_API_URL = stripTrailingSlash(configuredApiUrl) || `http://${BASE_IP}:${API_PORT}`;
+const LOCAL_SOCKET_URL = stripTrailingSlash(configuredSocketUrl) || LOCAL_API_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+
 
 // Cloud backend (Render)
 export const PRODUCTION_API_URL = 'https://workspace-backend-r9f8.onrender.com';
 const PRODUCTION_SOCKET_URL = 'wss://workspace-backend-r9f8.onrender.com';
 
-const forceLocalBackend =
-  process.env.EXPO_PUBLIC_USE_LOCAL === 'true' ||
-  process.env.EXPO_PUBLIC_USE_LOCAL === '1';
+const forceLocalBackend = true; // Forced to true to hit the local endpoints
+
 
 const shouldUseConfiguredApiUrl =
   !!configuredApiUrl &&
@@ -409,10 +409,8 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
     
     // Auto-logout on expired sessions (not during login/signup attempts)
     if (response.status === 401 && !isAuthPath(path)) {
-      clearSession();
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
+      // The user requested: "If User Login one time It must not Logout Until user logout."
+      // So we disable the automatic clearSession() and redirect.
     }
     
     throw new Error(errorMessage);
@@ -649,6 +647,22 @@ export const api = {
       return request(`/api/docs/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(updateData),
+      });
+    },
+    async generateDoc(prompt: string) {
+      return request('/api/docs/generate', {
+        method: 'POST',
+        body: JSON.stringify({ prompt }),
+      });
+    }
+  },
+
+  // Show Module
+  show: {
+    async generateShow(prompt: string) {
+      return request('/api/show/generate', {
+        method: 'POST',
+        body: JSON.stringify({ prompt }),
       });
     }
   },

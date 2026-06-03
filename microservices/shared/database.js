@@ -174,9 +174,11 @@ export const Task = mongoose.models.Task || mongoose.model('Task', TaskSchema);
 const DocSchema = new mongoose.Schema({
   workspaceId: { type: String, required: true },
   title: { type: String, required: true, default: 'Untitled Document' },
-  content: { type: String, default: '' },
+  type: { type: String, default: 'Doc' },
+  content: { type: mongoose.Schema.Types.Mixed, default: {} },
   createdBy: { type: String }, // Email
   updatedBy: { type: String }, // Email
+  isPublic: { type: Boolean, default: false }, // Access control
   updatedAt: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now }
 });

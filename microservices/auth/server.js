@@ -28,17 +28,17 @@ async function issueTokens(user) {
   const accessToken = jwt.sign(
     { userId: user._id, email, name: user.name, role, workspaceId },
     JWT_SECRET,
-    { expiresIn: '30m' }
+    { expiresIn: '30d' }
   );
 
   const refreshTokenString = jwt.sign(
     { userId: user._id },
     JWT_REFRESH_SECRET,
-    { expiresIn: '30d' }
+    { expiresIn: '180d' }
   );
 
   const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 30);
+  expiresAt.setDate(expiresAt.getDate() + 180);
 
   await RefreshToken.create({
     userId: user._id,

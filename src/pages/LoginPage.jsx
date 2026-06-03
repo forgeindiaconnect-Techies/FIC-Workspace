@@ -18,6 +18,17 @@ const LoginPage = () => {
     const params = new URLSearchParams(location.search);
     if (params.get('app') === 'chat') {
       navigate('/chat/login');
+      return;
+    }
+
+    const savedAuth = JSON.parse(localStorage.getItem('auth') || 'null');
+    const savedToken = localStorage.getItem('token');
+    if (savedAuth && savedToken) {
+      if (savedAuth.role === 'super-admin') {
+        navigate('/super-admin', { replace: true });
+      } else {
+        navigate(`/w/${savedAuth.workspaceId || 'demo'}/dashboard`, { replace: true });
+      }
     }
   }, [location, navigate]);
 
@@ -63,11 +74,13 @@ const LoginPage = () => {
         };
 
         localStorage.setItem('token', normalizedAuthData.token);
+        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('auth', JSON.stringify({
           role: normalizedAuthData.role,
           user: normalizedAuthData.user,
           email: normalizedAuthData.email,
-          workspaceId: normalizedAuthData.workspaceId
+          workspaceId: normalizedAuthData.workspaceId,
+          avatarUrl: data.user?.avatarUrl
         }));
 
         const params = new URLSearchParams(location.search);
@@ -79,10 +92,10 @@ const LoginPage = () => {
           navigate(`/w/${normalizedAuthData.workspaceId}/dashboard`);
         } else {
           // Role-specific redirection
-          if (email.includes('dev')) navigate(`/w/${normalizedAuthData.workspaceId}/dev`);
-          else if (email.includes('test')) navigate(`/w/${normalizedAuthData.workspaceId}/test`);
-          else if (email.includes('manager')) navigate(`/w/${normalizedAuthData.workspaceId}/mgr`);
-          else if (email.includes('lead')) navigate(`/w/${normalizedAuthData.workspaceId}/lead`);
+          if (email.includes('dev')) navigate(`/w/${normalizedAuthData.workspaceId}/dashboard/dev`);
+          else if (email.includes('test')) navigate(`/w/${normalizedAuthData.workspaceId}/dashboard/test`);
+          else if (email.includes('manager')) navigate(`/w/${normalizedAuthData.workspaceId}/dashboard/mgr`);
+          else if (email.includes('lead')) navigate(`/w/${normalizedAuthData.workspaceId}/dashboard`);
           else navigate(targetApp === 'dashboard' ? `/w/${normalizedAuthData.workspaceId}/dashboard` : `/w/${normalizedAuthData.workspaceId}/${targetApp}`);
         }
       }

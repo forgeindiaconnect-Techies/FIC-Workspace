@@ -8,6 +8,10 @@ export interface IDocument extends MongoDocument {
   ownerName?: string;
   sizeBytes?: number;
   url?: string;
+  content?: {
+    html?: string;
+    [key: string]: any;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,6 +28,7 @@ const DocumentSchema = new Schema<IDocument>({
   ownerName: { type: String },
   sizeBytes: { type: Number, default: 0 },
   url: { type: String },
+  content: { type: Schema.Types.Mixed },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

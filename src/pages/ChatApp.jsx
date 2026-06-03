@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import { getApiUrl, getSocketUrl } from '../api';
 if (typeof window !== 'undefined') {
@@ -18,6 +19,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Peer from 'simple-peer';
 
 const ChatApp = () => {
+  const navigate = useNavigate();
   const auth = JSON.parse(localStorage.getItem('auth') || '{}');
   const workspaceId = auth.workspaceId || 'demo';
   const isIndependent = auth.isIndependent || false;
@@ -353,6 +355,7 @@ const ChatApp = () => {
   const handleLogout = () => {
     localStorage.removeItem('auth');
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
     window.location.href = '/';
   };
 
@@ -732,7 +735,7 @@ const ChatApp = () => {
               ].map(item => (
                 <button 
                   key={item.id}
-                  onClick={() => setActiveTab(item.id)}
+                  onClick={() => item.id === 'preferences' ? navigate(`/w/${workspaceId}/chat/settings`) : setActiveTab(item.id)}
                   className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
                     activeTab === item.id ? 'bg-white/10 text-white shadow-sm' : 'text-gray-500 hover:text-white hover:bg-white/5'
                   }`}
@@ -742,14 +745,14 @@ const ChatApp = () => {
               ))}
            </div>
 
-           <div className="mt-auto pb-6">
-              <div className="relative group cursor-pointer" onClick={() => setIsEditingProfile(true)}>
-                 <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white/20 shadow-md">
-                   <img src={currentUserPhoto} alt="Me" className="w-full h-full object-cover" />
-                 </div>
-                 <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#25d366] border-2 border-[#111b21] shadow-sm" />
-              </div>
-           </div>
+               <div className="mt-auto pb-6">
+                  <div className="relative group cursor-pointer" onClick={() => navigate(`/w/${workspaceId}/chat/settings`)} title="Settings">
+                     <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white/20 shadow-md">
+                       <img src={currentUserPhoto} alt="Me" className="w-full h-full object-cover" />
+                     </div>
+                     <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#25d366] border-2 border-[#111b21] shadow-sm" />
+                  </div>
+               </div>
         </div>
 
         {/* Pane 2: Conversation List Area */}
@@ -886,43 +889,20 @@ const ChatApp = () => {
                   ))}
                 </div>
               ) : (
-                <div className="space-y-4 pt-2">
-                   <button onClick={() => setIsEditingProfile(true)} className="w-full flex items-center gap-3 p-4 rounded-3xl bg-white shadow-md border border-gray-100 hover:-translate-y-0.5 transition-all">
-                      <div className="w-12 h-12 rounded-[1.2rem] overflow-hidden border-2 border-white shadow-sm">
-                         <img src={currentUserPhoto} className="w-full h-full object-cover" alt="Me" />
-                      </div>
-                      <div className="text-left flex-1 min-w-0">
-                         <div className="text-[12px] font-black text-gray-900 truncate">{currentUserName}</div>
-                         <div className="text-[9px] text-gray-400 font-bold truncate">{currentUserUsername}</div>
-                      </div>
-                      <div className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-emerald-50 hover:text-emerald-500 transition-all"><Settings size={14} /></div>
-                   </button>
-                   
-                   <div className="px-3 space-y-4 pt-4">
-                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-4">Security & Privacy</p>
-                      {[
-                        { label: 'Active Status', desc: 'Show when you are online', icon: Circle },
-                        { label: 'Read Receipts', desc: 'Show when you read messages', icon: Check },
-                        { label: 'Cloud Backup', desc: 'Sync your data securely', icon: Globe }
-                      ].map(item => (
-                        <div key={item.label} className="flex items-center justify-between group cursor-pointer p-1">
-                          <div className="flex items-center gap-3">
-                             <div className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 group-hover:text-emerald-500 group-hover:bg-emerald-50 transition-all">
-                               <item.icon size={14} />
-                             </div>
-                             <div>
-                                <h4 className="text-[11px] font-black text-gray-700">{item.label}</h4>
-                                <p className="text-[9px] text-gray-400 font-medium">{item.desc}</p>
-                             </div>
-                          </div>
-                          <div className="w-8 h-4 bg-emerald-500 rounded-full relative shadow-inner"><div className="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full shadow-sm" /></div>
-                        </div>
-                      ))}
-                      
-                      <button onClick={handleLogout} className="w-full mt-6 py-3 bg-rose-50 text-rose-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-colors flex items-center justify-center gap-2">
-                        <Trash2 size={14} /> Log Out Account
-                      </button>
-                   </div>
+                <div className="flex flex-col items-center justify-center h-full px-6 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-500 mb-4 shadow-sm">
+                    <Settings size={28} strokeWidth={2.5} />
+                  </div>
+                  <h3 className="text-sm font-black text-gray-900 mb-2">Chat Settings</h3>
+                  <p className="text-[11px] text-gray-400 font-bold max-w-xs leading-relaxed mb-6">
+                    Manage your profile, privacy, notifications and more.
+                  </p>
+                  <button
+                    onClick={() => navigate(`/w/${workspaceId}/chat/settings`)}
+                    className="px-6 py-3 bg-[#00A884] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#008f6b] transition-all shadow-lg shadow-emerald-100"
+                  >
+                    Open Settings
+                  </button>
                 </div>
               )}
            </div>

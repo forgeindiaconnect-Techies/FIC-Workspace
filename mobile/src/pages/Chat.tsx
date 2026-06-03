@@ -13,7 +13,7 @@ import {
   Plus, Search, Send, Shield, ShieldCheck, Users, X, UserPlus,
   MessageSquare, MoreVertical, Paperclip, Camera, Hash,
   Bell, Star, Smile, Edit, Edit3, Edit2, Home, Grid, FileText,
-  Trash2, Eye, Settings, Play, Pause
+  Trash2, Eye, Settings, Play, Pause, PhoneCall, PhoneIncoming, PhoneOutgoing
 } from 'lucide-react-native';
 import { api, getSession, SOCKET_URL } from '../lib/api';
 import { getRTCPeerConnectionClass, getMediaDevices, getIceServers, RTCView } from '../lib/webrtc';
@@ -121,6 +121,15 @@ const formatTime = (v?: string | Date) => {
   return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+const formatCallDay = (v?: string | Date) => {
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
+const normalizeEmail = (value?: string) => String(value || '').trim().toLowerCase();
+
 const getFileLabel = (fileData: { originalName?: string; url?: string } | null | undefined) => {
   const name = String(fileData?.originalName || '').trim();
   if (name) return name;
@@ -155,16 +164,18 @@ export default function Chat() {
   const navigate = useNavigate();
   
   /* -- state -- */
-  const [tab, setTab] = React.useState<'chats'|'groups'|'calls'|'status'>('chats');
+  const [tab, setTab] = React.useState<'chats'|'groups'|'calls'>('chats');
   const [selectedChat, setSelectedChat] = React.useState<any>(null);
   const [directMessages, setDirectMessages] = React.useState<any[]>([]);
   const [groupMessages, setGroupMessages] = React.useState<any[]>([]);
+  const [callLogs, setCallLogs] = React.useState<any[]>([]);
   const [groupedStatuses, setGroupedStatuses] = React.useState<any[]>([]);
   const [messages, setMessages] = React.useState<any[]>([{ id: 'init', user: 'Workspace', time: 'Now', text: 'Select a chat to start messaging.', self: false }]);
   const [inputVal, setInputVal] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [loadingChannels, setLoadingChannels] = React.useState(true);
   const [loadingMessages, setLoadingMessages] = React.useState(false);
+  const [loadingCallLogs, setLoadingCallLogs] = React.useState(false);
   const [uploadingFile, setUploadingFile] = React.useState(false);
 
   /* audio recording */
@@ -182,7 +193,6 @@ export default function Chat() {
   const [statusReplyText, setStatusReplyText] = React.useState('');
   const [statusOptionsOpen, setStatusOptionsOpen] = React.useState(false);
   const [mutedStatuses, setMutedStatuses] = React.useState<string[]>([]);
-  const [audioCallModal, setAudioCallModal] = React.useState(false);
   const [plusMenu, setPlusMenu] = React.useState(false);
   const [appsMenu, setAppsMenu] = React.useState(false);
   const [chatOptionsOpen, setChatOptionsOpen] = React.useState(false);
@@ -216,30 +226,33 @@ export default function Chat() {
   const workspaceId = user?.workspaceId || 'antigraviity-hq';
   const email = user?.email || 'admin@fic.com';
 
-  /* -- call logic via callManager (separate from Meetings /ws/webrtc) -- */
-  const [callState, setCallState] = React.useState<'idle'|'calling'|'connected'|'ended'>('idle');
-  const [callDuration, setCallDuration] = React.useState(0);
-  const [callMuted, setCallMuted] = React.useState(false);
-
-  React.useEffect(() => {
-    let t: any;
-    if (callState === 'connected') {
-      t = setInterval(() => setCallDuration(p => p + 1), 1000);
-    } else {
-      setCallDuration(0);
+  const loadCallLogs = React.useCallback(async () => {
+    setLoadingCallLogs(true);
+    try {
+      const logs = await api.chat.getCallLogs();
+      setCallLogs(Array.isArray(logs) ? logs : []);
+    } catch (err) {
+      console.warn('[Chat] Failed to load call logs', err);
+      setCallLogs([]);
+    } finally {
+      setLoadingCallLogs(false);
     }
-    return () => clearInterval(t);
-  }, [callState]);
-
-  // Sync callManager state into local React state for the in-chat active call UI
-  React.useEffect(() => {
-    callManager.onStateChange = (s) => {
-      setCallState(s as any);
-      if (s === 'calling' || s === 'connected') setAudioCallModal(true);
-      if (s === 'idle' || s === 'ended') setAudioCallModal(false);
-    };
-    return () => { callManager.onStateChange = null; };
   }, []);
+
+  // Sync callManager state to fetch call logs on end
+  React.useEffect(() => {
+    const handleCallEvent = (event: any) => {
+      if (event.type === 'call_ended' || event.type === 'call_declined') {
+        loadCallLogs();
+      }
+    };
+    callManager.addListener(handleCallEvent);
+    return () => callManager.removeListener(handleCallEvent);
+  }, [loadCallLogs]);
+
+  React.useEffect(() => {
+    if (tab === 'calls') loadCallLogs();
+  }, [tab, loadCallLogs]);
 
   const startCall = async () => {
     if (!selectedChat || !user) return;
@@ -251,35 +264,21 @@ export default function Chat() {
         user.name || email
       );
       
-      if (success) {
-        setAudioCallModal(true);
-        setCallState('calling');
-      } else {
+      if (!success) {
         Alert.alert('Call Failed', 'Unable to initiate call. User may be offline or not reachable.');
-        setCallState('idle');
       }
     } catch (err) {
       console.error('[Chat] startCall error', err);
       Alert.alert('Call Error', 'An error occurred while trying to call.');
-      setCallState('idle');
     }
   };
 
   const endCall = () => {
-    const success = callManager.hangUp();
-    if (success) {
-      setAudioCallModal(false);
-      setCallState('idle');
-    }
+    callManager.hangUp();
+    loadCallLogs();
   };
 
-  const toggleMute = () => {
-    const muted = callManager.toggleMute();
-    setCallMuted(!!muted);
-  };
 
-  const fmtCall = (s: number) =>
-    `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 
   /* -- file upload -- */
   const pickDocument = async () => {
@@ -390,6 +389,11 @@ export default function Chat() {
   const filteredChats = activeList.filter(c => {
     const q = searchQuery.trim().toLowerCase();
     return !q || `${c.name} ${c.email || ''} ${c.lastMsg}`.toLowerCase().includes(q);
+  });
+  const filteredCallLogs = callLogs.filter(log => {
+    const peerName = normalizeEmail(log.callerEmail) === normalizeEmail(email) ? log.calleeName : log.callerName;
+    const q = searchQuery.trim().toLowerCase();
+    return !q || `${peerName} ${log.callerEmail} ${log.calleeEmail} ${log.callType} ${log.status}`.toLowerCase().includes(q);
   });
 
   /* -- send message -- */
@@ -573,43 +577,7 @@ export default function Chat() {
     } catch (e: any) { Alert.alert('Error', e.message); }
   };
 
-  /* ------------------------------------------------------------
-     AUDIO CALL MODAL
-  ------------------------------------------------------------ */
-  const renderAudioCallModal = () => (
-    <Modal visible={audioCallModal} animationType="slide" transparent onRequestClose={endCall}>
-      <View style={s.callOverlay}>
-        <View style={s.callCard}>
-          {/* avatar */}
-          <View style={[s.callAvatar, { backgroundColor: selectedChat ? colorFor(selectedChat.id) : '#0053B2' }]}>
-            <Text style={s.callAvatarText}>{selectedChat ? (selectedChat.avatar || avatarFor(selectedChat.name)) : 'ME'}</Text>
-          </View>
-          <Text style={s.callName}>{selectedChat?.name || 'Unknown'}</Text>
-          <Text style={s.callStatus}>{callState === 'connected' ? fmtCall(callDuration) : 'Calling...'}</Text>
 
-          {/* wave animation placeholder */}
-          <View style={s.callWaveRow}>
-            {[1,2,3,4,5,6,7].map(i => (
-              <View key={i} style={[s.callWaveBar, { height: callState === 'connected' ? 8 + (i % 3) * 14 : 8 }]} />
-            ))}
-          </View>
-
-          {/* controls */}
-          <View style={s.callControls}>
-            <TouchableOpacity style={[s.callCtrlBtn, callMuted && s.callCtrlRed]} onPress={toggleMute}>
-              {callMuted ? <MicOff size={22} color="#fff" /> : <Mic size={22} color="#fff" />}
-              <Text style={s.callCtrlLabel}>{callMuted ? 'Unmute' : 'Mute'}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={s.callEndBtn} onPress={endCall}>
-              <PhoneOff size={26} color="#fff" />
-              <Text style={s.callCtrlLabel}>End</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
 
 
   /* ------------------------------------------------------------
@@ -890,7 +858,7 @@ export default function Chat() {
             {statusViewerData.userEmail !== email ? (
               <View style={tw`absolute bottom-0 left-0 right-0 bg-black/40 pt-2 pb-6 px-4`}>
                 <View style={tw`flex-row justify-between mb-4 px-2`}>
-                  {['', '', '', '', '', ''].map(emoji => (
+                  {['❤️', '😂', '😮', '😢', '😡', '👍'].map(emoji => (
                     <TouchableOpacity 
                       key={emoji} 
                       onPress={() => handleStatusReaction(emoji)}
@@ -1333,9 +1301,6 @@ export default function Chat() {
           <TouchableOpacity style={tw`w-10 h-10 rounded-full justify-center items-center bg-transparent`} onPress={() => setPlusMenu(p => !p)}>
             <Plus size={20} color="#667781" />
           </TouchableOpacity>
-          <TouchableOpacity style={tw`w-10 h-10 rounded-full justify-center items-center bg-transparent`} onPress={() => navigate('/settings')}>
-            <Settings size={20} color="#667781" />
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -1392,8 +1357,38 @@ export default function Chat() {
       {/* List */}
       {loadingChannels ? (
         <View style={tw`flex-1 p-8 items-center justify-center`}><ActivityIndicator color="#0053B2" size="large" /></View>
-      ) : tab === 'status' ? (
-        renderStatusTab()
+      ) : tab === 'calls' ? (
+        <ScrollView style={tw`flex-1 bg-white`} contentContainerStyle={tw`pb-[90px]`}>
+          {filteredCallLogs.map((log: any, idx: number) => {
+            const isCaller = normalizeEmail(log.callerEmail) === normalizeEmail(email);
+            const peerName = isCaller ? log.calleeName : log.callerName;
+            return (
+              <View key={log._id || idx} style={tw`flex-row items-center px-4 py-3 w-full bg-white border-b border-[#D1D7DB]/50`}>
+                <View style={[tw`w-[48px] h-[48px] rounded-full items-center justify-center mr-4 overflow-hidden`, { backgroundColor: colorFor(peerName || 'U') }]}>
+                  <Text style={tw`text-lg font-bold text-white uppercase`}>{avatarFor(peerName || 'U')}</Text>
+                </View>
+                <View style={tw`flex-1 justify-center pr-2`}>
+                  <Text style={tw`text-[16px] font-semibold text-[#111B21] mb-1`} numberOfLines={1}>{peerName}</Text>
+                  <View style={tw`flex-row items-center gap-1`}>
+                    {isCaller ? <PhoneOutgoing size={14} color={log.status === 'missed' ? '#ef4444' : '#22c55e'} /> : <PhoneIncoming size={14} color={log.status === 'missed' ? '#ef4444' : '#22c55e'} />}
+                    <Text style={tw`text-[14px] text-[#667781] capitalize`} numberOfLines={1}>
+                      {log.callType} • {log.status}
+                    </Text>
+                  </View>
+                </View>
+                <View style={tw`items-end`}>
+                  <Text style={tw`text-[12px] font-medium text-[#667781] mb-1`}>{formatTime(log.createdAt)}</Text>
+                  <Text style={tw`text-[12px] text-[#667781]`}>{formatCallDay(log.createdAt)}</Text>
+                </View>
+              </View>
+            );
+          })}
+          {filteredCallLogs.length === 0 && (
+            <View style={tw`p-8 items-center`}>
+              <Text style={tw`text-[#667781]`}>No call history</Text>
+            </View>
+          )}
+        </ScrollView>
       ) : (
         <ScrollView style={tw`flex-1 bg-white`} contentContainerStyle={tw`pb-[90px]`}>
           {filteredChats.map(chat => (
@@ -1451,12 +1446,6 @@ export default function Chat() {
             <MessageSquare size={20} color={tab === 'chats' ? '#0053B2' : '#667781'} fill={tab === 'chats' ? '#0053B2' : 'transparent'} />
           </View>
           <Text style={tw`text-[12px] font-medium ${tab === 'chats' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Chats</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('status')}>
-          <View style={tw`w-16 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
-            <View style={tw`w-5 h-5 rounded-full border-2 ${tab === 'status' ? 'border-[#0053B2]' : 'border-[#667781]'} border-dashed`} />
-          </View>
-          <Text style={tw`text-[12px] font-medium ${tab === 'status' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Status</Text>
         </TouchableOpacity>
         <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('groups')}>
           <View style={tw`w-16 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
@@ -1709,7 +1698,7 @@ export default function Chat() {
      EMOJI PICKER
   ------------------------------------------------------------ */
   const renderEmojiPicker = () => {
-    const emojis = ['','','','','','','','','','','','','','',''];
+    const emojis = ['😀','😂','🥰','😎','😭','😡','👍','👎','❤️','🔥','🎉','✨','🙌','🤔','👀'];
     if (!emojiPickerOpen) return null;
     return (
       <View style={tw`absolute bottom-[90px] left-4 bg-white border border-[#E0E0E0] rounded-[20px] p-4 w-[300px] shadow-lg flex-row flex-wrap gap-3 z-50`}>
@@ -1733,7 +1722,6 @@ export default function Chat() {
   ------------------------------------------------------------ */
   return (
     <View style={s.root}>
-      {renderAudioCallModal()}
       {renderStatusCreatorModal()}
       {renderStatusViewerModal()}
       {renderAddMemberModal()}

@@ -18,6 +18,7 @@ import { channelRoutes, kuralRoutes } from './routes/kural';
 import { memberRoutes } from './routes/members';
 import { taskRoutes } from './routes/tasks';
 import { docsRoutes } from './routes/docs';
+import { showRoutes } from './routes/show';
 import { superadminRoutes } from './routes/superadmin';
 import { statusRoutes } from './routes/status';
 import { handleWebRtcSignalling } from './services/webrtc';
@@ -150,6 +151,7 @@ async function bootstrap() {
   await server.register(memberRoutes, { prefix: '/api/members' });
   await server.register(taskRoutes, { prefix: '/api/tasks' });
   await server.register(docsRoutes, { prefix: '/api/docs' });
+  await server.register(showRoutes, { prefix: '/api/show' });
   await server.register(superadminRoutes, { prefix: '/api/superadmin' });
   await server.register(statusRoutes, { prefix: '/api/status' });
 

@@ -1,7 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
-import { connectMongo, Meeting } from '../shared/database.js';
+import { connectMongo, Meeting, User, Mail } from '../shared/database.js';
 import { authenticate } from '../shared/auth.js';
 
 const app = express();
@@ -77,6 +77,37 @@ app.post('/api/meetings', authenticate, async (req, res) => {
       status: 'scheduled',
       participantIds: [new mongoose.Types.ObjectId(req.user.id)]
     });
+
+    // --- AI Assistant Notification Feature ---
+    if (req.user.role && req.user.role.toLowerCase() === 'admin' && req.user.workspaceId) {
+      // Fetch team members in the same workspace (excluding the admin)
+      const teamMembers = await User.find({
+        workspaceId: req.user.workspaceId,
+        _id: { $ne: new mongoose.Types.ObjectId(req.user.id) }
+      });
+
+      if (teamMembers.length > 0) {
+        const meetingTime = new Date(meeting.scheduledAt).toLocaleString();
+        
+        const mailPromises = teamMembers.map(member => {
+          return Mail.create({
+            workspaceId: req.user.workspaceId,
+            ownerEmail: member.email,
+            folder: 'inbox',
+            senderName: 'Nexus AI Assistant',
+            senderEmail: 'ai@nexus.com',
+            recipientEmails: [member.email],
+            subject: `New Meeting Scheduled: ${title}`,
+            body: `Hello ${member.name},\n\nA new meeting "${title}" has been scheduled by ${req.user.name} for ${meetingTime}.\n\nMeeting Join Code: ${joinCode}\n\nPlease be prepared to join at the scheduled time.\n\nBest,\nNexus AI Assistant`,
+            isRead: false
+          });
+        });
+
+        await Promise.allSettled(mailPromises);
+        console.log(`[Meetings Service] AI Assistant sent ${teamMembers.length} meeting notifications.`);
+      }
+    }
+    // ------------------------------------------
 
     res.status(201).json(meeting);
   } catch (err) {

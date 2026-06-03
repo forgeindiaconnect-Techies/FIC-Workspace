@@ -53,23 +53,33 @@ class CallManager {
   private callStartTime: number | null = null;
   private callRole: 'caller' | 'callee' | null = null;
 
-  //  Public event hooks 
-  onIncomingCall: ((caller: CallerInfo) => void) | null = null;
-  onCallAnswered: (() => void) | null = null;
-  onCallDeclined: (() => void) | null = null;
-  onCallEnded: (() => void) | null = null;
-  onStateChange: ((state: CallState) => void) | null = null;
-  onRemoteStream: ((stream: any) => void) | null = null;
+  //  Public event listeners 
+  private listeners: Set<(event: any) => void> = new Set();
+
+  addListener(listener: (event: any) => void) {
+    this.listeners.add(listener);
+  }
+
+  removeListener(listener: (event: any) => void) {
+    this.listeners.delete(listener);
+  }
+
+  private dispatch(event: any) {
+    this.listeners.forEach(l => l(event));
+  }
 
   get state() { return this._state; }
   get isMuted() { return this._isMuted; }
   private _isMuted = false;
 
+  private userEmail: string = '';
+
   //  Init / destroy 
 
-  init(socketUrl: string, token: string) {
+  init(socketUrl: string, token: string, userEmail: string) {
     this.socketUrl = socketUrl;
     this.token = token;
+    this.userEmail = userEmail;
     clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     if (this.ws) {
@@ -93,6 +103,7 @@ class CallManager {
     this.reconnectTimer = null;
     this.socketUrl = '';
     this.token = '';
+    this.userEmail = '';
     this.hangUp();
     if (this.ws) {
       const old = this.ws;
@@ -110,7 +121,7 @@ class CallManager {
   }
 
   private connect() {
-    if (!this.socketUrl || !this.token) return;
+    if (!this.socketUrl || !this.token || !this.userEmail) return;
 
     // Convert http/https  ws/wss
     const wsBase = this.socketUrl
@@ -127,7 +138,7 @@ class CallManager {
     }
 
     this.ws.onopen = () => {
-      this.send({ type: 'register', data: { token: this.token } });
+      this.send({ type: 'register', email: this.userEmail, token: this.token });
     };
 
     this.ws.onmessage = (event) => {
@@ -177,7 +188,7 @@ class CallManager {
 
   private setState(s: CallState) {
     this._state = s;
-    this.onStateChange?.(s);
+    this.dispatch({ type: 'state_change', state: s });
   }
 
   //  Inbound message handler 
@@ -197,7 +208,7 @@ class CallManager {
       this.pendingOffer = offer;
       this.setState('ringing');
       console.log('[CallManager] Incoming call from', callerEmail);
-      this.onIncomingCall?.({ email: callerEmail, name: callerName });
+      this.dispatch({ type: 'incoming_call', caller: { email: callerEmail, name: callerName } });
       return;
     }
 
@@ -209,7 +220,7 @@ class CallManager {
         await this.pc.setRemoteDescription(sdp).catch(console.warn);
         this.setState('connected');
         this.callStartTime = Date.now();
-        this.onCallAnswered?.();
+        this.dispatch({ type: 'call_answered' });
       }
       return;
     }
@@ -218,7 +229,7 @@ class CallManager {
       this.logCallHistory('declined');
       this.cleanupPeer();
       this.setState('ended');
-      this.onCallDeclined?.();
+      this.dispatch({ type: 'call_declined' });
       setTimeout(() => this.setState('idle'), 2000);
       return;
     }
@@ -228,7 +239,7 @@ class CallManager {
       this.logCallHistory(status);
       this.cleanupPeer();
       this.setState('ended');
-      this.onCallEnded?.();
+      this.dispatch({ type: 'call_ended' });
       setTimeout(() => this.setState('idle'), 1500);
       return;
     }
@@ -306,7 +317,7 @@ class CallManager {
 
     pc.ontrack = (ev: any) => {
       this.remoteStream = ev.streams[0];
-      this.onRemoteStream?.(ev.streams[0]);
+      this.dispatch({ type: 'remote_stream', stream: ev.streams[0] });
     };
 
     try {
@@ -362,7 +373,7 @@ class CallManager {
 
     pc.ontrack = (ev: any) => {
       this.remoteStream = ev.streams[0];
-      this.onRemoteStream?.(ev.streams[0]);
+      this.dispatch({ type: 'remote_stream', stream: ev.streams[0] });
     };
 
     try {
@@ -380,7 +391,7 @@ class CallManager {
 
       this.setState('connected');
       this.callStartTime = Date.now();
-      this.onCallAnswered?.();
+      this.dispatch({ type: 'call_answered' });
       this.pendingOffer = null;
       return true;
     } catch (err) {

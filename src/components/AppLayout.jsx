@@ -14,7 +14,7 @@ const APPS = [
   { icon: Video,           label: 'Meet',     path: 'meet',      color: '#059669', desc: 'Video huddles' },
   { icon: MessageSquare,   label: 'Kural',    path: 'chat',      color: '#00C17E', desc: 'Team chat' },
   { icon: Presentation,    label: 'Show',     path: 'show',      color: '#F59E0B', desc: 'Slide decks' },
-  { icon: Sliders,         label: 'Forge PM', path: 'settings',  color: '#6366F1', desc: 'Projects' },
+  { icon: Settings,        label: 'Settings', path: 'settings',  color: '#6366F1', desc: 'Workspace preferences' },
   { icon: FileSpreadsheet, label: 'Sheets',   path: 'sheets',    color: '#10B981', desc: 'Data grids' },
   { icon: Shield,          label: 'Admin',    path: 'admin',     color: '#EF4444', desc: 'User management' },
 ];
@@ -102,18 +102,34 @@ const AppLayout = ({ children, appName, appIcon: AppIcon, appColor = '#00C17E' }
   const { workspaceId } = useParams();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+  const profileName = auth.user || auth.name || 'Account';
+  const profileEmail = auth.email || auth.mobile || (workspaceId === 'independent' ? 'Kural user' : 'Workspace member');
+  const profileAvatar = auth.avatarUrl || auth.profilePicture;
+  const profileInitial = profileName?.charAt(0)?.toUpperCase() || 'A';
+  const [avatarOpen, setAvatarOpen] = useState(false);
+  const avatarRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (avatarRef.current && !avatarRef.current.contains(e.target)) setAvatarOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('auth');
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    setAvatarOpen(false);
     navigate('/');
   };
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden bg-white font-inter text-slate-900">
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+    <div className="h-screen w-screen flex overflow-hidden bg-white font-inter text-slate-900 print:h-auto print:w-auto print:overflow-visible">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0 print:overflow-visible">
         {/* SaaS Premium Topbar */}
         <header
-          className="flex items-center justify-between px-10 border-b shrink-0 bg-white/80 backdrop-blur-xl z-[90]"
+          className="flex items-center justify-between px-10 border-b shrink-0 bg-white/80 backdrop-blur-xl z-[90] print:hidden"
           style={{ borderColor: 'rgba(241, 245, 249, 0.5)', height: '80px' }}
         >
           <div className="flex items-center gap-8">
@@ -164,26 +180,78 @@ const AppLayout = ({ children, appName, appIcon: AppIcon, appColor = '#00C17E' }
             
             <div className="w-px h-8 bg-slate-100 hidden md:block" />
             
-
-            
-            <div className="flex items-center gap-4 pl-2">
+            <div ref={avatarRef} className="relative flex items-center gap-4 pl-2">
                <div className="flex flex-col items-end hidden sm:flex">
-                  <span className="text-[11px] font-black text-slate-900 leading-none uppercase">Account</span>
-                  <span className="text-[9px] font-bold text-slate-400 mt-1">{workspaceId === 'independent' ? 'Independent User' : 'Workspace Member'}</span>
+                  <span className="text-[11px] font-black text-slate-900 leading-none uppercase">{profileName}</span>
+                  <span className="text-[9px] font-bold text-slate-400 mt-1">{profileEmail}</span>
                </div>
+               <button
+                 type="button"
+                 onClick={() => setAvatarOpen(!avatarOpen)}
+                 className="w-11 h-11 rounded-2xl overflow-hidden bg-slate-900 text-white flex items-center justify-center font-black shadow-xl shadow-slate-200 hover:scale-105 transition-all"
+                 aria-label="Open account menu"
+               >
+                 {profileAvatar ? (
+                   <img src={profileAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                 ) : (
+                   <span>{profileInitial}</span>
+                 )}
+               </button>
+               <AnimatePresence>
+                 {avatarOpen && (
+                   <motion.div
+                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                     animate={{ opacity: 1, y: 0, scale: 1 }}
+                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                     className="absolute right-0 top-12 pt-3 w-64 z-[120]"
+                   >
+                     <div className="rounded-3xl border border-slate-100 bg-white shadow-[0_30px_80px_-20px_rgba(15,23,42,0.25)] p-3">
+                       <div className="flex items-center gap-3 p-3 border-b border-slate-100">
+                         <div className="w-11 h-11 rounded-2xl overflow-hidden bg-slate-900 text-white flex items-center justify-center text-sm font-black shrink-0">
+                           {profileAvatar ? (
+                             <img src={profileAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                           ) : (
+                             <span>{profileInitial}</span>
+                           )}
+                         </div>
+                         <div className="min-w-0">
+                           <p className="text-xs font-black text-slate-900 truncate">{profileName}</p>
+                           <p className="text-[10px] font-bold text-slate-400 truncate">{profileEmail}</p>
+                         </div>
+                       </div>
+                       <div className="p-1 pt-3 space-y-1">
+                         <button
+                           type="button"
+                           onClick={() => { setAvatarOpen(false); navigate(`/w/${workspaceId}/settings`); }}
+                           className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-black text-slate-600 hover:bg-slate-50 transition-colors"
+                         >
+                           <Settings size={16} /> Settings
+                         </button>
+                         <button
+                           type="button"
+                           onClick={handleLogout}
+                           className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-black text-rose-500 hover:bg-rose-50 transition-colors"
+                         >
+                           <LogOut size={16} /> Logout
+                         </button>
+                       </div>
+                     </div>
+                   </motion.div>
+                 )}
+               </AnimatePresence>
             </div>
           </div>
         </header>
 
         {/* App Content */}
-        <main className="flex-1 overflow-auto relative pb-20 lg:pb-0 scrollbar-hide bg-[#FDFDFD]">
+        <main className="flex-1 overflow-auto relative pb-20 lg:pb-0 scrollbar-hide bg-[#FDFDFD] print:overflow-visible print:bg-white">
           {children}
         </main>
       </div>
 
       {/* Mobile Navigation */}
       <nav 
-        className="lg:hidden fixed bottom-6 left-6 right-6 h-20 bg-white/90 backdrop-blur-2xl rounded-[2.5rem] border border-white flex items-center justify-around px-4 z-[100] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.2)]"
+        className="lg:hidden fixed bottom-6 left-6 right-6 h-20 bg-white/90 backdrop-blur-2xl rounded-[2.5rem] border border-white flex items-center justify-around px-4 z-[100] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.2)] print:hidden"
       >
         <MobileNavItem icon={LayoutDashboard} path="dashboard" workspaceId={workspaceId} />
         <MobileNavItem icon={Mail} path="mail" workspaceId={workspaceId} />

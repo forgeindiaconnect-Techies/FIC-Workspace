@@ -479,7 +479,13 @@ app.put('/api/tasks/:id', async (req, res) => {
 app.get('/api/docs/:workspaceId', async (req, res) => {
   try {
     const { workspaceId } = req.params;
-    const docs = await Doc.find({ workspaceId }).sort({ updatedAt: -1 });
+    const docs = await Doc.find({ 
+      workspaceId,
+      $or: [
+        { createdBy: req.user.email },
+        { isPublic: true }
+      ]
+    }).sort({ updatedAt: -1 });
     res.json(docs);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch documents.' });
@@ -488,29 +494,166 @@ app.get('/api/docs/:workspaceId', async (req, res) => {
 
 app.post('/api/docs/create', async (req, res) => {
   try {
-    const { title, content, workspaceId } = req.body;
+    const { title, content, type, workspaceId } = req.body;
     const doc = await Doc.create({
       workspaceId: workspaceId || req.user.workspaceId,
       title: title || 'Untitled Document',
-      content: content || '',
+      type: type || 'Doc',
+      content: content || {},
       createdBy: req.user.email,
-      updatedBy: req.user.email
+      updatedBy: req.user.email,
+      isPublic: false
     });
     res.status(201).json(doc);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to create document.' });
+    res.status(500).json({ error: 'Failed to create document.', details: err.message });
   }
 });
 
 app.patch('/api/docs/:id', async (req, res) => {
   try {
-    const { title, content } = req.body;
-    const doc = await Doc.findByIdAndUpdate(req.params.id, {
-      title, content, updatedBy: req.user.email, updatedAt: new Date()
-    }, { new: true });
+    const { title, content, isPublic } = req.body;
+    const updateData = { updatedBy: req.user.email, updatedAt: new Date() };
+    if (title !== undefined) updateData.title = title;
+    if (content !== undefined) updateData.content = content;
+    if (isPublic !== undefined) updateData.isPublic = isPublic;
+
+    const doc = await Doc.findOneAndUpdate(
+      { _id: req.params.id, createdBy: req.user.email }, // Only creator can update
+      updateData, 
+      { new: true }
+    );
+    if (!doc) {
+      return res.status(403).json({ error: 'Not authorized to edit this document or document not found.' });
+    }
     res.json(doc);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update document.' });
+  }
+});
+
+app.post('/api/docs/generate', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
+    
+    const groqKey = process.env.GROQ_API_KEY;
+    if (!groqKey) {
+      return res.status(500).json({ error: 'AI API key not configured' });
+    }
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${groqKey}`, 
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { role: 'system', content: 'You are an expert document writer. The user will provide a topic or prompt. Generate a comprehensive document in HTML format. Return ONLY the HTML content, no markdown wrappers, no explanations. Use appropriate headings <h1>, <h2>, <p>, <ul>, <li>, <strong> etc. Do not include <html>, <head>, or <body> tags, just the inner content.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.5
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Groq API Error: ${errorText}`);
+    }
+
+    const data = await response.json();
+    let generatedHtml = data.choices?.[0]?.message?.content || '';
+    generatedHtml = generatedHtml.replace(/^```html\n?/, '').replace(/\n?```$/, '').trim();
+
+    res.json({ html: generatedHtml });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to generate document: ${err.message}` });
+  }
+});
+
+app.post('/api/show/generate', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
+    
+    const groqKey = process.env.GROQ_API_KEY;
+    if (!groqKey) {
+      return res.status(500).json({ error: 'AI API key not configured' });
+    }
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${groqKey}`, 
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { 
+            role: 'system', 
+            content: `You are an expert presentation creator. Generate a presentation based on the user prompt. 
+You must strictly reply with a JSON object. Do not include any markdown wrappers, code blocks, or surrounding text.
+
+The JSON schema must be exactly:
+{
+  "theme": "modern", // Options: modern, corporate, playful, dark, elegant
+  "slides": [
+    {
+      "layout": "title", // Options: title, bullets, split, quote
+      "title": "Slide Title",
+      "subtitle": "Subtitle or author (only for title layout)",
+      "content": ["Point 1", "Point 2"] // Array of strings (for bullets/split), or a single string for quote
+    }
+  ]
+}
+
+IMPORTANT RULES:
+1. NEVER use double quotes inside your string values. Use single quotes instead if needed.
+2. For quote layouts, just write the quote as a plain string, e.g., 'To be or not to be'.
+3. Output 5 to 7 beautifully structured slides.` 
+          },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Groq API Error: ${errorText}`);
+    }
+
+    const data = await response.json();
+    let generatedJsonText = data.choices?.[0]?.message?.content || '{}';
+    
+    // Robust extraction: find first { and last }
+    const startIndex = generatedJsonText.indexOf('{');
+    const endIndex = generatedJsonText.lastIndexOf('}');
+    if (startIndex !== -1 && endIndex !== -1 && endIndex >= startIndex) {
+      generatedJsonText = generatedJsonText.substring(startIndex, endIndex + 1);
+    } else {
+      generatedJsonText = generatedJsonText.trim();
+    }
+
+    let presentationData = { theme: 'modern', slides: [] };
+    try {
+      presentationData = JSON.parse(generatedJsonText);
+    } catch (parseError) {
+      throw new Error(`Failed to parse AI output as JSON. Output: ${generatedJsonText}`);
+    }
+
+    // Default formatting if AI failed to strictly follow structure
+    if (Array.isArray(presentationData)) {
+      presentationData = { theme: 'modern', slides: presentationData };
+    }
+
+    res.json(presentationData);
+  } catch (err) {
+    console.error("SHOW GENERATE ERRROR:", err);
+    res.status(500).json({ error: `Show failed: ${err.message}` });
   }
 });
 

@@ -27,18 +27,18 @@ export async function authRoutes(fastify: FastifyInstance) {
     const accessToken = jwt.sign(
       { userId: user._id, email, name: user.name, role, workspaceId },
       getJwtSecret(),
-      { expiresIn: '15m' }
+      { expiresIn: '30d' }
     );
 
     const refreshTokenString = jwt.sign(
       { userId: user._id },
       getJwtRefreshSecret(),
-      { expiresIn: '30d' }
+      { expiresIn: '180d' }
     );
 
-    // Save refresh token to MongoDB (30 days lifespan)
+    // Save refresh token to MongoDB for long-lived signed-in sessions.
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
+    expiresAt.setDate(expiresAt.getDate() + 180);
 
     await RefreshToken.create({
       userId: user._id,

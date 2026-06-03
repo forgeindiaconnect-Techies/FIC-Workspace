@@ -189,6 +189,139 @@ app.delete('/api/mail/:id', async (req, res) => {
   }
 });
 
+// 7a. Create Draft
+app.post('/api/mail/draft', async (req, res) => {
+  try {
+    const { to, subject, body, attachments } = req.body;
+    const senderName = req.user.name || req.user.email.split('@')[0];
+    const senderEmail = req.user.email;
+    const workspaceId = req.user.workspaceId || 'demo';
+
+    const draftMail = await Mail.create({
+      workspaceId,
+      ownerEmail: senderEmail,
+      folder: 'drafts',
+      senderName,
+      senderEmail,
+      recipientEmails: Array.isArray(to) ? to : (to ? [to].filter(Boolean) : []),
+      subject: subject || '(No Subject)',
+      body: body || '',
+      attachments: attachments || [],
+      isRead: true
+    });
+    res.json(draftMail);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save draft' });
+  }
+});
+
+// 7b. Update Draft
+app.patch('/api/mail/:id', async (req, res) => {
+  try {
+    const { to, subject, body, attachments } = req.body;
+    
+    const draftMail = await Mail.findOneAndUpdate(
+      { _id: req.params.id, ownerEmail: req.user.email, folder: 'drafts' },
+      { 
+        $set: { 
+          recipientEmails: Array.isArray(to) ? to : (to ? [to].filter(Boolean) : []),
+          subject: subject || '(No Subject)',
+          body: body || '',
+          attachments: attachments || [],
+          updatedAt: new Date()
+        } 
+      },
+      { new: true }
+    );
+    
+    if (!draftMail) return res.status(404).json({ error: 'Draft not found' });
+    res.json(draftMail);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update draft' });
+  }
+});
+
+// 8. Generate Mail Content via AI
+app.post('/api/mail/generate', async (req, res) => {
+  try {
+    const { subject } = req.body;
+    if (!subject) {
+      return res.status(400).json({ error: 'Subject is required to generate mail content.' });
+    }
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [{
+          role: 'system',
+          content: 'You are an AI assistant helping a user write a professional email. Output ONLY the email body. Do not include subject lines, greetings if they are too specific, or placeholders that need filling unless necessary. Keep it concise, polite, and professional.'
+        }, {
+          role: 'user',
+          content: `Write an email body about this topic/subject: "${subject}"`
+        }],
+        temperature: 0.7,
+        max_tokens: 1024
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Groq API Error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0].message.content.trim();
+
+    res.json({ content });
+  } catch (err) {
+    console.error('[AI Mail Generation Error]:', err.message);
+    res.status(500).json({ error: `Failed to generate mail content: ${err.message}` });
+  }
+});
+
+// 9. AI Text Suggestion / Smart Reply
+app.post('/api/mail/smart-reply', async (req, res) => {
+  try {
+    const { prompt, subject, context } = req.body;
+    const aiPrompt = `You are a highly professional AI email assistant. Your task is to draft or complete an email based on the following context.
+Context/Previous Email: ${context || 'None'}
+Subject: ${subject || 'None'}
+User Prompt / Draft: ${prompt}
+
+Important: Provide ONLY the final generated email body text. Do not include introductory conversational text like "Here is the email:" or quotes.`;
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [{ role: 'user', content: aiPrompt }],
+        temperature: 0.7,
+        max_tokens: 1024
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Groq API Error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const generatedText = data.choices[0].message.content.trim();
+
+    res.json({ suggestion: generatedText, provider: 'groq' });
+  } catch (err) {
+    console.error('[AI Smart Reply Error]:', err.message);
+    res.status(500).json({ error: `Failed to generate suggestion: ${err.message}` });
+  }
+});
+
 // Health Endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', service: 'mail-service' });

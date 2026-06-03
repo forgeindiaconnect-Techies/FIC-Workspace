@@ -18,48 +18,45 @@ export default function IncomingCallOverlay() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Wire callManager events
-    callManager.onIncomingCall = (c) => {
-      setCaller(c);
-      setCallState('ringing');
-      startRing();
-      startPulse();
-      timeoutRef.current = setTimeout(() => {
-        callManager.declineCall();
-      }, RING_TIMEOUT_MS);
+    const handleCallEvent = (event: any) => {
+      switch (event.type) {
+        case 'incoming_call':
+          setCaller(event.caller);
+          setCallState('ringing');
+          startRing();
+          startPulse();
+          timeoutRef.current = setTimeout(() => {
+            callManager.declineCall();
+          }, RING_TIMEOUT_MS);
+          break;
+        case 'call_answered':
+          stopRing();
+          setCallState('connected');
+          clearTimeout(timeoutRef.current);
+          break;
+        case 'call_declined':
+          stopRing();
+          setCallState('ended');
+          clearTimeout(timeoutRef.current);
+          setTimeout(() => { setCallState('idle'); setCaller(null); }, 2000);
+          break;
+        case 'call_ended':
+          stopRing();
+          setCallState('idle');
+          setCaller(null);
+          clearTimeout(timeoutRef.current);
+          break;
+        case 'state_change':
+          setCallState(event.state);
+          if (event.state === 'idle') { stopRing(); setCaller(null); }
+          break;
+      }
     };
 
-    callManager.onCallAnswered = () => {
-      stopRing();
-      setCallState('connected');
-      clearTimeout(timeoutRef.current);
-    };
-
-    callManager.onCallDeclined = () => {
-      stopRing();
-      setCallState('ended');
-      clearTimeout(timeoutRef.current);
-      setTimeout(() => { setCallState('idle'); setCaller(null); }, 2000);
-    };
-
-    callManager.onCallEnded = () => {
-      stopRing();
-      setCallState('idle');
-      setCaller(null);
-      clearTimeout(timeoutRef.current);
-    };
-
-    callManager.onStateChange = (s) => {
-      setCallState(s);
-      if (s === 'idle') { stopRing(); setCaller(null); }
-    };
+    callManager.addListener(handleCallEvent);
 
     return () => {
-      callManager.onIncomingCall = null;
-      callManager.onCallAnswered = null;
-      callManager.onCallDeclined = null;
-      callManager.onCallEnded = null;
-      callManager.onStateChange = null;
+      callManager.removeListener(handleCallEvent);
     };
   }, []);
 
@@ -178,10 +175,10 @@ export default function IncomingCallOverlay() {
             </View>
           )}
 
-          {callState === 'connected' && (
+          {(callState === 'connected' || callState === 'calling') && (
             <TouchableOpacity style={[styles.declineBtn, { alignSelf: 'center', marginTop: 32 }]} onPress={handleHangUp}>
               <PhoneOff size={28} color="#fff" />
-              <Text style={styles.btnLabel}>End Call</Text>
+              <Text style={styles.btnLabel}>{callState === 'calling' ? 'Cancel Call' : 'End Call'}</Text>
             </TouchableOpacity>
           )}
 

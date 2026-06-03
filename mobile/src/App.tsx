@@ -8,6 +8,9 @@ import Home from "./pages/Home";
 import Meetings from "./pages/Meetings";
 import Mail from "./pages/Mail";
 import Chat from "./pages/Chat";
+import Docs from "./pages/Docs";
+import Sheets from "./pages/Sheets";
+import Show from "./pages/Show";
 
 import Settings from "./pages/Settings";
 import TeamManagement from "./pages/TeamManagement";
@@ -48,9 +51,9 @@ export default function App() {
     waitForSession().finally(() => {
       setLoading(false);
       // Init call signaling after session is ready
-      const { token } = getSession();
-      if (token && SOCKET_URL) {
-        callManager.init(SOCKET_URL, token);
+      const { token, user } = getSession();
+      if (token && SOCKET_URL && user?.email) {
+        callManager.init(SOCKET_URL, token, user.email);
       }
     });
   }, []);
@@ -90,6 +93,9 @@ export default function App() {
           <Route path="meetings" element={<Meetings />} />
           <Route path="mail" element={<Mail />} />
           <Route path="chat" element={<Chat />} />
+          <Route path="docs" element={<Docs />} />
+          <Route path="sheets" element={<Sheets />} />
+          <Route path="show" element={<Show />} />
 
           <Route path="settings" element={<Settings />} />
           <Route path="team" element={<TeamManagement />} />

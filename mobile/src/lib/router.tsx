@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface NavigationContextType {
   pathname: string;
-  navigate: (to: string, options?: { replace?: boolean }) => void;
+  navigate: (to: string | number, options?: { replace?: boolean }) => void;
   outlet: React.ReactNode | null;
   setOutlet: (outlet: React.ReactNode | null) => void;
 }

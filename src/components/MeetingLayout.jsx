@@ -85,7 +85,7 @@ const MeetingLayout = ({ children }) => {
             <SidebarLink 
               icon={Settings} 
               label="Settings" 
-              path="settings" 
+              path="meet/settings"
               workspaceId={workspaceId} 
             />
           </div>
@@ -122,7 +122,7 @@ const MeetingLayout = ({ children }) => {
              </NavLink>
            ))}
            <NavLink
-             to={`/w/${workspaceId}/settings`}
+             to={`/w/${workspaceId}/meet/settings`}
              className={({ isActive }) => `
                flex flex-col items-center justify-center gap-1 transition-all
                ${isActive ? 'text-blue-500' : 'text-zinc-500'}

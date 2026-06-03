@@ -40,16 +40,59 @@ export async function docsRoutes(fastify: FastifyInstance) {
       const doc = await WorkspaceDocument.create({
         workspaceId,
         title,
-        type: body.type || 'doc',
+        type: (body.type || 'doc').toLowerCase(),
         ownerEmail: request.user?.email || '',
         ownerName: request.user?.name || '',
         sizeBytes: body.sizeBytes || 0,
         url: body.url || '',
+        content: body.content,
       });
 
       return reply.code(201).send(doc);
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to create document.', details: err.message });
+    }
+  });
+
+  // 2.5 GENERATE AI Document
+  fastify.post('/generate', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { prompt } = request.body as any;
+      if (!prompt) return reply.code(400).send({ error: 'Prompt is required' });
+      
+      const groqKey = process.env.GROQ_API_KEY;
+      if (!groqKey) {
+        return reply.code(500).send({ error: 'AI API key not configured' });
+      }
+
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${groqKey}`, 
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: 'You are an expert document writer. The user will provide a topic or prompt. Generate a comprehensive document in HTML format. Return ONLY the HTML content, no markdown wrappers, no explanations. Use appropriate headings <h1>, <h2>, <p>, <ul>, <li>, <strong> etc. Do not include <html>, <head>, or <body> tags, just the inner content.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.5
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Groq API Error: ${errorText}`);
+      }
+
+      const data = await response.json();
+      let generatedHtml = data.choices?.[0]?.message?.content || '';
+      generatedHtml = generatedHtml.replace(/^```html\n?/, '').replace(/\n?```$/, '').trim();
+
+      return reply.code(200).send({ html: generatedHtml });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to generate document', details: err.message });
     }
   });
 

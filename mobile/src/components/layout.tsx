@@ -24,7 +24,8 @@ import {
   Settings,
   LogOut,
   Bell,
-  Grid
+  Grid,
+  Menu
 } from "lucide-react-native";
 import tw from 'twrnc';
 import { useNavigate, useLocation } from "../lib/router";
@@ -154,48 +155,42 @@ export function TopBar({ title }: { title: string }) {
 
   return (
     <View style={[
-      styles.topBar,
+      tw`flex-row items-center justify-between px-[16px] bg-[#F8F9FB] border-b border-[#f1f5f9]`,
       {
         paddingTop: safeInsets.top,
-        height: topBarHeight + safeInsets.top,
-        paddingHorizontal: screenType === 'small' ? 12 : 24,
+        height: 64 + safeInsets.top,
       }
     ]}>
-      <View style={[styles.logoRow, screenType === 'small' && styles.logoRowSmall]}>
-        {title.toLowerCase() === 'meetings' ? (
-          <Text style={[tw`text-[14px] text-[#2563eb] capitalize`, { fontFamily: 'Outfit_600SemiBold' }]}>
-            Meet
-          </Text>
-        ) : (
-          <Text style={[tw`text-[28px] -tracking-[0.01em]`, { fontFamily: 'AbhayaLibre_600SemiBold', lineHeight: 36 }]}>
-            <Text style={tw`text-[#1806DA]`}>WORK</Text>
-            <Text style={tw`text-[#FDD201]`}>SPACE</Text>
-          </Text>
-        )}
+      <View style={tw`flex-row items-center gap-[4px]`}>
+        <TouchableOpacity onPress={() => setShowMenu(true)} style={tw`w-[34px] h-[28px] rounded-full items-center justify-center p-[8px]`}>
+          <Menu size={18} color="#003D9B" strokeWidth={2.5} />
+        </TouchableOpacity>
       </View>
       
-      <View style={tw`flex-row items-center gap-4`}>
-        <TouchableOpacity style={tw`mr-1 p-1`} onPress={() => navigate('/home')}>
-          <HomeIcon size={22} color="#000000" strokeWidth={2} />
+      <Text style={tw`text-[16px] font-bold text-[#003D9B] capitalize tracking-[0.24px]`}>
+        {title}
+      </Text>
+      
+      <View style={tw`flex-row items-center gap-[12px]`}>
+        <TouchableOpacity onPress={() => navigate('/home')} style={tw`w-[34px] h-[28px] items-center justify-center`}>
+          <HomeIcon size={18} color="#003D9B" strokeWidth={2.5} />
         </TouchableOpacity>
-        <TouchableOpacity style={tw`mr-1 p-1`} onPress={() => setAppsMenu(true)}>
-          <Grid size={22} color="#000000" strokeWidth={2} />
+        <TouchableOpacity onPress={() => setAppsMenu(true)} style={tw`w-[34px] h-[28px] items-center justify-center`}>
+          <Grid size={18} color="#003D9B" strokeWidth={2.5} />
         </TouchableOpacity>
         
-        <TouchableOpacity style={tw`mr-1 p-1 relative`} onPress={() => setShowNotifications(true)}>
-          <Bell size={22} color="#000000" strokeWidth={2} />
+        <TouchableOpacity style={tw`w-[34px] h-[28px] items-center justify-center relative`} onPress={() => setShowNotifications(true)}>
+          <Bell size={18} color="#003D9B" strokeWidth={2.5} />
           {unreadCount > 0 && (
-            <View style={tw`absolute top-1 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border border-white`} />
+            <View style={tw`absolute top-0 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#F8F9FB]`} />
           )}
         </TouchableOpacity>
         
-        <TouchableOpacity style={tw`w-8 h-8 rounded-full overflow-hidden border border-gray-200`} onPress={() => setShowMenu(true)}>
+        <TouchableOpacity style={tw`w-[32px] h-[32px] rounded-full overflow-hidden bg-[#D4E0F8] items-center justify-center`} onPress={() => setShowMenu(true)}>
           {user?.avatarUrl ? (
             <Image source={{ uri: user.avatarUrl }} style={tw`w-full h-full`} resizeMode="cover" />
           ) : (
-            <View style={tw`w-full h-full bg-[#f1f5f9] items-center justify-center`}>
-              <Text style={tw`text-[#64748b] font-bold text-[14px]`}>{user?.name?.charAt(0).toUpperCase() || 'D'}</Text>
-            </View>
+            <Text style={tw`text-[#576377] font-bold text-[14px]`}>{user?.name?.charAt(0).toUpperCase() || 'U'}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -305,6 +300,9 @@ export function TopBar({ title }: { title: string }) {
                     { icon: <Image source={require('../../assets/Mail.png')} style={tw`w-5 h-5`} />, label: 'Mail', action: () => { navigate('/mail'); setAppsMenu(false); } },
                     { icon: <Image source={require('../../assets/Meet.png')} style={tw`w-5 h-5`} />, label: 'Meet', action: () => { navigate('/meetings'); setAppsMenu(false); } },
                     { icon: <Image source={require('../../assets/Chat.png')} style={tw`w-5 h-5`} />, label: 'Kural', action: () => { navigate('/chat'); setAppsMenu(false); } },
+                    { icon: <FileText size={18} color="#0891b2" />, label: 'Docs', action: () => { navigate('/docs'); setAppsMenu(false); } },
+                    { icon: <Grid size={18} color="#16a34a" />, label: 'Sheets', action: () => { navigate('/sheets'); setAppsMenu(false); } },
+                    { icon: <Video size={18} color="#dc2626" />, label: 'Show', action: () => { navigate('/show'); setAppsMenu(false); } },
                     ...(user?.role === 'company-admin' || user?.email === 'admin@fic.com' ? [{ icon: <UserIcon size={16} color="#7c3aed" />, label: 'Team', action: () => { navigate('/team'); setAppsMenu(false); } }] : []),
                     ...(user?.role === 'super-admin' ? [{ icon: <Settings size={16} color="#dc2626" />, label: 'Subscriptions', action: () => { navigate('/superadmin'); setAppsMenu(false); } }] : [])
                   ].map(item => (

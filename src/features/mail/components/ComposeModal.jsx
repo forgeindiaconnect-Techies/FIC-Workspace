@@ -5,7 +5,7 @@ import {
   X, Minus, Maximize2, Send, Paperclip, 
   Trash2, MoreHorizontal, Image, Smile, 
   Type, Link, List, Bold, Italic, Underline,
-  ChevronDown, Clock
+  ChevronDown, Clock, Wand2, Loader2
 } from 'lucide-react';
 import { useMailStore } from '../store';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -25,10 +25,38 @@ const ComposeModal = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [suggestion, setSuggestion] = useState('');
   const [draftId, setDraftId] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const autoSaveTimerRef = useRef(null);
   
   const queryClient = useQueryClient();
   const auth = getAuth();
+
+  const handleAIGenerate = async () => {
+    const subject = document.getElementById('compose-subject')?.value;
+    if (!subject) return alert("Please enter a subject first!");
+    
+    setIsGenerating(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(getApiUrl('/api/mail/generate'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ subject })
+      });
+      const data = await res.json();
+      if (res.ok && data.content) {
+        editor.commands.setContent(data.content);
+        triggerAutoSave();
+      } else {
+        alert(data.error || 'Failed to generate content');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('An error occurred during generation.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const editor = useEditor({
     extensions: [
@@ -99,7 +127,7 @@ const ComposeModal = () => {
           body: JSON.stringify(draftData)
         });
       } else {
-        const res = await fetch(getApiUrl('/api/mail/send'), {
+        const res = await fetch(getApiUrl('/api/mail/draft'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(draftData)
@@ -228,6 +256,15 @@ const ComposeModal = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  <button 
+                    onClick={handleAIGenerate} 
+                    disabled={isGenerating}
+                    className="p-2 hover:bg-purple-500/10 rounded-lg text-purple-500 transition-all flex items-center gap-2 font-bold text-xs"
+                  >
+                    {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+                    <span className="hidden sm:inline">{isGenerating ? 'Writing...' : 'Write with AI'}</span>
+                  </button>
+                  <div className="w-px h-6 bg-[var(--border)] mx-1" />
                   <EditorAction icon={Paperclip} />
                   <EditorAction icon={Image} />
                   <EditorAction icon={Smile} />

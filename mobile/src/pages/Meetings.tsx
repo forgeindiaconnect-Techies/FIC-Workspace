@@ -25,6 +25,8 @@ import {
   getDisplayMedia,
 } from '../lib/webrtc';
 
+import DateTimePicker from '@react-native-community/datetimepicker';
+
 // expo-camera: works in Expo Go AND in APK builds (no custom native code needed)
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 
@@ -86,8 +88,9 @@ export default function Meetings() {
   const [joinCode, setJoinCode] = React.useState('');
   const [joinPass, setJoinPass] = React.useState('');
   const [schedTitle, setSchedTitle] = React.useState('');
-  const [schedDate, setSchedDate] = React.useState('2026-06-01');
-  const [schedTime, setSchedTime] = React.useState('10:00 AM');
+  const [schedDateObj, setSchedDateObj] = React.useState(new Date(Date.now() + 3600000)); // Default to 1 hour from now
+  const [showDatePicker, setShowDatePicker] = React.useState(false);
+  const [showTimePicker, setShowTimePicker] = React.useState(false);
   const [schedDur, setSchedDur] = React.useState('45');
   const [newRoomTitle, setNewRoomTitle] = React.useState('');
   const [newRoomTag, setNewRoomTag] = React.useState('');
@@ -2069,16 +2072,80 @@ export default function Meetings() {
       <Modal visible={scheduleModal} animationType="slide" transparent onRequestClose={() => setScheduleModal(false)}>
         <View style={s.modalOverlay}><View style={s.modalCard}>
           <View style={s.modalTopRow}><Text style={s.modalTitle}>Schedule Meeting</Text><TouchableOpacity onPress={() => setScheduleModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
-          {[{label:'Title',val:schedTitle,set:setSchedTitle,ph:'Sprint Planning'},{label:'Date (YYYY-MM-DD)',val:schedDate,set:setSchedDate,ph:'2026-06-01'},{label:'Time',val:schedTime,set:setSchedTime,ph:'10:00 AM'},{label:'Duration (min)',val:schedDur,set:setSchedDur,ph:'45'}].map(f=>(
-            <View key={f.label} style={s.formGroup}><Text style={s.fieldLabel}>{f.label}</Text><TextInput style={s.modalInput} value={f.val} onChangeText={f.set} placeholder={f.ph} placeholderTextColor="#94a3b8" /></View>
-          ))}
+          
+          <View style={s.formGroup}>
+            <Text style={s.fieldLabel}>Title</Text>
+            <TextInput style={s.modalInput} value={schedTitle} onChangeText={setSchedTitle} placeholder="Sprint Planning" placeholderTextColor="#94a3b8" />
+          </View>
+
+          <View style={s.formGroup}>
+            <Text style={s.fieldLabel}>Date</Text>
+            {Platform.OS === 'web' ? (
+              // @ts-ignore - input is valid in react-native-web
+              <input 
+                type="date" 
+                style={{ height: 46, border: '1px solid #e2e8f0', borderRadius: 12, paddingLeft: 14, paddingRight: 14, fontSize: 14, color: '#0f172a', fontWeight: '600' }} 
+                value={schedDateObj.toISOString().split('T')[0]} 
+                onChange={(e: any) => {
+                  const d = new Date(e.target.value);
+                  d.setHours(schedDateObj.getHours(), schedDateObj.getMinutes());
+                  setSchedDateObj(d);
+                }} 
+              />
+            ) : (
+              <TouchableOpacity onPress={() => setShowDatePicker(true)} style={[s.modalInput, { justifyContent: 'center' }]}>
+                <Text style={{ color: '#0f172a', fontWeight: '600' }}>{schedDateObj.toLocaleDateString()}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={s.formGroup}>
+            <Text style={s.fieldLabel}>Time</Text>
+            {Platform.OS === 'web' ? (
+              // @ts-ignore - input is valid in react-native-web
+              <input 
+                type="time" 
+                style={{ height: 46, border: '1px solid #e2e8f0', borderRadius: 12, paddingLeft: 14, paddingRight: 14, fontSize: 14, color: '#0f172a', fontWeight: '600' }} 
+                value={schedDateObj.toTimeString().slice(0, 5)} 
+                onChange={(e: any) => {
+                  const [hours, minutes] = e.target.value.split(':');
+                  const d = new Date(schedDateObj);
+                  d.setHours(parseInt(hours), parseInt(minutes));
+                  setSchedDateObj(d);
+                }} 
+              />
+            ) : (
+              <TouchableOpacity onPress={() => setShowTimePicker(true)} style={[s.modalInput, { justifyContent: 'center' }]}>
+                <Text style={{ color: '#0f172a', fontWeight: '600' }}>{schedDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {(showDatePicker || showTimePicker) && Platform.OS !== 'web' && (
+            <DateTimePicker
+              value={schedDateObj}
+              mode={showDatePicker ? 'date' : 'time'}
+              display="default"
+              onChange={(event, selectedDate) => {
+                setShowDatePicker(false);
+                setShowTimePicker(false);
+                if (selectedDate) setSchedDateObj(selectedDate);
+              }}
+            />
+          )}
+
+          <View style={s.formGroup}>
+            <Text style={s.fieldLabel}>Duration (min)</Text>
+            <TextInput style={s.modalInput} value={schedDur} onChangeText={setSchedDur} placeholder="45" placeholderTextColor="#94a3b8" keyboardType="numeric" />
+          </View>
+
           <View style={s.modalBtnRow}>
             <TouchableOpacity style={s.cancelBtn} onPress={() => setScheduleModal(false)}><Text style={s.cancelBtnText}>Cancel</Text></TouchableOpacity>
             <TouchableOpacity style={s.primaryBtn} onPress={async()=>{
               try {
                 await api.meetings.registerLiveMeeting({
                   title: schedTitle, 
-                  startTime: new Date(`${schedDate}T12:00:00`), 
+                  startTime: schedDateObj, 
                   duration: parseInt(schedDur)||45
                 });
                 Alert.alert('Scheduled', `"${schedTitle}" scheduled. Invitations sent!`);

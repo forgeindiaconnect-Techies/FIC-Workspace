@@ -30,10 +30,10 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// backend-fastify/src/models/Transcript.ts
+// src/models/Transcript.ts
 var import_mongoose10, TranscriptSchema, Transcript;
 var init_Transcript = __esm({
-  "backend-fastify/src/models/Transcript.ts"() {
+  "src/models/Transcript.ts"() {
     "use strict";
     import_mongoose10 = require("mongoose");
     TranscriptSchema = new import_mongoose10.Schema({
@@ -48,7 +48,7 @@ var init_Transcript = __esm({
   }
 });
 
-// backend-fastify/src/services/transcription.ts
+// src/services/transcription.ts
 var transcription_exports = {};
 __export(transcription_exports, {
   transcribeChunk: () => transcribeChunk
@@ -85,7 +85,7 @@ async function transcribeChunk(meetingId, userId, speakerName, filePath) {
 }
 var import_fs, import_groq_sdk, groq;
 var init_transcription = __esm({
-  "backend-fastify/src/services/transcription.ts"() {
+  "src/services/transcription.ts"() {
     "use strict";
     import_fs = __toESM(require("fs"));
     import_groq_sdk = __toESM(require("groq-sdk"));
@@ -94,14 +94,14 @@ var init_transcription = __esm({
   }
 });
 
-// backend-fastify/src/models/MutedUser.ts
+// src/models/MutedUser.ts
 var MutedUser_exports = {};
 __export(MutedUser_exports, {
   MutedUser: () => MutedUser
 });
 var import_mongoose19, MutedUserSchema, MutedUser;
 var init_MutedUser = __esm({
-  "backend-fastify/src/models/MutedUser.ts"() {
+  "src/models/MutedUser.ts"() {
     "use strict";
     import_mongoose19 = require("mongoose");
     MutedUserSchema = new import_mongoose19.Schema({
@@ -115,7 +115,7 @@ var init_MutedUser = __esm({
   }
 });
 
-// backend-fastify/src/index.ts
+// src/index.ts
 var import_fastify = __toESM(require("fastify"));
 var import_cors = __toESM(require("@fastify/cors"));
 var import_websocket = __toESM(require("@fastify/websocket"));
@@ -124,11 +124,11 @@ var import_fs4 = __toESM(require("fs"));
 var import_path3 = __toESM(require("path"));
 var import_multipart = __toESM(require("@fastify/multipart"));
 
-// backend-fastify/src/routes/auth.ts
+// src/routes/auth.ts
 var import_bcrypt = __toESM(require("bcrypt"));
 var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
 
-// backend-fastify/src/models/User.ts
+// src/models/User.ts
 var import_mongoose = require("mongoose");
 var UserSchema = new import_mongoose.Schema({
   name: { type: String, required: true },
@@ -147,7 +147,7 @@ var UserSchema = new import_mongoose.Schema({
 });
 var User = (0, import_mongoose.model)("User", UserSchema);
 
-// backend-fastify/src/models/Tenant.ts
+// src/models/Tenant.ts
 var import_mongoose2 = require("mongoose");
 var TenantSchema = new import_mongoose2.Schema({
   name: { type: String, required: true },
@@ -164,7 +164,7 @@ var TenantSchema = new import_mongoose2.Schema({
 }, { collection: "tenants" });
 var Tenant = (0, import_mongoose2.model)("Tenant", TenantSchema);
 
-// backend-fastify/src/models/RefreshToken.ts
+// src/models/RefreshToken.ts
 var import_mongoose3 = require("mongoose");
 var RefreshTokenSchema = new import_mongoose3.Schema({
   userId: { type: import_mongoose3.Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -175,7 +175,7 @@ var RefreshTokenSchema = new import_mongoose3.Schema({
 });
 var RefreshToken = (0, import_mongoose3.model)("RefreshToken", RefreshTokenSchema);
 
-// backend-fastify/src/middlewares/auth.ts
+// src/middlewares/auth.ts
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
 var getJwtSecret = () => process.env.JWT_SECRET || "nexus-jwt-secret-key";
 async function authenticate(request, reply) {
@@ -202,7 +202,7 @@ async function authenticate(request, reply) {
   }
 }
 
-// backend-fastify/src/utils/redis.ts
+// src/utils/redis.ts
 var import_ioredis = __toESM(require("ioredis"));
 var import_dotenv = __toESM(require("dotenv"));
 import_dotenv.default.config();
@@ -286,7 +286,7 @@ async function resetFailedAttempts(email) {
   }
 }
 
-// backend-fastify/src/utils/mfa.ts
+// src/utils/mfa.ts
 var import_speakeasy = __toESM(require("speakeasy"));
 var import_qrcode = __toESM(require("qrcode"));
 async function generateMfaSecret(email) {
@@ -312,7 +312,7 @@ function verifyMfaToken(secret, token) {
   });
 }
 
-// backend-fastify/src/utils/mongo.ts
+// src/utils/mongo.ts
 var import_mongoose4 = __toESM(require("mongoose"));
 var lastConnectError = null;
 function validateMongoUri(uri) {
@@ -359,7 +359,7 @@ function isMongoConnected() {
   return import_mongoose4.default.connection.readyState === 1;
 }
 
-// backend-fastify/src/routes/auth.ts
+// src/routes/auth.ts
 var getJwtSecret2 = () => process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || "nexus-refresh-secret-key";
 async function authRoutes(fastify2) {
@@ -370,15 +370,15 @@ async function authRoutes(fastify2) {
     const accessToken = import_jsonwebtoken2.default.sign(
       { userId: user._id, email, name: user.name, role, workspaceId },
       getJwtSecret2(),
-      { expiresIn: "15m" }
+      { expiresIn: "30d" }
     );
     const refreshTokenString = import_jsonwebtoken2.default.sign(
       { userId: user._id },
       getJwtRefreshSecret(),
-      { expiresIn: "30d" }
+      { expiresIn: "180d" }
     );
     const expiresAt = /* @__PURE__ */ new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
+    expiresAt.setDate(expiresAt.getDate() + 180);
     await RefreshToken.create({
       userId: user._id,
       token: refreshTokenString,
@@ -732,11 +732,11 @@ async function authRoutes(fastify2) {
   });
 }
 
-// backend-fastify/src/routes/meetings.ts
+// src/routes/meetings.ts
 var import_bcrypt3 = __toESM(require("bcrypt"));
 var import_mongoose11 = require("mongoose");
 
-// backend-fastify/src/models/Meeting.ts
+// src/models/Meeting.ts
 var import_mongoose5 = require("mongoose");
 var MeetingSchema = new import_mongoose5.Schema({
   title: { type: String, required: true },
@@ -754,7 +754,7 @@ var MeetingSchema = new import_mongoose5.Schema({
 });
 var Meeting = (0, import_mongoose5.model)("Meeting", MeetingSchema);
 
-// backend-fastify/src/models/Participant.ts
+// src/models/Participant.ts
 var import_mongoose6 = require("mongoose");
 var ParticipantSchema = new import_mongoose6.Schema({
   meetingId: { type: import_mongoose6.Schema.Types.ObjectId, ref: "Meeting", required: true, index: true },
@@ -767,7 +767,7 @@ var ParticipantSchema = new import_mongoose6.Schema({
 });
 var Participant = (0, import_mongoose6.model)("Participant", ParticipantSchema);
 
-// backend-fastify/src/models/Recording.ts
+// src/models/Recording.ts
 var import_mongoose7 = require("mongoose");
 var RecordingSchema = new import_mongoose7.Schema({
   meetingId: { type: import_mongoose7.Schema.Types.ObjectId, ref: "Meeting", required: true, index: true },
@@ -780,7 +780,7 @@ var RecordingSchema = new import_mongoose7.Schema({
 });
 var Recording = (0, import_mongoose7.model)("Recording", RecordingSchema);
 
-// backend-fastify/src/models/Mail.ts
+// src/models/Mail.ts
 var import_mongoose8 = __toESM(require("mongoose"));
 var mailSchema = new import_mongoose8.default.Schema({
   workspaceId: { type: String, required: true, default: "antigraviity-hq" },
@@ -809,7 +809,7 @@ mailSchema.pre("save", function(next) {
 });
 var Mail = import_mongoose8.default.model("Mail", mailSchema);
 
-// backend-fastify/src/models/Room.ts
+// src/models/Room.ts
 var import_mongoose9 = require("mongoose");
 var RoomSchema = new import_mongoose9.Schema({
   workspaceId: { type: String, required: true },
@@ -821,7 +821,7 @@ var RoomSchema = new import_mongoose9.Schema({
 });
 var Room = (0, import_mongoose9.model)("Room", RoomSchema);
 
-// backend-fastify/src/services/aiBot.ts
+// src/services/aiBot.ts
 var import_ws = __toESM(require("ws"));
 var import_fs2 = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
@@ -830,7 +830,7 @@ var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
 var import_bcrypt2 = __toESM(require("bcrypt"));
 init_transcription();
 
-// backend-fastify/src/services/summarizer.ts
+// src/services/summarizer.ts
 var import_groq_sdk2 = __toESM(require("groq-sdk"));
 init_Transcript();
 var groq2 = new import_groq_sdk2.default({ apiKey: process.env.GROQ_API_KEY });
@@ -953,7 +953,7 @@ ${fullText}`;
   return summaryHtml;
 }
 
-// backend-fastify/src/services/aiBot.ts
+// src/services/aiBot.ts
 var JWT_SECRET = process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var AI_BOT_EMAIL = "ai-assistant@nexus.app";
 var AI_BOT_NAME = "Nexus AI Assistant";
@@ -1134,7 +1134,7 @@ function handleAudioSocket(ws) {
   });
 }
 
-// backend-fastify/src/routes/meetings.ts
+// src/routes/meetings.ts
 async function meetingRoutes(fastify2) {
   async function generate9DigitJoinCode(preferredCode) {
     const normalizedPreferredCode = preferredCode ? normalizeJoinCode(preferredCode) : "";
@@ -1695,66 +1695,6 @@ async function meetingRoutes(fastify2) {
       return reply.code(500).send({ error: "Failed to generate AI summary.", details: err.message });
     }
   });
-  fastify2.get("/history", { preHandler: authenticate }, async (request, reply) => {
-    try {
-      const { page = 1, limit = 10 } = request.query;
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-      const userId = new import_mongoose11.Types.ObjectId(request.user.id);
-      const meetings = await Meeting.find({
-        $or: [
-          { hostId: userId },
-          { participantIds: userId }
-        ]
-      }).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).populate("hostId", "name email avatarUrl");
-      const total = await Meeting.countDocuments({
-        $or: [
-          { hostId: userId },
-          { participantIds: userId }
-        ]
-      });
-      return reply.code(200).send({
-        meetings,
-        pagination: {
-          total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / parseInt(limit))
-        }
-      });
-    } catch (err) {
-      return reply.code(500).send({ error: "Failed to retrieve history logs.", details: err.message });
-    }
-  });
-  fastify2.get("/:id/participants", { preHandler: authenticate }, async (request, reply) => {
-    try {
-      const { id } = request.params;
-      const meeting = await resolveMeetingIdentifier(id);
-      if (!meeting) {
-        return reply.code(404).send({ error: "Meeting not found." });
-      }
-      const participants = await Participant.find({
-        meetingId: meeting._id,
-        leftAt: { $exists: false }
-      }).populate("userId", "name email avatarUrl");
-      const mapped = participants.map((p) => {
-        const userObj = p.userId || {};
-        return {
-          id: p._id.toString(),
-          userId: userObj._id?.toString() || p.userId?.toString() || "unknown",
-          name: userObj.name || "Anonymous Peer",
-          email: userObj.email || "",
-          avatar: (userObj.name || "AP").slice(0, 2).toUpperCase(),
-          role: p.role,
-          audioMuted: p.audioMuted,
-          videoMuted: p.videoMuted,
-          joinedAt: p.joinedAt
-        };
-      });
-      return reply.code(200).send(mapped);
-    } catch (err) {
-      return reply.code(500).send({ error: "Failed to retrieve active participants.", details: err.message });
-    }
-  });
   fastify2.get("/rooms", { preHandler: authenticate }, async (request, reply) => {
     try {
       const workspaceId = request.user?.workspaceId || "antigraviity-hq";
@@ -1797,7 +1737,7 @@ async function meetingRoutes(fastify2) {
   });
 }
 
-// backend-fastify/src/services/mailSockets.ts
+// src/services/mailSockets.ts
 var import_fs3 = __toESM(require("fs"));
 var import_path2 = __toESM(require("path"));
 var activeMailSockets = /* @__PURE__ */ new Map();
@@ -1838,7 +1778,7 @@ function handleMailSocket(socket, req) {
   }
 }
 
-// backend-fastify/src/routes/mail.ts
+// src/routes/mail.ts
 async function fetchJsonWithTimeout(url, options, timeoutMs = 1e4) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -2104,11 +2044,11 @@ Important: Provide ONLY the final generated email body text. Do not include intr
   });
 }
 
-// backend-fastify/src/routes/kural.ts
+// src/routes/kural.ts
 var import_mongoose16 = require("mongoose");
 var import_cloudinary = require("cloudinary");
 
-// backend-fastify/src/models/KuralConversation.ts
+// src/models/KuralConversation.ts
 var import_mongoose12 = require("mongoose");
 var KuralConversationSchema = new import_mongoose12.Schema({
   workspaceId: { type: String, required: true, index: true },
@@ -2130,7 +2070,7 @@ KuralConversationSchema.pre("save", function(next) {
 });
 var KuralConversation = (0, import_mongoose12.model)("KuralConversation", KuralConversationSchema);
 
-// backend-fastify/src/models/KuralMessage.ts
+// src/models/KuralMessage.ts
 var import_mongoose13 = require("mongoose");
 var KuralMessageSchema = new import_mongoose13.Schema({
   conversationId: { type: import_mongoose13.Schema.Types.ObjectId, ref: "KuralConversation", required: true, index: true },
@@ -2146,7 +2086,7 @@ var KuralMessageSchema = new import_mongoose13.Schema({
 KuralMessageSchema.index({ conversationId: 1, createdAt: 1 });
 var KuralMessage = (0, import_mongoose13.model)("KuralMessage", KuralMessageSchema);
 
-// backend-fastify/src/models/Story.ts
+// src/models/Story.ts
 var import_mongoose14 = require("mongoose");
 var StorySchema = new import_mongoose14.Schema({
   workspaceId: { type: String, required: true, index: true },
@@ -2176,7 +2116,7 @@ var StorySchema = new import_mongoose14.Schema({
 StorySchema.index({ workspaceId: 1, createdAt: -1 });
 var Story = (0, import_mongoose14.model)("Story", StorySchema);
 
-// backend-fastify/src/models/CallLog.ts
+// src/models/CallLog.ts
 var import_mongoose15 = __toESM(require("mongoose"));
 var CallLogSchema = new import_mongoose15.Schema(
   {
@@ -2196,7 +2136,7 @@ CallLogSchema.index({ callerEmail: 1, timestamp: -1 });
 CallLogSchema.index({ calleeEmail: 1, timestamp: -1 });
 var CallLog = import_mongoose15.default.model("CallLog", CallLogSchema);
 
-// backend-fastify/src/routes/kural.ts
+// src/routes/kural.ts
 var cloudinaryFolder = process.env.CLOUDINARY_FOLDER || "chat_uploads";
 var cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME || "";
 var cloudinaryApiKey = process.env.CLOUDINARY_API_KEY || "";
@@ -2752,7 +2692,7 @@ async function kuralRoutes(fastify2) {
   });
 }
 
-// backend-fastify/src/routes/members.ts
+// src/routes/members.ts
 var import_bcrypt4 = __toESM(require("bcrypt"));
 var defaultWorkspaceId2 = "antigraviity-hq";
 function publicUser(user) {
@@ -2820,7 +2760,7 @@ async function memberRoutes(fastify2) {
   });
 }
 
-// backend-fastify/src/models/Task.ts
+// src/models/Task.ts
 var import_mongoose17 = require("mongoose");
 var TaskSchema = new import_mongoose17.Schema({
   workspaceId: { type: String, required: true, index: true },
@@ -2852,7 +2792,7 @@ TaskSchema.pre("save", function(next) {
 });
 var Task = (0, import_mongoose17.model)("Task", TaskSchema);
 
-// backend-fastify/src/routes/tasks.ts
+// src/routes/tasks.ts
 var defaultWorkspaceId3 = "antigraviity-hq";
 async function taskRoutes(fastify2) {
   fastify2.addHook("preValidation", authenticate);
@@ -2929,7 +2869,7 @@ async function taskRoutes(fastify2) {
   });
 }
 
-// backend-fastify/src/models/Document.ts
+// src/models/Document.ts
 var import_mongoose18 = require("mongoose");
 var DocumentSchema = new import_mongoose18.Schema({
   workspaceId: { type: String, required: true, index: true },
@@ -2943,6 +2883,7 @@ var DocumentSchema = new import_mongoose18.Schema({
   ownerName: { type: String },
   sizeBytes: { type: Number, default: 0 },
   url: { type: String },
+  content: { type: import_mongoose18.Schema.Types.Mixed },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
@@ -2953,7 +2894,7 @@ DocumentSchema.pre("save", function(next) {
 });
 var WorkspaceDocument = (0, import_mongoose18.model)("WorkspaceDocument", DocumentSchema);
 
-// backend-fastify/src/routes/docs.ts
+// src/routes/docs.ts
 var defaultWorkspaceId4 = "antigraviity-hq";
 async function docsRoutes(fastify2) {
   fastify2.addHook("preValidation", authenticate);
@@ -2983,15 +2924,51 @@ async function docsRoutes(fastify2) {
       const doc = await WorkspaceDocument.create({
         workspaceId,
         title,
-        type: body.type || "doc",
+        type: (body.type || "doc").toLowerCase(),
         ownerEmail: request.user?.email || "",
         ownerName: request.user?.name || "",
         sizeBytes: body.sizeBytes || 0,
-        url: body.url || ""
+        url: body.url || "",
+        content: body.content
       });
       return reply.code(201).send(doc);
     } catch (err) {
       return reply.code(500).send({ error: "Failed to create document.", details: err.message });
+    }
+  });
+  fastify2.post("/generate", async (request, reply) => {
+    try {
+      const { prompt } = request.body;
+      if (!prompt) return reply.code(400).send({ error: "Prompt is required" });
+      const groqKey = process.env.GROQ_API_KEY;
+      if (!groqKey) {
+        return reply.code(500).send({ error: "AI API key not configured" });
+      }
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${groqKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages: [
+            { role: "system", content: "You are an expert document writer. The user will provide a topic or prompt. Generate a comprehensive document in HTML format. Return ONLY the HTML content, no markdown wrappers, no explanations. Use appropriate headings <h1>, <h2>, <p>, <ul>, <li>, <strong> etc. Do not include <html>, <head>, or <body> tags, just the inner content." },
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.5
+        })
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Groq API Error: ${errorText}`);
+      }
+      const data = await response.json();
+      let generatedHtml = data.choices?.[0]?.message?.content || "";
+      generatedHtml = generatedHtml.replace(/^```html\n?/, "").replace(/\n?```$/, "").trim();
+      return reply.code(200).send({ html: generatedHtml });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to generate document", details: err.message });
     }
   });
   fastify2.patch("/:id", async (request, reply) => {
@@ -3025,7 +3002,59 @@ async function docsRoutes(fastify2) {
   });
 }
 
-// backend-fastify/src/routes/superadmin.ts
+// src/routes/show.ts
+async function showRoutes(fastify2) {
+  fastify2.addHook("preValidation", authenticate);
+  fastify2.post("/generate", async (request, reply) => {
+    try {
+      const { prompt } = request.body;
+      if (!prompt) return reply.code(400).send({ error: "Prompt is required" });
+      const groqKey = process.env.GROQ_API_KEY;
+      if (!groqKey) {
+        return reply.code(500).send({ error: "AI API key not configured" });
+      }
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${groqKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content: 'You are an expert presentation creator. Generate a presentation based on the user prompt. You must strictly reply with a JSON object containing a single key "slides", which is an array of objects. Each object must have a "title" string and a "content" string (which contains HTML formatting like <ul>, <li>, <strong>, <p>). Produce 5 to 7 slides.'
+            },
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.5
+        })
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Groq API Error: ${errorText}`);
+      }
+      const data = await response.json();
+      let generatedJsonText = data.choices?.[0]?.message?.content || '{"slides":[]}';
+      console.log("Raw AI Output:", generatedJsonText);
+      let slides = [];
+      try {
+        const parsed = JSON.parse(generatedJsonText);
+        slides = parsed.slides || [];
+      } catch (parseError) {
+        throw new Error(`Failed to parse AI output as JSON. Output: ${generatedJsonText}. Error: ${parseError.message}`);
+      }
+      return reply.code(200).send({ slides });
+    } catch (err) {
+      console.error("AI GENERATION ERROR:", err);
+      return reply.code(500).send({ error: err.message || "Failed to generate presentation" });
+    }
+  });
+}
+
+// src/routes/superadmin.ts
 async function superadminRoutes(fastify2) {
   fastify2.addHook("preHandler", authenticate);
   fastify2.addHook("preHandler", async (request, reply) => {
@@ -3043,7 +3072,7 @@ async function superadminRoutes(fastify2) {
   });
 }
 
-// backend-fastify/src/routes/status.ts
+// src/routes/status.ts
 var import_mongoose20 = require("mongoose");
 function normalizeEmail2(value) {
   return String(value || "").trim().toLowerCase();
@@ -3247,7 +3276,7 @@ async function statusRoutes(fastify2) {
   });
 }
 
-// backend-fastify/src/services/webrtc.ts
+// src/services/webrtc.ts
 var import_ws2 = require("ws");
 var import_jsonwebtoken4 = __toESM(require("jsonwebtoken"));
 var JWT_SECRET2 = process.env.JWT_SECRET || "nexus-jwt-secret-key";
@@ -3395,7 +3424,7 @@ async function cleanupPeer(roomId, pid) {
   });
 }
 
-// backend-fastify/src/services/callSignaling.ts
+// src/services/callSignaling.ts
 var import_ws3 = require("ws");
 var import_jsonwebtoken5 = __toESM(require("jsonwebtoken"));
 var JWT_SECRET3 = process.env.JWT_SECRET || "nexus-jwt-secure-key-change-in-production";
@@ -3524,7 +3553,7 @@ function handleCallSignaling(ws) {
   });
 }
 
-// backend-fastify/src/utils/seedDefaultUser.ts
+// src/utils/seedDefaultUser.ts
 var import_bcrypt5 = __toESM(require("bcrypt"));
 var DEFAULT_EMAIL = "admin@fic.com";
 var DEFAULT_PASSWORD = "password123";
@@ -3587,7 +3616,7 @@ async function ensureDefaultUser() {
   }
 }
 
-// backend-fastify/src/index.ts
+// src/index.ts
 import_dotenv2.default.config({ path: import_path3.default.join(__dirname, "../.env") });
 import_dotenv2.default.config();
 var PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
@@ -3689,6 +3718,7 @@ async function bootstrap() {
   await server.register(memberRoutes, { prefix: "/api/members" });
   await server.register(taskRoutes, { prefix: "/api/tasks" });
   await server.register(docsRoutes, { prefix: "/api/docs" });
+  await server.register(showRoutes, { prefix: "/api/show" });
   await server.register(superadminRoutes, { prefix: "/api/superadmin" });
   await server.register(statusRoutes, { prefix: "/api/status" });
   server.get("/api/meet/ice-servers", async () => {

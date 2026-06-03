@@ -13,6 +13,7 @@ declare module 'fastify' {
       name: string;
       role?: string;
       workspaceId?: string;
+      avatarUrl?: string;
     };
   }
 }

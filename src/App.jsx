@@ -16,6 +16,8 @@ import MeetingsTab from './pages/MeetingsTab';
 import CalendarTab from './pages/CalendarTab';
 import FilesTab from './pages/FilesTab';
 import SettingsTab from './pages/SettingsTab';
+import WorkspaceSettings from './pages/WorkspaceSettings';
+import ChatSettings from './pages/ChatSettings';
 import { MeetingAnalytics } from './pages/MeetingAnalytics';
 import MeetingLanding from './pages/MeetingLanding';
 import MeetingSummarizer from './pages/MeetingSummarizer';
@@ -45,6 +47,7 @@ function App() {
           {/* Meeting App Routes */}
           <Route path="/meet/welcome" element={<MeetingLanding />} />
           <Route path="/w/:workspaceId/meet" element={<MeetingHome />} />
+          <Route path="/w/:workspaceId/meet/settings" element={<SettingsTab />} />
           <Route path="/w/:workspaceId/meet/room/:id" element={<MeetingApp />} />
           <Route path="/w/:workspaceId/meetings" element={<MeetingsTab />} />
           <Route path="/w/:workspaceId/meet/summarize/:meetingId" element={<MeetingSummarizer />} />
@@ -56,11 +59,12 @@ function App() {
           <Route path="/w/:workspaceId/analytics" element={<MeetingAnalytics />} />
           <Route path="/w/:workspaceId/files" element={<FilesTab />} />
           <Route path="/w/:workspaceId/members" element={<ModulePlaceholder name="Team Members" />} />
-          <Route path="/w/:workspaceId/settings" element={<SettingsTab />} />
+          <Route path="/w/:workspaceId/settings" element={<WorkspaceSettings />} />
           
           {/* Other Workspace Apps */}
           <Route path="/w/:workspaceId/mail" element={<MailApp />} />
           <Route path="/w/:workspaceId/chat" element={<ChatApp />} />
+          <Route path="/w/:workspaceId/chat/settings" element={<ChatSettings />} />
           <Route path="/w/:workspaceId/docs" element={<DocsApp />} />
           <Route path="/w/:workspaceId/show" element={<ShowApp />} />
           <Route path="/w/:workspaceId/sheets" element={<SheetsApp />} />

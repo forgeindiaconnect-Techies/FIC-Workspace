@@ -9,7 +9,7 @@ import {
   Indent, Outdent, Eraser, Quote, Scissors, Copy, Clipboard,
   Strikethrough, Subscript, Superscript, CaseUpper, Grid,
   Maximize2, Minimize2, Table as TableIcon, Columns, 
-  Settings2, HelpCircle, Save, FilePlus
+  Settings2, HelpCircle, Save, FilePlus, Lock, Globe, Shield, Users
 } from 'lucide-react';
 
 const DocsApp = () => {
@@ -26,18 +26,55 @@ const DocsApp = () => {
   const [showShapesPicker, setShowShapesPicker] = useState(false);
   const [showPicturePicker, setShowPicturePicker] = useState(false);
   const [hoveredGrid, setHoveredGrid] = useState({ r: 0, c: 0 });
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [menuOpenForId, setMenuOpenForId] = useState(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const closeMenu = () => setMenuOpenForId(null);
+    window.addEventListener('click', closeMenu);
+    return () => window.removeEventListener('click', closeMenu);
+  }, []);
 
   // API Base URL - Managed by global config
 
   const fetchDocs = async () => {
     try {
-      const response = await fetch(getApiUrl(`/api/docs/${workspaceId}`));
-      const data = await response.json();
-      if (response.ok) setDocuments(data.filter(d => d.type === 'Doc'));
+      const response = await fetch(getApiUrl(`/api/docs/${workspaceId}`), {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDocuments(data.filter(d => d.type === 'Doc'));
+      }
     } catch (err) {
       console.error('Failed to fetch docs:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTogglePrivacy = async (doc) => {
+    try {
+      const newStatus = !doc.isPublic;
+      const response = await fetch(getApiUrl(`/api/docs/${doc._id}`), {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ isPublic: newStatus })
+      });
+      if (response.ok) {
+        setDocuments(documents.map(d => d._id === doc._id ? { ...d, isPublic: newStatus } : d));
+      } else {
+        alert('Failed to update privacy setting. You may not have permission.');
+      }
+    } catch (error) {
+      console.error('Error toggling privacy:', error);
     }
   };
 
@@ -49,7 +86,10 @@ const DocsApp = () => {
     try {
       const response = await fetch(getApiUrl('/api/docs/create'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({
           workspaceId,
           owner: auth.user || 'User',
@@ -77,7 +117,10 @@ const DocsApp = () => {
       const html = editor.innerHTML;
       const response = await fetch(getApiUrl(`/api/docs/${activeDoc._id}`), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({ content: { html }, lastModified: new Date() })
       });
       if (response.ok) {
@@ -97,6 +140,62 @@ const DocsApp = () => {
         content: { ...prev.content, html: editor.innerHTML }
       }));
     }
+  };
+
+  const handleGenerateAI = async () => {
+    if (!aiPrompt.trim()) return;
+    setIsGenerating(true);
+    try {
+      const response = await fetch(getApiUrl('/api/docs/generate'), {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ prompt: aiPrompt })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const editor = document.getElementById('doc-editor');
+        if (editor) {
+          editor.innerHTML = data.html;
+          syncContent();
+          setAiPrompt('');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to generate document:', err);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDownload = () => {
+    if (!activeDoc) return;
+    const editor = document.getElementById('doc-editor');
+    const htmlContent = editor.innerHTML;
+    
+    const fileContent = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>${activeDoc.title || 'Document'}</title>
+      </head>
+      <body>
+        ${htmlContent}
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob(['\ufeff', fileContent], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${activeDoc.title || 'Document'}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const insertTable = (rows, cols) => {
@@ -157,9 +256,9 @@ const DocsApp = () => {
   };
 
   const renderEditor = () => (
-    <div className="flex-1 flex flex-col h-full bg-zinc-50 dark:bg-black overflow-hidden relative">
+    <div className="flex-1 flex flex-col h-full bg-zinc-50 dark:bg-black overflow-hidden relative print:overflow-visible print:h-auto">
       {/* Ribbon Header */}
-      <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+      <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0 print:hidden">
         <div className="h-14 flex items-center justify-between px-6 border-b border-zinc-100 dark:border-zinc-800/50">
           <div className="flex items-center gap-4">
             <button onClick={() => setActiveDoc(null)} className="text-xs font-bold uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity">
@@ -465,6 +564,10 @@ const DocsApp = () => {
                  <FilePlus size={24} className="text-emerald-500" />
                  <span className="text-[10px] font-bold">New</span>
                </button>
+               <button onClick={handleDownload} className="flex flex-col items-center justify-center gap-2 p-4 hover:bg-white dark:hover:bg-zinc-800 rounded-xl transition-all">
+                 <Download size={24} className="text-purple-500" />
+                 <span className="text-[10px] font-bold">Download</span>
+               </button>
                <button onClick={() => window.print()} className="flex flex-col items-center justify-center gap-2 p-4 hover:bg-white dark:hover:bg-zinc-800 rounded-xl transition-all">
                  <Printer size={24} className="text-zinc-600" />
                  <span className="text-[10px] font-bold">Print</span>
@@ -475,15 +578,45 @@ const DocsApp = () => {
       </div>
 
       {/* Editor Surface */}
-      <div className="flex-1 overflow-y-auto p-12 flex justify-center bg-zinc-100 dark:bg-black">
+      <div className="flex-1 overflow-y-auto p-12 flex items-start justify-center bg-zinc-100 dark:bg-black gap-8 relative print:p-0 print:bg-white print:overflow-visible">
         <div 
           id="doc-editor"
-          className="w-full max-w-[816px] min-h-[1056px] bg-white dark:bg-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-sm p-24 focus:outline-none text-base leading-relaxed document-surface" 
+          className="w-full max-w-[816px] h-max min-h-[1056px] bg-white dark:bg-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-sm p-24 focus:outline-none text-base leading-relaxed document-surface shrink-0 print:shadow-none print:max-w-none print:w-full print:min-h-0" 
           contentEditable 
           suppressContentEditableWarning
           onBlur={syncContent}
           dangerouslySetInnerHTML={{ __html: activeDoc.content?.html || '' }}
         />
+
+        {/* AI Assistant Sidebar */}
+        <div className="w-80 shrink-0 h-fit bg-white dark:bg-zinc-900 rounded-xl p-5 shadow-sm sticky top-12 border border-zinc-200 dark:border-zinc-800 print:hidden">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-500/20 text-blue-600 flex items-center justify-center">
+              <Settings2 size={16} />
+            </div>
+            <h3 className="font-bold text-sm">AI Assistant</h3>
+          </div>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4 leading-relaxed">
+            Describe the document you want to create, and the AI will generate it for you instantly.
+          </p>
+          <textarea
+            value={aiPrompt}
+            onChange={(e) => setAiPrompt(e.target.value)}
+            className="w-full h-32 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 mb-3 resize-none"
+            placeholder="E.g., Write a project requirements document for a new messaging app..."
+          />
+          <button
+            onClick={handleGenerateAI}
+            disabled={isGenerating || !aiPrompt.trim()}
+            className="w-full bg-blue-600 text-white font-bold text-sm py-2.5 rounded-xl hover:bg-blue-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+          >
+            {isGenerating ? (
+              <><Loader2 size={16} className="animate-spin" /> Generating...</>
+            ) : (
+              'Prepare Document'
+            )}
+          </button>
+        </div>
       </div>
       </div>
   );
@@ -536,12 +669,44 @@ const DocsApp = () => {
                   {documents.map(doc => (
                     <div key={doc._id} onClick={() => setActiveDoc(doc)} className="group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-5 hover:shadow-2xl hover:border-zinc-900 transition-all cursor-pointer flex flex-col relative">
                       <div className="flex items-start justify-between mb-6">
-                        <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-900 dark:text-white shrink-0 group-hover:scale-110 transition-transform">
+                        <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-900 dark:text-white shrink-0 group-hover:scale-110 transition-transform relative">
                           <FileText size={24} />
+                          {doc.isPublic && (
+                            <div className="absolute -top-1 -right-1 bg-amber-500 text-white rounded-full p-0.5 shadow-sm" title="Public Document">
+                              <Globe size={10} />
+                            </div>
+                          )}
                         </div>
-                        <button className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
-                          <MoreVertical size={16} />
-                        </button>
+                        <div className="relative">
+                          <button 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              setMenuOpenForId(menuOpenForId === doc._id ? null : doc._id); 
+                            }}
+                            className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                          
+                          {menuOpenForId === doc._id && (
+                            <div className="absolute right-0 top-10 mt-1 w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 overflow-hidden">
+                              <button 
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  handleTogglePrivacy(doc); 
+                                  setMenuOpenForId(null); 
+                                }}
+                                className="w-full text-left px-4 py-3 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-3 transition-colors"
+                              >
+                                {doc.isPublic ? <Lock size={16} className="text-zinc-500" /> : <Globe size={16} className="text-amber-500" />}
+                                <div className="flex flex-col">
+                                  <span className="font-semibold">{doc.isPublic ? 'Make Private' : 'Make Public'}</span>
+                                  <span className="text-[10px] text-zinc-500">{doc.isPublic ? 'Only you can view' : 'Team can view'}</span>
+                                </div>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <h3 className="font-bold text-sm truncate mb-2">{doc.title}</h3>
                       <div className="flex items-center justify-between mt-auto text-[10px] font-bold uppercase tracking-wider text-zinc-400">

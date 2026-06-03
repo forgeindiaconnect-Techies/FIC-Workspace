@@ -31,6 +31,8 @@ const DashboardLayout = ({ children, isAdmin = false }) => {
 
   const handleLogout = () => {
     localStorage.removeItem('auth');
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
     navigate('/');
   };
 
@@ -92,7 +94,7 @@ const DashboardLayout = ({ children, isAdmin = false }) => {
 
           <div className="divider my-2" />
 
-          <NavLink to="/settings" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+          <NavLink to={workspaceId ? `${basePath}/settings` : '/super-admin'} className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
             <Settings size={16} strokeWidth={1.75} />
             {sidebarOpen && <span>Settings</span>}
           </NavLink>
@@ -169,7 +171,7 @@ const DashboardLayout = ({ children, isAdmin = false }) => {
                   <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>{workspaceId || 'Admin'}</p>
                 </div>
                 <div className="p-1">
-                  <button className="sidebar-item w-full text-xs"><Settings size={14} /> Settings</button>
+                  <button onClick={() => navigate(workspaceId ? `${basePath}/settings` : '/super-admin')} className="sidebar-item w-full text-xs"><Settings size={14} /> Settings</button>
                   <button onClick={handleLogout} className="sidebar-item w-full text-xs" style={{ color: '#EF4444' }}><LogOut size={14} /> Sign out</button>
                 </div>
                 </div>

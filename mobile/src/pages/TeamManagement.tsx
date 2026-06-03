@@ -209,8 +209,8 @@ export default function TeamManagement() {
           </View>
         ) : (
           <View style={styles.list}>
-            {members.map(member => (
-              <View key={member.id} style={styles.memberRow}>
+            {members.map((member, index) => (
+              <View key={member.id || member._id || index} style={styles.memberRow}>
                 <View style={styles.memberInfo}>
                   <Image source={{ uri: member.avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${member.name}` }} style={styles.avatar} />
                   <View>
