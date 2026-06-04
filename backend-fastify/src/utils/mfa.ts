@@ -12,7 +12,7 @@ export interface IMfaSecretResponse {
  */
 export async function generateMfaSecret(email: string): Promise<IMfaSecretResponse> {
   const secret = speakeasy.generateSecret({
-    name: `NexusZoom:${email}`,
+    name: `ForgeIndiaConnect:${email}`,
     length: 20
   });
 

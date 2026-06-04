@@ -17,7 +17,7 @@ const bcrypt = require('bcryptjs');
     if (!existing) {
       console.log('Creating ai-assistant user...');
       await usersCollection.insertOne({
-        name: 'Nexus AI Assistant',
+        name: 'Forge India Connect AI',
         email: 'ai-assistant@nexus.app',
         passwordHash: passwordHash,
         avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=ai-assistant`,
@@ -30,7 +30,7 @@ const bcrypt = require('bcryptjs');
       console.log('Updating existing ai-assistant password...');
       await usersCollection.updateOne(
         { email: 'ai-assistant@nexus.app' },
-        { $set: { passwordHash: passwordHash } }
+        { $set: { passwordHash: passwordHash, name: 'Forge India Connect AI' } }
       );
       console.log('Updated!');
     }

@@ -11,14 +11,18 @@ export async function ensureDefaultUser() {
   if (!existing) {
     const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, salt);
     await User.create({
-      name: 'Nexus Administrator',
+      name: 'Forge India Administrator',
       email: DEFAULT_EMAIL,
       passwordHash,
-      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent('Nexus Administrator')}`,
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent('Forge India Administrator')}`,
       mfaEnabled: false,
       role: 'company-admin',
       workspaceId: 'antigraviity-hq',
     });
+  } else if (existing.name === 'Nexus Administrator') {
+    existing.name = 'Forge India Administrator';
+    existing.avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent('Forge India Administrator')}`;
+    await existing.save();
   }
 
   const AI_EMAIL = 'ai-assistant@nexus.app';
@@ -29,11 +33,15 @@ export async function ensureDefaultUser() {
       name: 'Forge India Connect AI',
       email: AI_EMAIL,
       passwordHash: aiPasswordHash,
-      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=nexusai`,
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=forgeai`,
       mfaEnabled: false,
       role: 'company-admin',
       workspaceId: 'antigraviity-hq',
     });
+  } else if (aiExisting.name !== 'Forge India Connect AI') {
+    aiExisting.name = 'Forge India Connect AI';
+    aiExisting.avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=forgeai`;
+    await aiExisting.save();
   }
 
   // Super Admin Seeder

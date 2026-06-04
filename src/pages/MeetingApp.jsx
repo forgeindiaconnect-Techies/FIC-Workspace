@@ -317,7 +317,7 @@ const MeetingApp = () => {
 
   const copyMeetingInvite = () => {
     const inviteLink = `${window.location.origin}/w/${workspaceId}/meet/room/${code || id}?pwd=${password}&intent=join`;
-    const inviteText = `Join my Nexus Meeting:\nLink: ${inviteLink}\nMeeting ID: ${code}\nPassword: ${password}`;
+    const inviteText = `Join my Forge India Connect Meeting:\nLink: ${inviteLink}\nMeeting ID: ${code}\nPassword: ${password}`;
     
     navigator.clipboard.writeText(inviteText);
     setCopiedInvite(true);

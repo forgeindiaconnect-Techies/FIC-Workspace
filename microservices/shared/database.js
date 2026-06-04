@@ -187,3 +187,14 @@ const DocSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 export const Doc = mongoose.models.Doc || mongoose.model('Doc', DocSchema);
+
+// ─── TRANSCRIPT SCHEMA ───
+const TranscriptSchema = new mongoose.Schema({
+  meetingId: { type: String, required: true, index: true },
+  userId: { type: String, required: true },
+  speakerName: { type: String, required: true },
+  text: { type: String, required: true },
+  timestamp: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now }
+});
+export const Transcript = mongoose.models.Transcript || mongoose.model('Transcript', TranscriptSchema);

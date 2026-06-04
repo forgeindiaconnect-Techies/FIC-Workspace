@@ -2,7 +2,10 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import http from 'http';
 import jwt from 'jsonwebtoken';
-import { connectMongo, User } from '../shared/database.js';
+import { connectMongo, User, Transcript } from '../shared/database.js';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 const app = express();
 app.use(express.json());
@@ -63,20 +66,78 @@ const wssCalls = new WebSocketServer({ noServer: true });
 const wssWebRtc = new WebSocketServer({ noServer: true });
 const wssAudio = new WebSocketServer({ noServer: true });
 
-// 0. AUDIO SOCKET HANDLER (Dummy implementation to prevent connection drops)
+// 0. AUDIO SOCKET HANDLER (Groq Whisper Transcription)
 wssAudio.on('connection', (ws, req) => {
+  let currentMeetingId = '';
+  let currentUserId = '';
+  let currentSpeakerName = '';
+
   console.log('[Sockets] Audio socket connected');
-  ws.on('message', (message, isBinary) => {
-    // Ignore audio chunks for mock summary
+
+  ws.on('message', async (message, isBinary) => {
+    if (!isBinary) {
+      try {
+        const meta = JSON.parse(message.toString());
+        if (meta.type === 'metadata') {
+          currentMeetingId = meta.meetingId;
+          currentUserId = meta.userId;
+          currentSpeakerName = meta.speakerName;
+          console.log(`[AudioSocket] Registered metadata: meeting=${currentMeetingId}, speaker=${currentSpeakerName}`);
+        }
+      } catch (e) {}
+    } else {
+      if (!currentMeetingId || !currentUserId) {
+        console.warn('[AudioSocket] Received audio chunk before metadata, ignoring.');
+        return;
+      }
+
+      const tmpDir = os.tmpdir();
+      const fileName = `chunk_${currentMeetingId}_${currentUserId}_${Date.now()}.webm`;
+      const filePath = path.join(tmpDir, fileName);
+
+      try {
+        fs.writeFileSync(filePath, message);
+        
+        if (process.env.GROQ_API_KEY) {
+          const { default: Groq } = await import('groq-sdk');
+          const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+          
+          const transcription = await groq.audio.transcriptions.create({
+            file: fs.createReadStream(filePath),
+            model: 'whisper-large-v3',
+            prompt: 'Meeting conversation. Transcribe accurately.',
+            response_format: 'json',
+            language: 'en',
+          });
+
+          const text = transcription.text.trim();
+          if (text) {
+            await Transcript.create({
+              meetingId: currentMeetingId,
+              userId: currentUserId,
+              speakerName: currentSpeakerName,
+              text,
+              timestamp: new Date()
+            });
+            console.log(`[AudioSocket] Transcribed: "${text.slice(0, 60)}..."`);
+          }
+        }
+      } catch (e) {
+        console.error('[AudioSocket] Error processing chunk:', e.message);
+      } finally {
+        try { fs.unlinkSync(filePath); } catch {}
+      }
+    }
   });
+
   ws.on('close', () => {
-    console.log('[Sockets] Audio socket closed');
+    console.log(`[AudioSocket] Connection closed for meeting ${currentMeetingId}`);
   });
+
   ws.on('error', (err) => {
     console.error('[Sockets] Audio socket error:', err.message);
   });
 });
-
 
 // 1. MAIL SOCKET HANDLER
 wssMail.on('connection', (ws, req) => {

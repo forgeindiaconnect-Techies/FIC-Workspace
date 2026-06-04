@@ -183,7 +183,7 @@ const LandingPage = () => {
             {/* Standard company logo placeholders text */}
             <div className="text-xl font-bold text-slate-800">Acme Corp</div>
             <div className="text-xl font-bold text-slate-800">GlobalTech</div>
-            <div className="text-xl font-bold text-slate-800">Nexus Industries</div>
+            <div className="text-xl font-bold text-slate-800">Forge Industries</div>
             <div className="text-xl font-bold text-slate-800">Stark Dynamics</div>
             <div className="text-xl font-bold text-slate-800">Wayne Enterprises</div>
           </div>

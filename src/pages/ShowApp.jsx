@@ -182,7 +182,7 @@ const ShowApp = () => {
     
     const pres = new pptxgen();
     pres.author = 'Kural AI Presentation';
-    pres.company = 'Nexus Workspace';
+    pres.company = 'Forge India Connect';
     
     const themeConf = PPTX_THEMES[activeDeck.theme] || PPTX_THEMES.modern;
 

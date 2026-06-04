@@ -144,7 +144,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b;">
     <h2 style="color: #2563eb;">Meeting Invitation: ${meeting.title}</h2>
     <p>Hi there,</p>
-    <p>You have been invited by <strong>${request.user!.name}</strong> to join a Nexus Workspace meeting.</p>
+    <p>You have been invited by <strong>${request.user!.name}</strong> to join a Forge India Connect meeting.</p>
     
     <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0;">
       <p style="margin: 0 0 10px 0;"><strong>Date & Time:</strong> ${timeStr}</p>
