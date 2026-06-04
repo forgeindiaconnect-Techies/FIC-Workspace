@@ -1586,6 +1586,9 @@ export default function Meetings() {
   //  ACTIVE MEETING ROOM 
   if (activeRoom) {
     const localUser = user;
+    const displayPeers = aiAssistantActive && !remotePeers.some(p => p.name === 'Forge India Connect AI')
+      ? [...remotePeers, { id: 'ai-bot', peerId: 'ai-bot', name: 'Forge India Connect AI', isBot: true }]
+      : remotePeers;
 
     return (
       <View style={s.roomRoot}>
@@ -1629,7 +1632,7 @@ export default function Meetings() {
           <View style={s.videoGrid}>
 
             {/* LOCAL CAMERA TILE */}
-            <View style={[s.videoTile, remotePeers.length === 0 ? s.videoTileFull : s.videoTileHalf]}>
+            <View style={[s.videoTile, displayPeers.length === 0 ? s.videoTileFull : s.videoTileHalf]}>
               {rtcAvailableNow && (localScreenStream || (rtcLocalStreamSource && !isVideoOff && !isSharing)) ? (
                 <RTCView
                   style={s.cameraView}
@@ -1671,10 +1674,10 @@ export default function Meetings() {
             </View>
 
             {/* REMOTE PEER TILES */}
-            {remotePeers.slice(0, 3).map(peer => {
+            {displayPeers.slice(0, 3).map(peer => {
               const remoteStream = remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null);
               return (
-                <View key={peer.id} style={[s.videoTile, s.videoTileHalf]}>
+                <View key={peer.id || peer.id} style={[s.videoTile, s.videoTileHalf]}>
                   {rtcAvailableNow && remoteStream ? (
                     <RTCView
                       style={s.cameraView}
@@ -1682,13 +1685,21 @@ export default function Meetings() {
                       objectFit="cover"
                     />
                   ) : (
-                    <View style={[s.videoAvatar, { backgroundColor: '#7c3aed' }]}>
-                      <Text style={s.videoAvatarText}>{avatarFor(peer.name)}</Text>
-                      <Text style={s.connectingText}>{rtcAvailableNow ? 'Connecting media...' : 'WebRTC unavailable'}</Text>
+                    <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
+                      <Text style={s.videoAvatarText}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>
+                      {!(peer as any).isBot && (
+                        <View style={s.waveRow}>
+                          {audioLevels.map((h, i) => (
+                            <View key={i} style={[s.waveBar, { height: Math.max(3, h * 0.1) }]} />
+                          ))}
+                        </View>
+                      )}
                     </View>
                   )}
                   <View style={s.namePlate}>
+                    {(peer as any).isBot ? <Sparkles size={9} color="#fff" /> : <UserIcon size={9} color="#fff" />}
                     <Text style={s.namePlateText} numberOfLines={1}>{peer.name}</Text>
+                    {!(peer as any).isBot && <VideoOff size={9} color="#ef4444" />}
                   </View>
                 </View>
               );
@@ -1743,14 +1754,14 @@ export default function Meetings() {
                     </View>
                     <Wifi size={14} color="#10b981" />
                   </View>
-                  {remotePeers.map(peer => (
+                  {displayPeers.map(peer => (
                     <View key={peer.id} style={s.peerRow}>
-                      <View style={[s.peerAvatar, { backgroundColor: '#7c3aed' }]}>
-                        <Text style={s.peerAvatarText}>{avatarFor(peer.name)}</Text>
+                      <View style={[s.peerAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
+                        <Text style={s.peerAvatarText}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={s.peerName}>{peer.name}</Text>
-                        <Text style={s.peerRole}>{peer.name === 'Forge India Connect AI' ? 'AI Bot' : 'Attendee'}</Text>
+                        <Text style={s.peerRole}>{peer.name === 'Forge India Connect AI' ? 'Smart Assistant' : 'Attendee'}</Text>
                       </View>
                       <Wifi size={14} color="#10b981" />
                     </View>
@@ -1758,7 +1769,7 @@ export default function Meetings() {
                   
                   <View style={{ padding: 16 }}>
                     <TouchableOpacity 
-                      style={[s.primaryBtn, aiAssistantActive && { backgroundColor: '#10b981' }]} 
+                      style={[s.primaryBtn, aiAssistantActive && { backgroundColor: '#1e40af' }]} 
                       onPress={async () => {
                         if (aiAssistantActive) return;
                         try {
@@ -1767,14 +1778,14 @@ export default function Meetings() {
                             activeRoom.id,
                             Platform.OS === 'web' ? window.location.origin : 'http://localhost:8081'
                           );
-                          Alert.alert('AI Assistant', 'AI bot is joining to transcribe the meeting.');
+                          Alert.alert('Smart Assistant', 'Smart Assistant is joining to transcribe the meeting.');
                         } catch (err: any) {
                           setAiAssistantActive(false);
-                          Alert.alert('AI Error', err.message);
+                          Alert.alert('Assistant Error', err.message);
                         }
                       }}
                     >
-                      <Text style={s.primaryBtnText}>{aiAssistantActive ? 'AI Assistant Active' : 'Enable AI Assistant'}</Text>
+                      <Text style={s.primaryBtnText}>{aiAssistantActive ? 'Smart Assistant Active' : 'Enable Smart Assistant'}</Text>
                     </TouchableOpacity>
                   </View>
                 </ScrollView>
@@ -1874,7 +1885,7 @@ export default function Meetings() {
             onPress={() => setSidePanel(p => p === 'people' ? null : 'people')}>
             <Users size={20} color={sidePanel === 'people' ? '#3b82f6' : '#fff'} />
             <Text style={[s.ctrlLabel, sidePanel === 'people' && { color: '#3b82f6' }]}>
-              {remotePeers.length + 1}
+              {displayPeers.length + 1}
             </Text>
           </TouchableOpacity>
 
@@ -1950,8 +1961,8 @@ export default function Meetings() {
           </View>
         ) : rooms.slice(0, 3).map(room => (
           <TouchableOpacity key={room._id} style={s.roomCard} onPress={() => enterPersistentRoom(room)}>
-            <View style={[s.roomIcon, { backgroundColor: (room.color || '#7c3aed') + '15' }]}>
-              <Users size={24} color={room.color || '#7c3aed'} />
+            <View style={[s.roomIcon, { backgroundColor: (room.color || '#1e40af') + '15' }]}>
+              <Users size={24} color={room.color || '#1e40af'} />
             </View>
             <View style={s.roomInfo}>
               <Text style={s.roomTitle}>{room.title}</Text>
@@ -2029,7 +2040,7 @@ export default function Meetings() {
               </View>
             </View>
             <TouchableOpacity style={s.summaryBtn} onPress={() => generateSummary(m.id)}>
-              <Text style={s.summaryBtnText}>AI Summary</Text>
+              <Text style={s.summaryBtnText}>Meeting Summary</Text>
             </TouchableOpacity>
           </View>
         ))}
@@ -2176,8 +2187,8 @@ export default function Meetings() {
               ) : rooms.map(room => (
                 <View key={room._id} style={[s.roomModalItem, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
                   <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => { setRoomsModal(false); enterPersistentRoom(room); }}>
-                    <View style={[s.roomTag, { backgroundColor: (room.color || '#7c3aed') + '20' }]}>
-                      <Text style={[s.roomTagText, { color: room.color || '#7c3aed' }]}>{room.tag}</Text>
+                    <View style={[s.roomTag, { backgroundColor: (room.color || '#1e40af') + '20' }]}>
+                      <Text style={[s.roomTagText, { color: room.color || '#1e40af' }]}>{room.tag}</Text>
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={s.roomModalTitle}>{room.title}</Text>
@@ -2235,7 +2246,7 @@ export default function Meetings() {
       {/* SUMMARY */}
       <Modal visible={summaryModal} animationType="slide" transparent onRequestClose={() => setSummaryModal(false)}>
         <View style={s.modalOverlay}><View style={[s.modalCard,{maxHeight:'80%'}]}>
-          <View style={s.modalTopRow}><Text style={s.modalTitle}>AI Summary</Text><TouchableOpacity onPress={()=>setSummaryModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
+          <View style={s.modalTopRow}><Text style={s.modalTitle}>Meeting Summary</Text><TouchableOpacity onPress={()=>setSummaryModal(false)}><X size={20} color="#64748b" /></TouchableOpacity></View>
           <ScrollView style={{flex:1}}>
             {summaryLoading ? (
               <View style={{alignItems:'center',padding:32,gap:12}}>
@@ -2305,8 +2316,8 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   joinPillText: { fontSize: 12, fontWeight: '900', color: '#fff' },
   histCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 18, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', gap: 12 },
   histIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  summaryBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12, borderWidth: 1, borderColor: '#7c3aed', backgroundColor: '#faf5ff' },
-  summaryBtnText: { fontSize: 11, fontWeight: '800', color: '#7c3aed' },
+  summaryBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12, borderWidth: 1, borderColor: '#94a3b8', backgroundColor: '#f8fafc' },
+  summaryBtnText: { fontSize: 11, fontWeight: '800', color: '#475569' },
   summaryBody: { fontSize: 14, color: '#334155', lineHeight: 22, padding: 4 },
   loadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center', gap: 12, zIndex: 99 },
   loadingText: { fontSize: 14, color: '#64748b', fontWeight: '700' },
