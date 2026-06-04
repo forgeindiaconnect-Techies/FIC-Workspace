@@ -5,8 +5,9 @@ import {
   File, BarChart2, Users, Settings, 
   Search, Bell, Download, ChevronDown, Grid,
   Mail, MessageSquare, CheckSquare, FileText,
-  X, ExternalLink, Zap, ArrowUpRight, LogOut
+  X, ExternalLink, ArrowUpRight, LogOut
 } from 'lucide-react';
+import LogoImage from '../assets/landing-logo.png';
 
 const MeetingLayout = ({ children }) => {
   const { workspaceId } = useParams();
@@ -39,10 +40,8 @@ const MeetingLayout = ({ children }) => {
       {/* Top Navbar */}
       <header className="h-14 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-white/5 flex items-center px-6 shrink-0 z-[60]">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
-            <Video size={18} strokeWidth={2.5} />
-          </div>
-          <span className="text-xl font-black tracking-tighter text-zinc-900 dark:text-white">Meeting</span>
+          <img src={LogoImage} alt="Forge India" className="h-8 w-auto object-contain" />
+          <span className="text-xl font-black tracking-tighter text-zinc-900 dark:text-white">Forge India</span>
         </div>
 
         <div className="mx-auto flex items-center gap-2">
@@ -179,7 +178,7 @@ const MeetingLayout = ({ children }) => {
                        <div className="grid grid-cols-3 gap-6">
                           <Link to={`/w/${workspaceId}/meet`} className="flex flex-col items-center gap-3 group">
                              <div className="w-14 h-14 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
-                                <Zap size={24} />
+                                <img src={LogoImage} alt="Assist" className="w-8 h-8 object-contain" />
                              </div>
                              <span className="text-[10px] font-black uppercase tracking-widest">Assist</span>
                           </Link>

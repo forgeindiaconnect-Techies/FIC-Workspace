@@ -241,30 +241,30 @@ const MailApp = () => {
       {composing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setComposing(false)} />
-          <div className="relative w-full max-w-lg card shadow-2xl border-none animate-up overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 bg-zinc-900 text-white">
+          <div className="relative w-full max-w-lg bg-white shadow-2xl border border-gray-200 rounded-xl animate-up overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b border-gray-200 text-gray-900">
               <span className="text-sm font-bold">New Message</span>
-              <button onClick={() => setComposing(false)} className="p-1 hover:bg-white/10 rounded-lg"><X size={16} /></button>
+              <button onClick={() => setComposing(false)} className="p-1 hover:bg-gray-200 rounded-lg transition-colors"><X size={16} /></button>
             </div>
             <div className="p-6 space-y-4">
-              <div className="flex items-center gap-3 border-b pb-2">
-                <span className="text-xs font-bold opacity-40 w-12">To</span>
-                <input type="email" value={newMail.to} onChange={e => setNewMail({...newMail, to: e.target.value})} className="bg-transparent border-none outline-none text-sm flex-1" placeholder="recipient@workspace.com" />
+              <div className="flex items-center gap-3 border-b border-gray-200 pb-2">
+                <span className="text-xs font-bold text-gray-500 w-12">To</span>
+                <input type="email" value={newMail.to} onChange={e => setNewMail({...newMail, to: e.target.value})} className="bg-transparent border-none outline-none text-sm flex-1 text-gray-900" placeholder="recipient@workspace.com" />
               </div>
-              <div className="flex items-center gap-3 border-b pb-2">
-                <span className="text-xs font-bold opacity-40 w-12">Subject</span>
-                <input type="text" value={newMail.subject} onChange={e => setNewMail({...newMail, subject: e.target.value})} className="bg-transparent border-none outline-none text-sm flex-1" placeholder="Meeting Sync" />
+              <div className="flex items-center gap-3 border-b border-gray-200 pb-2">
+                <span className="text-xs font-bold text-gray-500 w-12">Subject</span>
+                <input type="text" value={newMail.subject} onChange={e => setNewMail({...newMail, subject: e.target.value})} className="bg-transparent border-none outline-none text-sm flex-1 text-gray-900" placeholder="Meeting Sync" />
               </div>
               <textarea 
-                className="w-full bg-transparent border-none outline-none text-sm resize-none" 
+                className="w-full bg-transparent border-none outline-none text-sm resize-none text-gray-900" 
                 rows={8} 
                 placeholder="Write your message here..."
                 value={newMail.message}
                 onChange={e => setNewMail({...newMail, message: e.target.value})}
               />
-              <div className="flex items-center justify-between pt-4 border-t">
-                <button className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all"><Paperclip size={18} className="opacity-40" /></button>
-                <button onClick={handleSend} disabled={sending} className="btn btn-primary px-8">
+              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                <button className="p-2 hover:bg-gray-100 rounded-xl transition-all text-gray-500"><Paperclip size={18} /></button>
+                <button onClick={handleSend} disabled={sending} className="btn bg-blue-600 text-white hover:bg-blue-700 hover:shadow-none px-8 rounded-xl py-2">
                   {sending ? 'Sending...' : 'Send Now'}
                 </button>
               </div>

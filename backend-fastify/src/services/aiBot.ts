@@ -11,7 +11,7 @@ import { summarizeMeeting } from './summarizer';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'nexus-jwt-secret-key';
 const AI_BOT_EMAIL = 'ai-assistant@nexus.app';
-const AI_BOT_NAME = 'Nexus AI Assistant';
+const AI_BOT_NAME = 'Forge India Connect AI';
 
 interface ActiveBot {
   ws: WebSocket;

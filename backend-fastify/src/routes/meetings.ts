@@ -155,7 +155,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
 
     <p>To join the meeting, open the <strong>Meetings</strong> app in your workspace and enter the Room Code above.</p>
     <br/>
-    <p>Best regards,<br/><strong>Nexus AI</strong></p>
+    <p>Best regards,<br/><strong>Forge India Connect AI</strong></p>
   </div>
           `;
 
@@ -164,7 +164,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
               workspaceId,
               ownerEmail: email,
               folder: 'inbox',
-              senderName: 'Nexus AI',
+              senderName: 'Forge India Connect AI',
               senderEmail: 'nexus-ai@workspace.app',
               recipientEmails: [email],
               subject: `Invitation: ${meeting.title}`,

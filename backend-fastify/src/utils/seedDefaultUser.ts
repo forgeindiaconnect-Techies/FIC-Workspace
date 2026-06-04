@@ -26,7 +26,7 @@ export async function ensureDefaultUser() {
   if (!aiExisting) {
     const aiPasswordHash = await bcrypt.hash('AI_SECURE_PASSWORD_123!@#', salt);
     await User.create({
-      name: 'Nexus AI Assistant',
+      name: 'Forge India Connect AI',
       email: AI_EMAIL,
       passwordHash: aiPasswordHash,
       avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=nexusai`,

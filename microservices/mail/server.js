@@ -283,6 +283,83 @@ app.post('/api/mail/generate', async (req, res) => {
   }
 });
 
+// 8b. Smart Compose (autocomplete suggestion)
+app.post('/api/mail/smart-compose', async (req, res) => {
+  try {
+    const { currentText, context } = req.body;
+    if (!currentText) return res.json({ suggestion: '' });
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [{
+          role: 'system',
+          content: 'You are an AI autocomplete tool. Given a partial sentence, provide ONLY the next few words to complete it seamlessly. Do not include quotes, explanations, or full paragraphs.'
+        }, {
+          role: 'user',
+          content: `Complete this text: "${currentText}"`
+        }],
+        temperature: 0.3,
+        max_tokens: 20
+      })
+    });
+
+    if (!response.ok) throw new Error('API Error');
+    const data = await response.json();
+    const suggestion = data.choices[0].message.content.trim().replace(/^["']|["']$/g, '');
+
+    res.json({ suggestion });
+  } catch (err) {
+    console.error('[AI Smart Compose Error]:', err.message);
+    res.json({ suggestion: '' }); // Fail silently for autocomplete
+  }
+});
+
+// 8c. Summarize Email Thread
+app.post('/api/mail/summarize', async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content) return res.status(400).json({ error: 'Content is required for summarization.' });
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [{
+          role: 'system',
+          content: 'Summarize the following email thread into 3 concise bullet points. Each bullet point should be separated by a newline.'
+        }, {
+          role: 'user',
+          content: `Email Content: "${content}"`
+        }],
+        temperature: 0.5,
+        max_tokens: 300
+      })
+    });
+
+    if (!response.ok) throw new Error('API Error');
+    const data = await response.json();
+    const summaryText = data.choices[0].message.content.trim();
+    
+    // Split into bullet points
+    const summary = summaryText.split('\n').filter(line => line.trim().length > 0);
+
+    res.json({ summary });
+  } catch (err) {
+    console.error('[AI Summarize Error]:', err.message);
+    res.status(500).json({ error: 'Failed to generate summary' });
+  }
+});
+
 // 9. AI Text Suggestion / Smart Reply
 app.post('/api/mail/smart-reply', async (req, res) => {
   try {

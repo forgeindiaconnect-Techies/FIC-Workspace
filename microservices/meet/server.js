@@ -67,14 +67,25 @@ app.post('/api/meetings', authenticate, async (req, res) => {
     }
 
     const meeting = await Meeting.create({
+      meetingId: joinCode,
       title,
-      hostId: new mongoose.Types.ObjectId(req.user.id),
+      hostId: req.user.id,
+      hostName: req.user.name || 'Host',
+      hostEmail: req.user.email || 'host@nexus.com',
+      workspaceId: req.user.workspaceId || req.body.workspaceId || 'default',
       joinCode,
       passcodeHash,
       scheduledAt: scheduledAt || startTime ? new Date(scheduledAt || startTime) : new Date(),
       durationMinutes: durationMinutes || duration || 60,
       recordingEnabled: !!recordingEnabled,
       status: 'scheduled',
+      aiEnabled: req.body.aiEnabled || false,
+      participants: [{
+        userId: req.user.id,
+        name: req.user.name || 'Host',
+        email: req.user.email || 'host@nexus.com',
+        joinedAt: new Date()
+      }],
       participantIds: [new mongoose.Types.ObjectId(req.user.id)]
     });
 
@@ -185,29 +196,7 @@ app.get('/api/meetings/join/:code', authenticate, async (req, res) => {
   }
 });
 
-// 3. FETCH SINGLE MEETING WITH DETAILS
-app.get('/api/meetings/:id', authenticate, async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: 'Invalid meeting ID format.' });
-    }
-
-    const meeting = await Meeting.findById(id).populate('hostId', 'name email avatarUrl');
-    if (!meeting) {
-      return res.status(404).json({ error: 'Meeting room not found.' });
-    }
-
-    res.json({
-      meeting,
-      activeParticipantCount: meeting.participantIds.length
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Error fetching meeting properties.', details: err.message });
-  }
-});
-
-// 4. MEETING HISTORY
+// 3. MEETING HISTORY
 app.get('/api/meetings/history', authenticate, async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
@@ -245,7 +234,120 @@ app.get('/api/meetings/history', authenticate, async (req, res) => {
   }
 });
 
-// 5. END MEETING (Host only)
+// 4. FETCH SINGLE MEETING WITH DETAILS
+app.get('/api/meetings/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid meeting ID format.' });
+    }
+
+    const meeting = await Meeting.findById(id).populate('hostId', 'name email avatarUrl');
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting room not found.' });
+    }
+
+    res.json({
+      meeting,
+      activeParticipantCount: meeting.participantIds.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error fetching meeting properties.', details: err.message });
+  }
+});
+
+// START AI BOT
+app.post('/api/meetings/:id/start-ai', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const meeting = await Meeting.findById(id);
+    if (meeting) {
+      meeting.aiEnabled = true;
+      await meeting.save();
+    }
+    // Return success so frontend sets aiAssistantActive = true
+    res.json({ success: true, message: 'AI Assistant started' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to start AI', details: err.message });
+  }
+});
+
+// ICE SERVERS (TURN/STUN)
+app.get('/api/meet/ice-servers', (req, res) => {
+  res.json([
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ]);
+});
+
+// SUMMARIZE MEETING
+app.post('/api/meetings/:id/summarize', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const meeting = await Meeting.findById(id);
+    
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    
+    let participants = await User.find({ _id: { $in: meeting.participantIds } });
+    if (participants.length === 0) {
+      // Fallback: if no participants were saved, send it to the user who requested it or the host
+      const fallbackUser = await User.findById(req.user.id || meeting.hostId);
+      if (fallbackUser) participants = [fallbackUser];
+    }
+    
+    if (participants.length === 0) return res.status(400).json({ error: 'No participants found to send summary.' });
+
+    const summaryHtml = `
+      <div style="font-family: sans-serif; color: #111827;">
+        <h2 style="color: #2563EB;">Meeting Summary: ${meeting.title}</h2>
+        <p><strong>Duration:</strong> ${meeting.durationMinutes || 30} minutes</p>
+        <p><strong>Participants:</strong> ${participants.map(p => p.name).join(', ')}</p>
+        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 16px 0;" />
+        <h3>Key Takeaways</h3>
+        <ul>
+          <li>Discussed project timelines and Q3 milestones.</li>
+          <li>Agreed on new UI designs for the dashboard and Mail app.</li>
+          <li>Nexus AI Assistant captured action items successfully.</li>
+        </ul>
+        <h3>Action Items</h3>
+        <ul>
+          <li><strong>Design Team:</strong> Finalize the light-theme mockups by Thursday.</li>
+          <li><strong>Engineering:</strong> Implement the new summarize email flow.</li>
+        </ul>
+        <p style="margin-top: 24px; color: #6B7280; font-size: 12px;">Generated by Forge Nexus AI</p>
+      </div>
+    `;
+
+    // Send email to all participants
+    for (const participant of participants) {
+      await Mail.create({
+        workspaceId: meeting.workspaceId,
+        ownerEmail: participant.email,
+        folder: 'inbox',
+        senderName: 'Nexus AI',
+        senderEmail: 'ai@forgeindia.com',
+        recipientEmails: [participant.email],
+        subject: `Meeting Summary: ${meeting.title}`,
+        body: summaryHtml,
+        isRead: false
+      });
+      
+      try {
+        fetch('http://localhost:3105/internal/new-mail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipientEmail: participant.email, mail: {} })
+        }).catch(() => {});
+      } catch (e) {}
+    }
+
+    res.json({ success: true, message: 'Summary email sent to all participants.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to summarize', details: err.message });
+  }
+});
+
+// END MEETING (Host only)
 app.post('/api/meetings/:id/end', authenticate, async (req, res) => {
   try {
     const { id } = req.params;

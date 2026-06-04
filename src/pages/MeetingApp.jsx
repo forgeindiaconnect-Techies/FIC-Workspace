@@ -10,6 +10,7 @@ import {
   Shield, Maximize2, Send, Paperclip, Disc, Hand, MoreVertical, Copy, Check, Loader2, AlertCircle,
   Share2, LayoutGrid, Ghost, ChevronUp, Smile, Pin, Clock, Radio, Hexagon
 , Wand2, Sparkles, FlipHorizontal, Lock, Play, PhoneOff, ChevronRight, ChevronLeft, Home} from 'lucide-react';
+import LogoImage from '../assets/landing-logo.png';
 
 // --- SUB-COMPONENTS ---
 
@@ -175,11 +176,16 @@ const MeetingApp = () => {
            body: JSON.stringify({ frontendUrl: window.location.origin })
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(data.error || data.details || 'Failed to start AI Assistant.');
-        }
-        setAiAssistantActive(true);
-     } catch(e) {
+          if (!res.ok) {
+            throw new Error(data.error || data.details || 'Failed to start AI Assistant.');
+          }
+          setAiAssistantActive(true);
+          // Manually inject AI Bot into peers array for UI display
+          setPeers(prev => {
+            if (prev.find(p => p.name === 'Forge India Connect AI')) return prev;
+            return [...prev, { peerID: 'ai-assistant-bot', pc: null, stream: null, name: 'Forge India Connect AI' }];
+          });
+       } catch(e) {
         console.error('Failed to start AI', e);
         setAiAssistantActive(false);
      }
@@ -200,6 +206,10 @@ const MeetingApp = () => {
   useEffect(() => {
     if (appState === 'in-call' && meetingMetadata?.aiEnabled && !aiAssistantActive) {
       setAiAssistantActive(true);
+      setPeers(prev => {
+        if (prev.find(p => p.name === 'Forge India Connect AI')) return prev;
+        return [...prev, { peerID: 'ai-assistant-bot', pc: null, stream: null, name: 'Forge India Connect AI' }];
+      });
     }
   }, [appState, meetingMetadata, aiAssistantActive]);
 
@@ -435,6 +445,13 @@ const MeetingApp = () => {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       }).catch(err => console.warn('[Meeting] Failed to notify backend leave:', err));
+
+      if (meetingMetadata?.aiEnabled || aiAssistantActive) {
+         fetch(getApiUrl(`/api/meetings/${encodeURIComponent(meetingId)}/summarize`), {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+         }).catch(err => console.warn('[Meeting] Failed to generate summary:', err));
+      }
     }
     if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
   };
@@ -512,7 +529,7 @@ const MeetingApp = () => {
             userId: p.userId,
             name: p.name,
           }));
-          if (peers.some(peer => peer.name === 'Nexus AI Assistant')) {
+          if (peers.some(peer => peer.name === 'Forge India Connect AI')) {
             setAiAssistantActive(true);
           }
           // Initiate offers with peers whose ID sorts higher (avoid SDP glare)
@@ -536,7 +553,7 @@ const MeetingApp = () => {
           if (msg.peerId === peerIdRef.current) return;
           if (peersRef.current.find(p => p.peerID === msg.peerId)) return;
           setPeers(prev => [...prev, { peerID: msg.peerId, pc: null, stream: null, name: msg.name || 'Participant' }]);
-          if (msg.name === 'Nexus AI Assistant') {
+          if (msg.name === 'Forge India Connect AI') {
             setAiAssistantActive(true);
           }
           if (shouldInitiateOfferRef.current(msg.peerId)) {
@@ -725,12 +742,16 @@ const MeetingApp = () => {
       })
         .then(res => res.json())
         .then(data => {
-          const history = data.map(m => ({
-            user: m.sender,
-            text: m.content,
-            time: new Date(m.timestamp).toLocaleTimeString()
-          }));
-          setMeetingMessages(history);
+          if (Array.isArray(data)) {
+            const history = data.map(m => ({
+              user: m.sender,
+              text: m.content,
+              time: new Date(m.timestamp).toLocaleTimeString()
+            }));
+            setMeetingMessages(history);
+          } else {
+            console.warn("Chat history not an array:", data);
+          }
         })
         .catch(err => console.error("Failed to fetch chat history:", err));
     }
@@ -845,50 +866,53 @@ const MeetingApp = () => {
 
       {/* 2. IN-CALL STATE */}
       {appState === 'in-call' && !roomError && (
-        <div className="h-screen w-screen flex flex-col bg-[#0f172a] font-sans">
+        <div className="h-screen w-screen flex flex-col bg-gray-50 font-sans">
           
           {/* TOP HEADER */}
-          <div className="h-[60px] px-4 flex items-center justify-between border-b border-slate-800/50 bg-[#1e293b]">
+          <div className="h-[60px] px-4 flex items-center justify-between border-b border-gray-200 bg-white">
             <div className="flex items-center gap-2">
-              <button onClick={handleEndCall} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 transition-colors">
-                <ChevronLeft size={24} className="text-slate-50" />
+              <button onClick={handleEndCall} className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors">
+                <ChevronLeft size={24} className="text-gray-700" />
               </button>
-              <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 transition-colors">
-                <Home size={18} className="text-slate-50" />
+              <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors">
+                <Home size={18} className="text-gray-700" />
               </button>
             </div>
+            <div className="flex items-center gap-4 ml-4">
+               <img src={LogoImage} alt="Forge India" className="h-6 w-auto object-contain" />
+            </div>
             <div className="flex flex-col items-center justify-center flex-1 mx-4">
-              <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-rose-500/10 rounded-full border border-rose-500/20 mb-1">
+              <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-rose-100 rounded-full border border-rose-200 mb-1">
                 <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse" />
-                <span className="text-[9px] font-black tracking-widest text-rose-500 uppercase">Live</span>
+                <span className="text-[9px] font-black tracking-widest text-rose-600 uppercase">Live</span>
               </div>
-              <h1 className="text-[15px] font-black text-white truncate max-w-[200px]">{meetingMetadata?.title || 'Meeting Room'}</h1>
+              <h1 className="text-[15px] font-black text-gray-900 truncate max-w-[200px]">{meetingMetadata?.title || 'Meeting Room'}</h1>
             </div>
             <div className="flex flex-col items-end justify-center min-w-[60px]">
               <div className="flex items-center gap-1 mb-1">
                 <Shield size={11} className="text-emerald-500" />
-                <span className="text-[9px] font-black tracking-widest text-emerald-500 uppercase">E2EE</span>
+                <span className="text-[9px] font-black tracking-widest text-emerald-600 uppercase">E2EE</span>
               </div>
-              <span className="text-[13px] font-bold text-slate-300 font-mono">{formatTime(duration)}</span>
+              <span className="text-[13px] font-bold text-gray-600 font-mono">{formatTime(duration)}</span>
             </div>
           </div>
 
           {/* ROOM ID STRIP */}
-          <div className="flex items-center justify-center gap-2 py-2.5 bg-[#1e293b] border-b border-slate-800/50 px-4">
-            <Copy size={12} className="text-slate-500" />
-            <span className="text-xs font-black text-slate-500 uppercase tracking-widest">ID:</span>
-            <span className="text-xs font-bold text-slate-300 select-all">{code}</span>
+          <div className="flex items-center justify-center gap-2 py-2.5 bg-white border-b border-gray-200 px-4">
+            <Copy size={12} className="text-gray-400" />
+            <span className="text-xs font-black text-gray-400 uppercase tracking-widest">ID:</span>
+            <span className="text-xs font-bold text-gray-700 select-all">{code}</span>
             {password && (
               <>
-                <Lock size={12} className="text-slate-500 ml-3" />
-                <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Pass:</span>
-                <span className="text-xs font-bold text-slate-300">{password}</span>
+                <Lock size={12} className="text-gray-400 ml-3" />
+                <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Pass:</span>
+                <span className="text-xs font-bold text-gray-700">{password}</span>
               </>
             )}
           </div>
 
           {/* MAIN BODY */}
-          <div className="flex-1 flex overflow-hidden bg-[#0f172a] relative">
+          <div className="flex-1 flex overflow-hidden bg-gray-50 relative">
             
             {/* VIDEO GRID */}
             <div className="flex-1 p-2 md:p-4 flex flex-wrap gap-2 overflow-y-auto content-start justify-center">
@@ -994,7 +1018,7 @@ const MeetingApp = () => {
                               <div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold">{p.name?.charAt(0).toUpperCase()}</div>
                               <div className="flex-1">
                                  <p className="text-sm font-bold text-white">{p.name}</p>
-                                 <p className="text-[10px] font-black uppercase text-slate-500">{p.name === 'Nexus AI Assistant' ? 'AI Bot' : 'Attendee'}</p>
+                                 <p className="text-[10px] font-black uppercase text-slate-500">{p.name === 'Forge India Connect AI' ? 'AI Bot' : 'Attendee'}</p>
                               </div>
                            </div>
                         ))}

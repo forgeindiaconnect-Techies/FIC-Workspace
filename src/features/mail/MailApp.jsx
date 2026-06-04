@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { io } from 'socket.io-client';
-import { DndContext } from '@dnd-kit/core';
+import { DndContext, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { Plus } from 'lucide-react';
 
 const cn = (...inputs) => twMerge(clsx(inputs));
@@ -21,6 +21,14 @@ const queryClient = new QueryClient();
 
 const MailApp = () => {
   const { setComposeOpen, setSearchOpen, setFolder } = useMailStore();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    })
+  );
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
@@ -83,7 +91,7 @@ const MailApp = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <DndContext onDragEnd={handleDragEnd}>
+      <DndContext onDragEnd={handleDragEnd} sensors={sensors}>
         <MailWorkspace />
         <CommandPalette />
       </DndContext>
@@ -91,13 +99,16 @@ const MailApp = () => {
   );
 };
 
+import { useTheme } from '../../context/ThemeContext';
+
 const MailWorkspace = () => {
   const { isSearchOpen, isSettingsOpen, setComposeOpen } = useMailStore();
+  const { setIsDark } = useTheme();
 
   useEffect(() => {
-    const isDark = localStorage.getItem('theme') === 'dark';
-    if (isDark) document.documentElement.classList.add('dark');
-  }, []);
+    // Force light mode for a clean professional appearance
+    setIsDark(false);
+  }, [setIsDark]);
 
   return (
     <div className="h-screen w-screen bg-[var(--bg)] text-[var(--text-primary)] font-sans flex overflow-hidden selection:bg-[var(--brand-light)] selection:text-[var(--brand-primary)]">

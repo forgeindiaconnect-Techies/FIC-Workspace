@@ -112,7 +112,7 @@ const MailList = () => {
             className={cn(
               "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap",
               activeFilter === f 
-                ? "bg-[var(--brand-primary)] text-white shadow-md shadow-purple-500/20" 
+                ? "bg-[var(--brand-primary)] text-white shadow-md shadow-blue-500/20" 
                 : "bg-[var(--surface-2)] text-[var(--text-secondary)] hover:bg-[var(--surface-0)] border border-[var(--border)]"
             )}
           >

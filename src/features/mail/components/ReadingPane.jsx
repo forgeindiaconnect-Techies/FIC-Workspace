@@ -10,6 +10,7 @@ import {
 import { useMailStore } from '../store';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import LogoImage from '../../../assets/landing-logo.png';
 
 const cn = (...inputs) => twMerge(clsx(inputs));
 
@@ -136,11 +137,10 @@ const ReadingPane = () => {
   if (!selectedId) {
     return (
       <div className="flex-1 h-full flex flex-col items-center justify-center bg-[var(--surface-0)] gap-6 opacity-30">
-        <div className="w-20 h-20 rounded-[2.5rem] bg-[var(--surface-2)] flex items-center justify-center text-[var(--text-secondary)] border border-[var(--border)]">
-          <MessageSquare size={32} strokeWidth={1.5} />
+        <div className="flex items-center justify-center">
+          <img src={LogoImage} alt="Forge India Logo" className="h-20 w-auto object-contain opacity-60" />
         </div>
-        <div className="text-center">
-           <p className="text-xs font-black uppercase tracking-[0.3em] mb-1">Forge India Mail</p>
+        <div className="text-center mt-2">
            <p className="text-sm font-medium">Select a conversation to read</p>
         </div>
       </div>
@@ -185,7 +185,7 @@ const ReadingPane = () => {
               className={cn(
                 "btn h-9 px-4 rounded-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all",
                 showAIPanel 
-                  ? "bg-[var(--brand-primary)] text-white shadow-lg shadow-purple-500/20" 
+                  ? "bg-[var(--brand-primary)] text-white shadow-lg shadow-blue-500/20" 
                   : "bg-[var(--brand-light)] text-[var(--brand-primary)] hover:bg-[var(--brand-primary)] hover:text-white"
               )}
             >
@@ -242,9 +242,10 @@ const ReadingPane = () => {
             </div>
 
             {/* Body */}
-            <div className="text-[var(--text-primary)] leading-[1.8] text-[15px] font-medium whitespace-pre-wrap font-sans">
-              {mail.content}
-            </div>
+            <div 
+              className="text-[var(--text-primary)] leading-[1.8] text-[15px] font-medium font-sans mail-content"
+              dangerouslySetInnerHTML={{ __html: mail.content }}
+            />
 
             {/* Attachments */}
             {mail.hasAttachments && (
@@ -293,7 +294,7 @@ const ReadingPane = () => {
                      <button className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all"><Maximize2 size={16} /></button>
                      <button className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all"><Paperclip size={16} /></button>
                    </div>
-                   <button className="btn btn-primary h-10 px-6 rounded-xl text-xs font-bold shadow-lg shadow-purple-500/20">
+                   <button className="btn btn-primary h-10 px-6 rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20">
                      Send Reply
                    </button>
                 </div>

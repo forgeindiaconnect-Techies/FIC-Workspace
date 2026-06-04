@@ -7,9 +7,11 @@ import {
   Menu, Square, Tag, LogOut
 } from 'lucide-react';
 import { useMailStore } from '../store';
+import LogoImage from '../../../assets/landing-logo.png';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useDroppable } from '@dnd-kit/core';
+import { AppSwitcher } from '../../../components/AppLayout';
 
 const cn = (...inputs) => twMerge(clsx(inputs));
 
@@ -18,7 +20,7 @@ const Sidebar = () => {
     folder, setFolder, 
     isSidebarCollapsed, toggleSidebar, 
     setComposeOpen, setSearchOpen,
-    setSettingsOpen
+    setSettingsOpen, getAuth
   } = useMailStore();
   const navigate = useNavigate();
 
@@ -53,9 +55,7 @@ const Sidebar = () => {
     >
       {/* Header & Logo */}
       <div className="h-16 flex items-center px-6 shrink-0 gap-3">
-        <div className="w-8 h-8 rounded-lg bg-[var(--brand-primary)] flex items-center justify-center shrink-0 shadow-lg shadow-purple-500/20">
-          <Zap size={18} className="text-white fill-white" />
-        </div>
+        <img src={LogoImage} alt="Forge India" className="h-8 w-auto object-contain" />
         {!isSidebarCollapsed && (
           <motion.span 
             initial={{ opacity: 0 }}
@@ -72,7 +72,7 @@ const Sidebar = () => {
         <button
           onClick={() => setComposeOpen(true)}
           className={cn(
-            "btn btn-primary w-full shadow-lg shadow-purple-500/20 transition-all",
+            "btn btn-primary w-full shadow-lg shadow-blue-500/20 transition-all",
             isSidebarCollapsed ? "h-12 w-12 p-0 rounded-2xl" : "h-12 px-6 rounded-2xl justify-start"
           )}
         >
@@ -146,6 +146,16 @@ const Sidebar = () => {
             </div>
           </div>
         )}
+
+        <div className="mb-4">
+           {!isSidebarCollapsed ? (
+             <AppSwitcher workspaceId={getAuth().workspaceId || 'demo'} />
+           ) : (
+             <button onClick={() => navigate(`/w/${getAuth().workspaceId || 'demo'}/chat`)} className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100 transition-all mx-auto">
+               <Zap size={18} strokeWidth={2.5} />
+             </button>
+           )}
+        </div>
 
         <div className={cn("flex items-center gap-3", isSidebarCollapsed && "flex-col")}>
           <button 

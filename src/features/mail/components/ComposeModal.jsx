@@ -242,7 +242,7 @@ const ComposeModal = () => {
                   <button 
                     onClick={handleSend}
                     disabled={sendMutation.isPending}
-                    className="btn btn-primary h-10 px-6 rounded-xl flex items-center gap-3 shadow-lg shadow-purple-500/20 disabled:opacity-50"
+                    className="btn btn-primary h-10 px-6 rounded-xl flex items-center gap-3 shadow-lg shadow-blue-500/20 disabled:opacity-50"
                   >
                     <span className="text-xs font-bold">{sendMutation.isPending ? 'Sending...' : 'Send'}</span>
                     <div className="w-px h-4 bg-white/20" />

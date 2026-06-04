@@ -95,11 +95,14 @@ const MeetingSchema = new mongoose.Schema({
   hostName: { type: String, required: true },
   hostEmail: { type: String, required: true },
   workspaceId: { type: String, required: true },
+  joinCode: { type: String, index: true },
   passcode: { type: String },
+  passcodeHash: { type: String },
   durationMinutes: { type: Number, default: 60 },
   scheduledAt: { type: Date, default: Date.now },
-  status: { type: String, enum: ['scheduled', 'live', 'completed'], default: 'scheduled' },
+  status: { type: String, enum: ['scheduled', 'live', 'completed', 'ended'], default: 'scheduled' },
   recordingEnabled: { type: Boolean, default: true },
+  aiEnabled: { type: Boolean, default: false },
   participants: [{
     userId: String,
     name: String,
@@ -107,6 +110,7 @@ const MeetingSchema = new mongoose.Schema({
     joinedAt: Date,
     leftAt: Date
   }],
+  participantIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   aiSummary: {
     keyPoints: [String],
     actionItems: [String],

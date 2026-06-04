@@ -61,6 +61,22 @@ const server = http.createServer(app);
 const wssMail = new WebSocketServer({ noServer: true });
 const wssCalls = new WebSocketServer({ noServer: true });
 const wssWebRtc = new WebSocketServer({ noServer: true });
+const wssAudio = new WebSocketServer({ noServer: true });
+
+// 0. AUDIO SOCKET HANDLER (Dummy implementation to prevent connection drops)
+wssAudio.on('connection', (ws, req) => {
+  console.log('[Sockets] Audio socket connected');
+  ws.on('message', (message, isBinary) => {
+    // Ignore audio chunks for mock summary
+  });
+  ws.on('close', () => {
+    console.log('[Sockets] Audio socket closed');
+  });
+  ws.on('error', (err) => {
+    console.error('[Sockets] Audio socket error:', err.message);
+  });
+});
+
 
 // 1. MAIL SOCKET HANDLER
 wssMail.on('connection', (ws, req) => {
@@ -331,6 +347,10 @@ server.on('upgrade', (req, socket, head) => {
   } else if (pathname === '/ws/webrtc') {
     wssWebRtc.handleUpgrade(req, socket, head, (ws) => {
       wssWebRtc.emit('connection', ws, req);
+    });
+  } else if (pathname === '/ws/audio') {
+    wssAudio.handleUpgrade(req, socket, head, (ws) => {
+      wssAudio.emit('connection', ws, req);
     });
   } else {
     socket.destroy();

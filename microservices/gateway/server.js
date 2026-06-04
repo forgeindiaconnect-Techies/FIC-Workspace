@@ -89,7 +89,7 @@ app.use((req, res) => {
 server.on('upgrade', (req, socket, head) => {
   const url = req.url;
   console.log(`[Gateway WS Upgrade] Routing upgrade for url: ${url}`);
-  if (url.startsWith('/ws') || url.startsWith('/socket.io')) {
+  if (url.startsWith('/ws') || url.startsWith('/socket.io') || url.startsWith('/ws/audio')) {
     proxy.ws(req, socket, head, { target: SERVICES.sockets.replace('http://', 'ws://') });
   } else {
     socket.destroy();

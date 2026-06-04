@@ -1,265 +1,286 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Mail, Video, MessageSquare, CheckSquare, Shield, Globe,
-  Users, BarChart3, FileText, Settings, Zap, ArrowRight,
-  Sun, Moon, ChevronRight, Sparkles, Star, FileSpreadsheet, Presentation, Sliders
-} from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
-
-const APPS = [
-  {
-    icon: <Mail size={22} />,
-    name: 'Mail',
-    desc: 'Secure workspace email for your entire team.',
-    color: '#2563EB',
-    bg: '#EFF6FF',
-    href: '/mail/welcome',
-  },
-  {
-    icon: <Video size={22} />,
-    name: 'Meet',
-    desc: 'Encrypted video meetings and collaboration.',
-    color: '#7C3AED',
-    bg: '#F5F3FF',
-    href: '/meet/welcome',
-  },
-  {
-    icon: <MessageSquare size={22} />,
-    name: 'Chat',
-    desc: 'Real-time messaging and team channels.',
-    color: '#059669',
-    bg: '#ECFDF5',
-    href: '/chat/welcome',
-    badge: 'New',
-  },
-  {
-    icon: <Sliders size={22} />,
-    name: 'Forge India PM',
-    desc: 'Enterprise-grade project management system.',
-    color: '#6366F1',
-    bg: '#EEF2FF',
-    href: 'https://workspace-blue-theta-87.vercel.app',
-  },
-  {
-    icon: <Shield size={22} />,
-    name: 'Admin',
-    desc: 'User management and access control.',
-    color: '#DC2626',
-    bg: '#FEF2F2',
-    href: '/login',
-  },
-  {
-    icon: <Presentation size={22} />,
-    name: 'Show',
-    desc: 'Beautiful presentations and slide decks.',
-    color: '#F59E0B',
-    bg: '#FEF3C7',
-    href: '/login?app=show',
-  },
-  {
-    icon: <FileText size={22} />,
-    name: 'Docs',
-    desc: 'Create and collaborate on premium documents.',
-    color: '#3B82F6',
-    bg: '#EFF6FF',
-    href: '/login?app=docs',
-  },
-  {
-    icon: <FileSpreadsheet size={22} />,
-    name: 'Sheets',
-    desc: 'Manage data and complex calculations.',
-    color: '#10B981',
-    bg: '#ECFDF5',
-    href: '/login?app=sheets',
-  },
-  {
-    icon: <Globe size={22} />,
-    name: 'Sites',
-    desc: 'Build and host public-facing pages.',
-    color: '#0D9488',
-    bg: '#F0FDFA',
-    href: '/login',
-  },
-];
+import { Mail, Video, MessageSquare, FileText, FileSpreadsheet, Presentation, Shield, Zap, Server, BarChart2, Layout, Users, ChevronRight, CheckCircle2, Sparkles } from 'lucide-react';
+import LogoImage from '../assets/landing-logo.png';
+import AIEcosystemCircle from '../components/AIEcosystemCircle';
 
 const LandingPage = () => {
-  const { isDark, toggleTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState('All');
-  const tabs = ['All', 'Productivity', 'Collaboration', 'Admin'];
-
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
-      {/* Topbar */}
-      <nav
-        className="flex items-center justify-between px-8 py-3 border-b sticky top-0 z-50"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'var(--accent)' }}>
-            <Zap size={16} color="white" strokeWidth={3} />
+    <div className="min-h-screen w-full bg-slate-50 font-['Inter',sans-serif] text-slate-900">
+      
+      {/* Standard Header */}
+      <header className="w-full bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-8">
+            <Link to="/">
+              <img src={LogoImage} alt="Forge Logo" className="h-7 w-auto object-contain" />
+            </Link>
+            <nav className="hidden md:flex items-center gap-6">
+              <a href="#products" className="text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">Products</a>
+              <a href="#solutions" className="text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">Solutions</a>
+              <a href="#pricing" className="text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">Pricing</a>
+              <a href="#resources" className="text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">Resources</a>
+            </nav>
           </div>
-          <span className="font-bold text-base tracking-tight">Forge India Connect Pvt Ltd</span>
-        </div>
-
-        <div className="hidden md:flex items-center gap-6 text-sm font-medium" style={{ color: 'var(--text-2)' }}>
-          <a href="#apps" className="hover:text-[var(--text)] transition-colors">Products</a>
-          <a href="#" className="hover:text-[var(--text)] transition-colors">Solutions</a>
-          <a href="#" className="hover:text-[var(--text)] transition-colors">Pricing</a>
-          <a href="#" className="hover:text-[var(--text)] transition-colors">Docs</a>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Link to="/login" className="text-sm font-bold px-4 py-2 hover:bg-[var(--surface-2)] rounded-full transition-colors">Login</Link>
-          <button onClick={toggleTheme} className="btn btn-ghost btn-icon">
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-          <Link to="/login" className="btn btn-secondary btn-sm">Sign in</Link>
-
-        </div>
-      </nav>
-
-      {/* Hero Strip */}
-      <div className="border-b" style={{ borderColor: 'var(--border)' }}>
-        <div className="max-w-7xl mx-auto px-8 py-14 flex flex-col md:flex-row items-center justify-between gap-10">
-          <div className="max-w-xl">
-            <div
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-5 border"
-              style={{ background: 'var(--accent-muted)', color: 'var(--accent)', borderColor: 'color-mix(in srgb, var(--accent) 20%, transparent)' }}
-            >
-              <Sparkles size={12} /> Multi-tenant SaaS platform — v3.0
-            </div>
-            <h1 className="text-4xl md:text-5xl font-bold tracking-tight leading-tight mb-4">
-              One workspace.<br />
-              Every tool your team needs.
-            </h1>
-            <p className="text-base leading-relaxed mb-6" style={{ color: 'var(--text-2)' }}>
-              Mail, meetings, chat, and project management — all connected in isolated workspaces
-              for every team. Deploy in seconds, scale without limits.
-            </p>
-            <div className="flex gap-3">
-
-              <Link to="/login" className="btn btn-secondary btn-lg">View demo</Link>
-            </div>
-          </div>
-
-          {/* Featured Banner */}
-          <div
-            className="w-full md:w-80 rounded-2xl p-6 text-white flex flex-col gap-4 shrink-0 relative overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}
-          >
-            <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-10" style={{ background: 'white', transform: 'translate(30%, -30%)' }} />
-            <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-3xl backdrop-blur-sm">
-              <MessageSquare size={28} className="text-white" />
-            </div>
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-widest opacity-70 mb-1">Now Available</div>
-              <h3 className="text-xl font-bold mb-2">Introducing<br />Chat Space</h3>
-              <p className="text-sm opacity-80 leading-relaxed">
-                Real-time team messaging with channels, threads, and file sharing. Built for deep focus.
-              </p>
-            </div>
-            <Link to="/chat/welcome" className="inline-flex items-center gap-2 text-sm font-semibold mt-2 bg-white/20 hover:bg-white/30 transition-colors rounded-xl px-4 py-2 w-fit">
-              Explore Chat <ChevronRight size={14} />
+          <div className="flex items-center gap-4">
+            <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">
+              Sign In
+            </Link>
+            <Link to="/login" className="bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
+              Get Started
             </Link>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* App Grid */}
-      <div id="apps" className="max-w-7xl mx-auto px-8 py-12 w-full">
-        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-3)' }}>Featured Apps</p>
-            <h2 className="text-lg font-bold">All Products</h2>
+      {/* Hero Section */}
+      <section className="relative bg-white border-b border-slate-200 pt-20 pb-24 lg:pt-32 lg:pb-40 overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 mb-6">
+            The Complete Workspace for <span className="text-blue-600">Enterprise Teams</span>
+          </h1>
+          <p className="mt-4 text-lg md:text-xl text-slate-600 max-w-3xl mx-auto mb-10 leading-relaxed">
+            Unify your communication, collaboration, and document management in a single, secure platform designed for scale and reliability.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link to="/login" className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 text-white px-8 py-3.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors text-base shadow-sm">
+              Start Free Trial <ChevronRight size={18} />
+            </Link>
+            <button className="w-full sm:w-auto bg-white text-slate-700 border border-slate-300 px-8 py-3.5 rounded-lg font-semibold hover:bg-slate-50 transition-colors text-base shadow-sm">
+              Contact Sales
+            </button>
           </div>
-          <div className="flex items-center gap-1 p-1 rounded-xl border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-            {tabs.map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)}
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                style={{
-                  background: activeTab === tab ? 'var(--accent)' : 'transparent',
-                  color: activeTab === tab ? 'white' : 'var(--text-2)'
-                }}
-              >
-                {tab}
-              </button>
-            ))}
+          <p className="mt-6 text-sm text-slate-500 font-medium">No credit card required. Free 14-day trial.</p>
+        </div>
+      </section>
+
+      {/* Products Grid */}
+      <section id="products" className="py-20 lg:py-28 bg-slate-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <h2 className="text-3xl font-bold text-slate-900 mb-4">Integrated Suite of Applications</h2>
+            <p className="text-lg text-slate-600">Everything your organization needs to stay productive, seamlessly connected under one roof.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <ProductCard 
+              icon={Mail} 
+              color="bg-blue-100 text-blue-700" 
+              title="Mail" 
+              description="Enterprise-grade email with advanced organization, security, and smart threading."
+              link="/login?app=mail"
+            />
+            <ProductCard 
+              icon={Video} 
+              color="bg-green-100 text-green-700" 
+              title="Meet" 
+              description="Reliable, high-definition video conferencing for teams of any size."
+              link="/login?app=meet"
+            />
+            <ProductCard 
+              icon={MessageSquare} 
+              color="bg-teal-100 text-teal-700" 
+              title="Kural Chat" 
+              description="Organized team messaging with channels, direct messages, and secure file sharing."
+              link="/login?app=chat"
+            />
+            <ProductCard 
+              icon={FileText} 
+              color="bg-indigo-100 text-indigo-700" 
+              title="Docs" 
+              description="Real-time collaborative document editing with rich formatting options."
+              link="/login?app=docs"
+            />
+            <ProductCard 
+              icon={FileSpreadsheet} 
+              color="bg-emerald-100 text-emerald-700" 
+              title="Sheets" 
+              description="Powerful spreadsheets for complex data analysis, financial modeling, and tracking."
+              link="/login?app=sheets"
+            />
+            <ProductCard 
+              icon={Presentation} 
+              color="bg-orange-100 text-orange-700" 
+              title="Slides" 
+              description="Professional presentation builder with corporate templates and seamless sharing."
+              link="/login?app=show"
+            />
           </div>
         </div>
+      </section>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {APPS.map((app) => {
-            const isExternal = app.href.startsWith('http');
-            const Component = isExternal ? 'a' : Link;
-            const props = isExternal ? { href: app.href, target: "_blank", rel: "noopener noreferrer" } : { to: app.href };
+      {/* AI Ecosystem Section */}
+      <section className="py-24 lg:py-32 bg-white text-slate-900 border-t border-slate-200 relative overflow-hidden">
+        {/* Soft Background Accents */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-96 bg-blue-50/50 blur-[120px] rounded-full pointer-events-none" />
 
-            return (
-              <Component 
-                key={app.name} 
-                {...props}
-                className="card p-5 flex items-start gap-4 group relative"
-                style={{ textDecoration: 'none', color: 'inherit' }}
-              >
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110"
-                  style={{ background: isDark ? `${app.color}20` : app.bg, color: app.color }}
-                >
-                  {app.icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-semibold text-sm">{app.name}</span>
-                    {app.badge && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: '#059669' }}>{app.badge}</span>
-                    )}
-                  </div>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text-2)' }}>{app.desc}</p>
-                </div>
-                <ChevronRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity mt-1" style={{ color: 'var(--text-3)' }} />
-              </Component>
-            );
-          })}
-        </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="flex flex-col lg:flex-row items-center gap-16">
+            
+            {/* Text Content */}
+            <div className="flex-1 text-center lg:text-left">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-50 border border-blue-100 text-blue-600 font-semibold text-sm mb-6 shadow-sm">
+                <Sparkles size={16} /> Forge India Connect AI Engine
+              </div>
+              <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6 leading-tight text-slate-900">
+                Omnipresent AI across your entire workspace
+              </h2>
+              <p className="text-lg text-slate-600 mb-8 leading-relaxed">
+                Our proprietary AI isn't just a chatbot—it's deeply embedded into Mail, Meet, Docs, and Sheets. It contextually understands your projects, summarizes long email threads, generates draft replies, and instantly answers questions based on your entire organization's knowledge base.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
+                <Link to="/login" className="flex items-center gap-2 bg-blue-600 text-white px-8 py-3.5 rounded-lg font-bold hover:bg-blue-700 transition-colors text-base shadow-sm">
+                  Experience Forge India Connect AI <ChevronRight size={18} />
+                </Link>
+              </div>
+            </div>
 
-        {/* Explore all */}
-        <div className="mt-6 text-center">
-          <button className="btn btn-ghost text-sm" style={{ color: 'var(--accent)' }}>
-            Explore all products <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
+            {/* Visuals */}
+            <div className="flex-1 relative w-full pt-10 md:pt-0">
+               <div className="relative z-10 w-full h-[500px] flex items-center justify-center">
+                 <AIEcosystemCircle />
+               </div>
+            </div>
 
-      {/* Trusted by */}
-      <div className="border-t py-10" style={{ borderColor: 'var(--border)' }}>
-        <div className="max-w-7xl mx-auto px-8">
-          <p className="text-center text-xs font-semibold uppercase tracking-widest mb-6" style={{ color: 'var(--text-3)' }}>Trusted by teams worldwide</p>
-          <div className="flex flex-wrap items-center justify-center gap-10">
-            {[].map(name => (
-              <span key={name} className="text-sm font-bold" style={{ color: 'var(--text-3)' }}>{name}</span>
-            ))}
           </div>
         </div>
-      </div>
+      </section>
+
+      {/* Enterprise Features */}
+      <section className="py-20 lg:py-28 bg-white border-y border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <h2 className="text-3xl font-bold text-slate-900 mb-4">Built for the Enterprise</h2>
+            <p className="text-lg text-slate-600">Security, compliance, and administration controls designed for large-scale deployments.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+            <FeatureBlock 
+              icon={Shield} 
+              title="Advanced Security" 
+              description="End-to-end encryption, SSO integration, and comprehensive access controls."
+            />
+            <FeatureBlock 
+              icon={Server} 
+              title="99.99% Uptime SLA" 
+              description="Highly available infrastructure with global data centers for maximum reliability."
+            />
+            <FeatureBlock 
+              icon={Users} 
+              title="Centralized Admin" 
+              description="Manage users, devices, and security policies from a single intuitive dashboard."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Social Proof */}
+      <section className="py-20 bg-slate-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h3 className="text-center text-sm font-semibold text-slate-500 uppercase tracking-wider mb-8">Trusted by forward-thinking companies</h3>
+          <div className="flex flex-wrap justify-center items-center gap-12 opacity-60 grayscale">
+            {/* Standard company logo placeholders text */}
+            <div className="text-xl font-bold text-slate-800">Acme Corp</div>
+            <div className="text-xl font-bold text-slate-800">GlobalTech</div>
+            <div className="text-xl font-bold text-slate-800">Nexus Industries</div>
+            <div className="text-xl font-bold text-slate-800">Stark Dynamics</div>
+            <div className="text-xl font-bold text-slate-800">Wayne Enterprises</div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-20 lg:py-28 bg-blue-700">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">Ready to upgrade your workspace?</h2>
+          <p className="text-blue-100 text-lg mb-10 max-w-2xl mx-auto">
+            Join thousands of organizations that rely on Forge to power their daily operations. Get started today or contact our sales team for a custom deployment plan.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link to="/login" className="w-full sm:w-auto bg-white text-blue-700 px-8 py-3.5 rounded-lg font-bold hover:bg-blue-50 transition-colors text-base shadow-lg">
+              Start Your Free Trial
+            </Link>
+            <button className="w-full sm:w-auto bg-blue-600 border border-blue-500 text-white px-8 py-3.5 rounded-lg font-semibold hover:bg-blue-800 transition-colors text-base shadow-sm">
+              Contact Sales
+            </button>
+          </div>
+        </div>
+      </section>
 
       {/* Footer */}
-      <footer className="border-t py-6 px-8" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'var(--accent)' }}>
-              <Zap size={12} color="white" strokeWidth={3} />
+      <footer className="bg-slate-900 text-slate-300 py-12 md:py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 mb-12">
+            <div className="col-span-2 lg:col-span-2">
+              <img src={LogoImage} alt="Forge Logo" className="h-8 w-auto object-contain mb-6 brightness-0 invert" />
+              <p className="text-sm text-slate-400 max-w-sm mb-6 leading-relaxed">
+                Forge provides enterprise-grade collaboration and productivity tools for modern organizations worldwide.
+              </p>
             </div>
-            <span className="text-sm font-bold">Forge India Connect Pvt Ltd</span>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Product</h4>
+              <ul className="space-y-3 text-sm">
+                <li><a href="#" className="hover:text-white transition-colors">Features</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Integrations</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Security</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Company</h4>
+              <ul className="space-y-3 text-sm">
+                <li><a href="#" className="hover:text-white transition-colors">About Us</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Careers</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Blog</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Contact</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Legal</h4>
+              <ul className="space-y-3 text-sm">
+                <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Cookie Policy</a></li>
+              </ul>
+            </div>
           </div>
-          <p className="text-xs" style={{ color: 'var(--text-3)' }}>© 2026 Forge India Connect Pvt Ltd · All rights reserved.</p>
-          <div className="flex gap-6">
-            {['Privacy', 'Terms', 'Status', 'Support'].map(item => (
-              <a key={item} href="#" className="text-xs transition-colors hover:text-[var(--text)]" style={{ color: 'var(--text-3)' }}>{item}</a>
-            ))}
+          <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-slate-500">
+            <p>© {new Date().getFullYear()} Forge Connect Inc. All rights reserved.</p>
+            <div className="flex gap-6">
+              <a href="#" className="hover:text-white transition-colors">Twitter</a>
+              <a href="#" className="hover:text-white transition-colors">LinkedIn</a>
+              <a href="#" className="hover:text-white transition-colors">GitHub</a>
+            </div>
           </div>
         </div>
       </footer>
     </div>
   );
 };
+
+// Helper Components
+const ProductCard = ({ icon: Icon, color, title, description, link }) => (
+  <Link to={link} className="group bg-white p-8 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all duration-200 flex flex-col h-full block">
+    <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-6 ${color}`}>
+      <Icon size={24} />
+    </div>
+    <h3 className="text-xl font-bold text-slate-900 mb-3 group-hover:text-blue-600 transition-colors">{title}</h3>
+    <p className="text-slate-600 leading-relaxed mb-6 flex-grow">{description}</p>
+    <div className="text-blue-600 font-medium text-sm flex items-center gap-1 group-hover:gap-2 transition-all mt-auto">
+      Learn more <ChevronRight size={16} />
+    </div>
+  </Link>
+);
+
+const FeatureBlock = ({ icon: Icon, title, description }) => (
+  <div className="flex flex-col items-center text-center">
+    <div className="w-16 h-16 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center mb-6">
+      <Icon size={32} strokeWidth={1.5} />
+    </div>
+    <h3 className="text-xl font-bold text-slate-900 mb-3">{title}</h3>
+    <p className="text-slate-600 leading-relaxed">{description}</p>
+  </div>
+);
 
 export default LandingPage;

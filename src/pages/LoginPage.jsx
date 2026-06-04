@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { getApiUrl } from '../api';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Zap, ArrowRight, Sun, Moon } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { ChevronLeft } from 'lucide-react';
+import LogoImage from '../assets/landing-logo.png';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -11,31 +11,19 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { isDark, toggleTheme } = useTheme();
-  const isRegistering = false;
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get('app') === 'chat') {
-      navigate('/chat/login');
-      return;
-    }
-
+    // If we're already logged in, redirect
     const savedAuth = JSON.parse(localStorage.getItem('auth') || 'null');
     const savedToken = localStorage.getItem('token');
     if (savedAuth && savedToken) {
       if (savedAuth.role === 'super-admin') {
         navigate('/super-admin', { replace: true });
       } else {
-        navigate(`/w/${savedAuth.workspaceId || 'demo'}/dashboard`, { replace: true });
+        navigate(`/w/${savedAuth.workspaceId || 'demo'}/mail`, { replace: true });
       }
     }
   }, [location, navigate]);
-
-  const [name, setName] = useState('');
-
-  // API Base URL - Managed by Vite proxy in development
-  // API Base URL - Managed by global config
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -43,15 +31,10 @@ const LoginPage = () => {
     setError('');
 
     try {
-      const endpoint = isRegistering ? '/api/auth/register-tenant' : '/api/auth/login';
-      const body = isRegistering 
-        ? { name, workspaceId: name.toLowerCase().replace(/\s+/g, '-'), domain: `${name.toLowerCase().replace(/\s+/g, '-')}.com`, email, password }
-        : { email, password };
-
-      const response = await fetch(getApiUrl(endpoint), {
+      const response = await fetch(getApiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ email, password })
       });
 
       const data = await response.json();
@@ -60,44 +43,38 @@ const LoginPage = () => {
         throw new Error(data.error || 'Authentication failed');
       }
 
-      if (isRegistering) {
-        // After registration, auto-login or redirect to login
-        setIsRegistering(false);
-        setError('Workspace created! Please sign in.');
+      const normalizedAuthData = {
+        token: data.accessToken || data.token,
+        role: data.user?.role || data.role,
+        user: data.user?.name || data.user,
+        email: data.user?.email || data.email,
+        workspaceId: data.user?.workspaceId || data.workspaceId
+      };
+
+      localStorage.setItem('token', normalizedAuthData.token);
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+      localStorage.setItem('auth', JSON.stringify({
+        role: normalizedAuthData.role,
+        user: normalizedAuthData.user,
+        email: normalizedAuthData.email,
+        workspaceId: normalizedAuthData.workspaceId,
+        avatarUrl: data.user?.avatarUrl
+      }));
+
+      const params = new URLSearchParams(location.search);
+      const targetApp = params.get('app') || 'mail';
+
+      if (normalizedAuthData.role === 'super-admin') {
+        navigate('/super-admin');
+      } else if (normalizedAuthData.role === 'company-admin') {
+        navigate(`/w/${normalizedAuthData.workspaceId}/mail`);
       } else {
-        const normalizedAuthData = {
-          token: data.accessToken || data.token,
-          role: data.user?.role || data.role,
-          user: data.user?.name || data.user,
-          email: data.user?.email || data.email,
-          workspaceId: data.user?.workspaceId || data.workspaceId
-        };
-
-        localStorage.setItem('token', normalizedAuthData.token);
-        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-        localStorage.setItem('auth', JSON.stringify({
-          role: normalizedAuthData.role,
-          user: normalizedAuthData.user,
-          email: normalizedAuthData.email,
-          workspaceId: normalizedAuthData.workspaceId,
-          avatarUrl: data.user?.avatarUrl
-        }));
-
-        const params = new URLSearchParams(location.search);
-        const targetApp = params.get('app') || 'dashboard';
-
-        if (normalizedAuthData.role === 'super-admin') {
-          navigate('/super-admin');
-        } else if (normalizedAuthData.role === 'company-admin') {
-          navigate(`/w/${normalizedAuthData.workspaceId}/dashboard`);
-        } else {
-          // Role-specific redirection
-          if (email.includes('dev')) navigate(`/w/${normalizedAuthData.workspaceId}/dashboard/dev`);
-          else if (email.includes('test')) navigate(`/w/${normalizedAuthData.workspaceId}/dashboard/test`);
-          else if (email.includes('manager')) navigate(`/w/${normalizedAuthData.workspaceId}/dashboard/mgr`);
-          else if (email.includes('lead')) navigate(`/w/${normalizedAuthData.workspaceId}/dashboard`);
-          else navigate(targetApp === 'dashboard' ? `/w/${normalizedAuthData.workspaceId}/dashboard` : `/w/${normalizedAuthData.workspaceId}/${targetApp}`);
-        }
+        // Role-specific redirection
+        if (email.includes('dev')) navigate(`/w/${normalizedAuthData.workspaceId}/mail`);
+        else if (email.includes('test')) navigate(`/w/${normalizedAuthData.workspaceId}/mail`);
+        else if (email.includes('manager')) navigate(`/w/${normalizedAuthData.workspaceId}/mail`);
+        else if (email.includes('lead')) navigate(`/w/${normalizedAuthData.workspaceId}/mail`);
+        else navigate(targetApp === 'mail' ? `/w/${normalizedAuthData.workspaceId}/mail` : `/w/${normalizedAuthData.workspaceId}/${targetApp}`);
       }
     } catch (err) {
       setError(err.message);
@@ -106,111 +83,116 @@ const LoginPage = () => {
     }
   };
 
-
-
   return (
-    <div className="min-h-screen flex" style={{ background: 'var(--bg)' }}>
-      {/* Left Panel - Branding */}
-      <div className="hidden lg:flex flex-col justify-between p-12 w-[420px] shrink-0 border-r" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'var(--accent)' }}>
-            <Zap size={16} color="white" strokeWidth={3} />
-          </div>
-          <span className="font-bold text-base tracking-tight">Forge India Connect Pvt Ltd</span>
-        </div>
-
-        <div>
-          <h2 className="text-2xl font-bold mb-3 tracking-tight">The workspace OS for modern teams.</h2>
-          <p className="text-sm leading-relaxed mb-8" style={{ color: 'var(--text-2)' }}>
-            Deploy isolated workspaces, manage your team, and collaborate across mail and meetings — all in one place. Now powered by MongoDB.
-          </p>
-          <div className="space-y-3">
-            {['Persistent MongoDB storage', 'JWT Secure Authentication', 'Unified mail & video meetings', 'Role-based access control'].map(item => (
-              <div key={item} className="flex items-center gap-2 text-sm">
-                <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0" style={{ background: 'var(--accent)' }}>
-                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1 4L3 6L7 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </div>
-                <span style={{ color: 'var(--text-2)' }}>{item}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <p className="text-xs" style={{ color: 'var(--text-3)' }}>© 2026 Forge India Connect Pvt Ltd</p>
+    <div className="min-h-screen w-full relative flex items-center justify-center font-['Hanken_Grotesk',sans-serif]">
+      {/* Background with Blur Overlay */}
+      <div 
+        className="absolute inset-0 z-0 bg-cover bg-center"
+        style={{ backgroundImage: "url('https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=2069&auto=format&fit=crop')" }}
+      >
+        <div className="absolute inset-0 bg-[#191C1E]/45 backdrop-blur-[2px]"></div>
       </div>
 
-      {/* Right Panel - Login Form */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 relative">
-        <button
-          onClick={toggleTheme}
-          className="btn btn-ghost btn-icon absolute top-6 right-6"
-        >
-          {isDark ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
+      {/* Back to Landing Page Button */}
+      <button
+        onClick={() => navigate('/')}
+        className="absolute top-8 left-8 z-20 flex items-center gap-2 text-white/70 hover:text-white text-sm font-semibold transition-colors bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full backdrop-blur-md"
+      >
+        <ChevronLeft size={18} /> Return to Landing Page
+      </button>
 
-        <div className="w-full max-w-sm">
-          <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="w-7 h-7 rounded-xl flex items-center justify-center" style={{ background: 'var(--accent)' }}>
-              <Zap size={14} color="white" strokeWidth={3} />
-            </div>
-            <span className="font-bold">Forge India Connect Pvt Ltd</span>
+      {/* Main Login Container */}
+      <div className="relative z-10 w-[448px] bg-white rounded-lg shadow-[0px_4px_12px_rgba(24,36,66,0.05)] px-12 py-12 flex flex-col items-center">
+        
+        {/* Monogram Logo */}
+        <div className="mb-6">
+          <img src={LogoImage} alt="Forge Logo" className="h-[40px] w-auto object-contain" />
+        </div>
+
+        {/* Heading */}
+        <div className="text-center mb-8 w-full">
+          <h1 className="text-[#182442] font-semibold text-[32px] leading-[40px] tracking-[-0.32px] mb-1">
+            Welcome back
+          </h1>
+          <p className="text-[#45464E] font-normal text-[16px] leading-[24px]">
+            Sign in to your account
+          </p>
+        </div>
+
+        {/* Login Form */}
+        <form onSubmit={handleAuth} className="w-full flex flex-col gap-6">
+          
+          {/* Email Input */}
+          <div className="flex flex-col gap-2">
+            <label className="text-[#505F76] font-semibold text-[12px] leading-[16px] tracking-[0.6px] uppercase">
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@company.com"
+              required
+              className="w-full h-[42px] bg-white border border-[#C6C6CE] rounded-[4px] px-4 text-[#6B7280] font-normal text-[16px] focus:outline-none focus:border-[#182442] transition-colors"
+            />
           </div>
 
-          <p className="text-sm mb-8" style={{ color: 'var(--text-2)' }}>Sign in to your workspace account.</p>
-
-          <form onSubmit={handleAuth} className="space-y-4">
-
-            <div className="flex flex-col gap-1.5">
-              <label className="label">Email address</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input"
-                placeholder="you@company.com"
-                required
-              />
+          {/* Password Input */}
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between items-center">
+              <label className="text-[#505F76] font-semibold text-[12px] leading-[16px] tracking-[0.6px] uppercase">
+                Password
+              </label>
+              <a href="#" className="text-[#182442] font-semibold text-[12px] leading-[16px] tracking-[0.6px]">
+                Forgot?
+              </a>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <label className="label !mb-0">Password</label>
-                {!isRegistering && <a href="#" className="text-xs font-medium" style={{ color: 'var(--accent)' }}>Forgot?</a>}
-              </div>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input"
-                placeholder="••••••••"
-                required
-              />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              className="w-full h-[42px] bg-white border border-[#C6C6CE] rounded-[4px] px-4 text-[#6B7280] font-normal text-[16px] focus:outline-none focus:border-[#182442] transition-colors"
+            />
+          </div>
+
+          {error && (
+            <div className="text-red-500 text-sm text-center font-medium bg-red-50 p-2 rounded">
+              {error}
             </div>
+          )}
 
-            {error && (
-              <div className="text-xs p-3 rounded-xl border" style={{ 
-                background: error.includes('created') ? 'var(--accent-muted)' : 'color-mix(in srgb, var(--danger) 8%, transparent)', 
-                color: error.includes('created') ? 'var(--accent)' : 'var(--danger)', 
-                borderColor: error.includes('created') ? 'var(--accent)' : 'color-mix(in srgb, var(--danger) 20%, transparent)' 
-              }}>
-                {error}
-              </div>
-            )}
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full h-[60px] bg-[#182442] text-white rounded-[8px] font-semibold text-[20px] leading-[28px] shadow-[0px_1px_2px_rgba(0,0,0,0.05)] hover:bg-[#25365e] transition-colors mt-2 flex items-center justify-center"
+          >
+            {loading ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn btn-primary w-full btn-lg"
-              style={{ width: '100%' }}
-            >
-              {loading ? 'Signing in...' : 'Sign in'}
-              {!loading && <ArrowRight size={16} />}
-            </button>
-            
-
-          </form>
-
-
+        {/* Divider */}
+        <div className="w-full flex items-center my-8">
+          <div className="flex-1 h-[1px] bg-[#C6C6CE]"></div>
+          <span className="px-4 text-[#75777E] font-semibold text-[12px] leading-[16px] tracking-[0.6px]">
+            OR
+          </span>
+          <div className="flex-1 h-[1px] bg-[#C6C6CE]"></div>
         </div>
+
+        {/* Footer Link */}
+        <div className="text-[#45464E] font-normal text-[14px] leading-[20px]">
+          Don't have an account? <a href="#" className="font-semibold text-[#182442] hover:underline">Sign Up</a>
+        </div>
+      </div>
+
+      {/* Page Footer Branding */}
+      <div className="absolute bottom-6 left-0 right-0 flex justify-center opacity-75">
+        <span className="text-[#3A4666] font-semibold text-[12px] leading-[16px] tracking-[0.6px]">
+          © 2026 Forge Connect Inc. All rights reserved.
+        </span>
       </div>
     </div>
   );

@@ -2,14 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { NavLink, useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Zap, Bell, Sun, Moon, User, LogOut,
-  LayoutDashboard, Mail, Video, MessageSquare, CheckSquare,
+  Mail, Video, MessageSquare, CheckSquare,
   Shield, Settings, Grid, FileText, FileSpreadsheet, Presentation, Sliders, ChevronDown, Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
+import LogoImage from '../assets/landing-logo.png';
 
 const APPS = [
-  { icon: LayoutDashboard, label: 'Overview', path: 'dashboard', color: '#2563EB', desc: 'Control center' },
   { icon: Mail,            label: 'Mail',     path: 'mail',      color: '#7C3AED', desc: 'Secure email' },
   { icon: Video,           label: 'Meet',     path: 'meet',      color: '#059669', desc: 'Video huddles' },
   { icon: MessageSquare,   label: 'Kural',    path: 'chat',      color: '#00C17E', desc: 'Team chat' },
@@ -20,7 +20,7 @@ const APPS = [
 ];
 
 /* ─── Premium App Switcher ─────────────────────────── */
-const AppSwitcher = ({ workspaceId }) => {
+export const AppSwitcher = ({ workspaceId }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -49,7 +49,7 @@ const AppSwitcher = ({ workspaceId }) => {
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute right-0 top-14 w-[380px] rounded-[2.5rem] border border-white shadow-[0_50px_100px_-20px_rgba(0,0,0,0.2)] z-[100] p-6 bg-white/95 backdrop-blur-2xl"
+            className="absolute left-0 bottom-14 w-[380px] rounded-[2.5rem] border border-white shadow-[0_50px_100px_-20px_rgba(0,0,0,0.2)] z-[100] p-6 bg-white/95 backdrop-blur-2xl"
           >
             <div className="flex items-center justify-between mb-6 px-2">
               <div className="flex items-center gap-2">
@@ -133,26 +133,22 @@ const AppLayout = ({ children, appName, appIcon: AppIcon, appColor = '#00C17E' }
           style={{ borderColor: 'rgba(241, 245, 249, 0.5)', height: '80px' }}
         >
           <div className="flex items-center gap-8">
-            <Link to="/" className="group flex items-center gap-4">
+            <Link to="/" className="group flex items-center gap-3">
                {appName === 'Kural' ? (
                  <>
-                   <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center p-1.5 shadow-2xl shadow-emerald-500/20 group-hover:rotate-6 transition-all">
-                      <img src="/kural_logo.png" alt="Kural" className="w-full h-full object-cover rounded-xl" />
+                   <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center p-1.5 shadow-lg group-hover:rotate-6 transition-all">
+                      <img src="/kural_logo.png" alt="Kural" className="w-full h-full object-cover rounded-lg" />
                    </div>
                    <div className="flex flex-col">
-                      <span className="font-black text-xl tracking-tighter text-slate-900 leading-none">KURAL</span>
-                      <span className="text-[9px] font-black tracking-[0.3em] text-emerald-500 opacity-80 mt-1 uppercase">Messenger</span>
+                      <span className="font-bold text-lg text-slate-900 leading-none">KURAL</span>
                    </div>
                  </>
                ) : (
                  <>
-                   <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center p-1.5 shadow-2xl shadow-slate-900/20 group-hover:scale-105 transition-all">
-                      <Zap size={24} className="text-emerald-400" strokeWidth={3} />
+                   <div className="flex items-center justify-center">
+                      <img src={LogoImage} alt="Forge India" className="h-8 w-auto object-contain" />
                    </div>
-                   <div className="flex flex-col">
-                      <span className="font-black text-xl tracking-tighter text-slate-900 leading-none">FORGE</span>
-                      <span className="text-[9px] font-black tracking-[0.3em] text-slate-400 mt-1 uppercase">Independent</span>
-                   </div>
+                   <span className="text-xl font-bold tracking-tight text-slate-900 hidden">Forge India</span>
                  </>
                )}
             </Link>
@@ -253,7 +249,6 @@ const AppLayout = ({ children, appName, appIcon: AppIcon, appColor = '#00C17E' }
       <nav 
         className="lg:hidden fixed bottom-6 left-6 right-6 h-20 bg-white/90 backdrop-blur-2xl rounded-[2.5rem] border border-white flex items-center justify-around px-4 z-[100] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.2)] print:hidden"
       >
-        <MobileNavItem icon={LayoutDashboard} path="dashboard" workspaceId={workspaceId} />
         <MobileNavItem icon={Mail} path="mail" workspaceId={workspaceId} />
         <div 
           onClick={() => navigate(`/w/${workspaceId}/chat`)}

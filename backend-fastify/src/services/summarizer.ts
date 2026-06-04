@@ -29,7 +29,7 @@ async function dispatchSummaryMail(meeting: any, summaryHtml: string) {
 
     const mailDoc = {
       workspaceId: 'antigraviity-hq',
-      senderName: 'Nexus AI Assistant',
+      senderName: 'Forge India Connect AI',
       senderEmail: 'ai-assistant@nexus.app',
       recipientEmails,
       subject: ` Meeting Summary: ${meeting.title}`,
@@ -101,7 +101,7 @@ export async function summarizeMeeting(meetingId: string) {
       </p>
     </div>
   </div>
-  <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:16px">Sent by Nexus AI Assistant</p>
+  <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:16px">Sent by Forge India Connect AI</p>
 </div>`;
   } else {
     // We have transcripts  generate AI summary

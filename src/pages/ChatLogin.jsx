@@ -105,10 +105,10 @@ const ChatLogin = () => {
       {/* Right Panel - Login Form */}
       <div className="flex-1 flex flex-col items-center justify-center p-8 bg-white relative">
         <button
-          onClick={() => navigate('/chat/welcome')}
+          onClick={() => navigate('/')}
           className="absolute top-8 left-8 flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-emerald-500 transition-colors"
         >
-          <ChevronLeft size={14} strokeWidth={3} /> Back to Home
+          <ChevronLeft size={14} strokeWidth={3} /> Return to Landing Page
         </button>
 
         <div className="w-full max-w-sm space-y-10">

@@ -1750,7 +1750,7 @@ export default function Meetings() {
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={s.peerName}>{peer.name}</Text>
-                        <Text style={s.peerRole}>{peer.name === 'Nexus AI Assistant' ? 'AI Bot' : 'Attendee'}</Text>
+                        <Text style={s.peerRole}>{peer.name === 'Forge India Connect AI' ? 'AI Bot' : 'Attendee'}</Text>
                       </View>
                       <Wifi size={14} color="#10b981" />
                     </View>

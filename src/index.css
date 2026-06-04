@@ -1,17 +1,17 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;400;500;600;700;800&family=Ovo&display=swap');
 @import "tailwindcss";
 
 @layer base {
   :root {
-    --brand-primary: #534AB7;
-    --brand-light:   #EEEDFE;
+    --brand-primary: #2563EB;
+    --brand-light:   #EFF6FF;
     --surface-0:     #FFFFFF;
-    --surface-1:     #F9FAFB;
-    --surface-2:     #F3F4F6;
+    --surface-1:     #F8FAFC;
+    --surface-2:     #F1F5F9;
     --text-primary:  #111827;
     --text-secondary:#6B7280;
     --text-tertiary: #9CA3AF;
-    --border:        #E5E7EB;
+    --border:        #E2E8F0;
     
     --bg: var(--surface-1);
     --surface: var(--surface-0);
@@ -162,6 +162,11 @@
   75% { transform: translateX(5px); }
 }
 
+@keyframes spinY {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(360deg); }
+}
+
 .animate-fade { animation: fadeIn 0.5s ease-out forwards; }
 .animate-up { animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .animate-float { animation: float 6s ease-in-out infinite; }
@@ -237,3 +242,12 @@
 .prose ul { @apply list-disc pl-5 my-2; }
 .prose ol { @apply list-decimal pl-5 my-2; }
 .prose a { @apply text-blue-500 underline; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
