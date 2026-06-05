@@ -419,21 +419,39 @@ const MeetingApp = () => {
     };
     
     pc.ontrack = (event) => {
-      const remoteStream = event.streams[0];
-      setPeers(prev => prev.map(p => p.peerID === targetPeerId ? { ...p, stream: remoteStream } : p));
+      let remoteStream = event.streams && event.streams[0];
+      if (!remoteStream && event.track) {
+         remoteStream = new MediaStream([event.track]);
+      }
+      
+      setPeers(prev => prev.map(p => {
+         if (p.peerID === targetPeerId) {
+            const existingStream = p.stream;
+            if (existingStream) {
+               existingStream.addTrack(event.track);
+               return p;
+            }
+            return { ...p, stream: remoteStream };
+         }
+         return p;
+      }));
       
       // Setup Audio Routing
-      if (audioContextRef.current && audioDestinationRef.current) {
+      if (audioContextRef.current && audioDestinationRef.current && remoteStream) {
         const audioTrack = remoteStream.getAudioTracks()[0];
         if (audioTrack) {
-          const source = audioContextRef.current.createMediaStreamSource(new MediaStream([audioTrack]));
-          source.connect(audioDestinationRef.current);
-          source.connect(audioContextRef.current.destination);
+          try {
+            const source = audioContextRef.current.createMediaStreamSource(new MediaStream([audioTrack]));
+            source.connect(audioDestinationRef.current);
+            source.connect(audioContextRef.current.destination);
+          } catch(e) {
+            console.error("Audio routing error:", e);
+          }
         }
       }
 
       // Auto-add to active speakers if they are sending audio
-      if (remoteStream.getAudioTracks().length > 0) {
+      if (remoteStream && remoteStream.getAudioTracks().length > 0) {
          setActiveSpeakers(prev => [...new Set([...prev, targetPeerId])].slice(-4));
       }
     };
