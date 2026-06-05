@@ -627,8 +627,8 @@ The JSON schema must be exactly:
 }
 
 IMPORTANT RULES:
-1. NEVER use double quotes inside your string values. Use single quotes instead if needed.
-2. For quote layouts, just write the quote as a plain string, e.g., 'To be or not to be'.
+1. Output ONLY VALID JSON. Keys and string values MUST be enclosed in double quotes.
+2. If you need to use quotes inside your text, use single quotes (e.g., "quote": "To be or 'not' to be").
 3. Output 5 to 7 beautifully structured slides.
 
 Here are some high-quality examples of presentation structures, layouts, and themes to learn from:
