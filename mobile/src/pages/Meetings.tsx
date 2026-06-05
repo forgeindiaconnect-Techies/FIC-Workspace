@@ -814,6 +814,7 @@ export default function Meetings() {
                 return { id, peerId: p.peerId, userId: p.userId, name: p.name };
               });
             mergeRemotePeers(peers);
+            sendSignal('media-state', { audioEnabled: !isMuted, videoEnabled: !isVideoOff });
             const initiateOffer = shouldInitiateOfferRef.current;
             const createPC = createPeerConnectionRef.current;
             peers.forEach((peer: RemotePeer) => {
@@ -996,8 +997,9 @@ export default function Meetings() {
           if (msg.type === 'chat-message') {
             setChatMsgs(prev => [...prev, {
               id: String(Date.now()) + Math.random(),
-              sender: msg.user?.name || msg.fromPeerId || 'Unknown',
-              text: msg.text
+              sender: (typeof msg.user === 'object' ? msg.user?.name : msg.user) || msg.fromPeerId || 'Unknown',
+              text: msg.text,
+              time: msg.time || new Date().toLocaleTimeString(),
             }]);
           }
         } catch (err) {
@@ -1247,7 +1249,7 @@ export default function Meetings() {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'chat-message',
-        data: { text, user: localUser }
+        data: { text, user: localUser?.name || 'Unknown' }
       }));
     }
   };
@@ -1453,7 +1455,7 @@ export default function Meetings() {
                 </View>
 
                 <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginTop: 8, marginBottom: 4 }}>Participant List</Text>
-                {[{ id: 'local', name: user?.name || 'You', role: 'Host', isLocal: true }, ...remotePeers.map(p => ({ id: p.id, name: p.name, role: 'Attendee', isLocal: false }))]
+                {[{ id: 'local', name: user?.name || 'You', role: isHost ? 'Host' : 'Participant', isLocal: true }, ...remotePeers.map(p => ({ id: p.id, name: p.name, role: 'Participant', isLocal: false }))]
                   .map((peer) => (
                   <View key={peer.id} style={{ backgroundColor: '#1e293b', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: peer.isLocal ? '#1e40af' : '#5b21b6', alignItems: 'center', justifyContent: 'center' }}>
@@ -1463,13 +1465,13 @@ export default function Meetings() {
                       <Text style={{ color: '#f1f5f9', fontWeight: '600', fontSize: 14 }}>{peer.name}{peer.isLocal ? ' (You)' : ''}</Text>
                       <Text style={{ color: '#64748b', fontSize: 12 }}>{peer.role}</Text>
                     </View>
-                    {!peer.isLocal && (
+                    {!peer.isLocal && isHost && (
                       <TouchableOpacity onPress={() => setParticipantMenuTarget(peer)}
                         style={{ backgroundColor: '#334155', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}>
                         <Text style={{ color: '#94a3b8', fontSize: 12 }}>Manage</Text>
                       </TouchableOpacity>
                     )}
-                    {peer.isLocal && <View style={{ backgroundColor: '#065f46', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}><Text style={{ color: '#34d399', fontSize: 11, fontWeight: '700' }}>HOST</Text></View>}
+                    {peer.isLocal && isHost && <View style={{ backgroundColor: '#065f46', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}><Text style={{ color: '#34d399', fontSize: 11, fontWeight: '700' }}>HOST</Text></View>}
                   </View>
                 ))}
 
@@ -1847,7 +1849,7 @@ export default function Meetings() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.peerName}>{localUser?.name || 'You'} (You)</Text>
-                      <Text style={s.peerRole}>Host</Text>
+                      <Text style={s.peerRole}>{isHost ? 'Host' : 'Participant'}</Text>
                     </View>
                     <Wifi size={14} color="#10b981" />
                   </View>

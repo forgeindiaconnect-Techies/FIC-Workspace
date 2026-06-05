@@ -178,7 +178,9 @@ const MeetingApp = () => {
   const aiWsRef = useRef(null);
   const autoStartedAiRef = useRef(false);
   const isMutedRef = useRef(!micOn);
+  const videoOnRef = useRef(videoOn);
   useEffect(() => { isMutedRef.current = !micOn; }, [micOn]);
+  useEffect(() => { videoOnRef.current = videoOn; }, [videoOn]);
   
   const handleStartAI = async (meetingOverride = null) => {
      if (aiAssistantActive) return;
@@ -563,7 +565,14 @@ const MeetingApp = () => {
             peerId: p.peerId,
             userId: p.userId,
             name: p.name,
+            audioEnabled: p.audioEnabled,
+            videoEnabled: p.videoEnabled,
           }));
+          
+          if (sendWsRef.current) {
+             sendWsRef.current('media-state', { audioEnabled: !isMutedRef.current, videoEnabled: videoOnRef.current });
+          }
+          
           if (peers.some(peer => peer.name === 'Forge India Connect AI')) {
             setAiAssistantActive(true);
           }
@@ -584,7 +593,7 @@ const MeetingApp = () => {
                     } else if (existingBot) return prev;
                   }
                   if (prev.find(p => p.peerID === peer.peerId)) return prev;
-                  return [...prev, { peerID: peer.peerId, pc, stream: null, name: peer.name }];
+                  return [...prev, { peerID: peer.peerId, pc, stream: null, name: peer.name, audioEnabled: peer.audioEnabled, videoEnabled: peer.videoEnabled }];
                 });
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
@@ -600,7 +609,7 @@ const MeetingApp = () => {
                   } else if (existingBot) return prev;
                 }
                 if (prev.find(p => p.peerID === peer.peerId)) return prev;
-                return [...prev, { peerID: peer.peerId, pc: null, stream: null, name: peer.name }];
+                return [...prev, { peerID: peer.peerId, pc: null, stream: null, name: peer.name, audioEnabled: peer.audioEnabled, videoEnabled: peer.videoEnabled }];
               });
             }
           }
@@ -848,7 +857,7 @@ const MeetingApp = () => {
     setMeetingMessages(prev => [...prev, msg]);
     setChatInput('');
     if (sendWsRef.current) {
-      sendWsRef.current('chat-message', { data: { text: msg.text, user: msg.user, time: msg.time } });
+      sendWsRef.current('chat-message', { text: msg.text, user: msg.user, time: msg.time });
     }
   };
 

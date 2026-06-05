@@ -305,6 +305,8 @@ wssWebRtc.on('connection', (ws) => {
         userId: peerId,
         name: user.name,
         avatarUrl: user.avatarUrl,
+        audioEnabled: true,
+        videoEnabled: true
       });
 
       console.log(`[Sockets WebRTC] Peer ${user.name} (${peerId}) joined room ${meetingId}`);
@@ -316,6 +318,8 @@ wssWebRtc.on('connection', (ws) => {
           userId: p.userId,
           name: p.name,
           avatarUrl: p.avatarUrl,
+          audioEnabled: p.audioEnabled,
+          videoEnabled: p.videoEnabled,
         }));
 
       sendJson(ws, { type: 'joined', peerId, existingPeers });
@@ -326,6 +330,8 @@ wssWebRtc.on('connection', (ws) => {
         userId: peerId,
         name: user.name,
         avatarUrl: user.avatarUrl,
+        audioEnabled: true,
+        videoEnabled: true
       });
       return;
     }
@@ -363,6 +369,12 @@ wssWebRtc.on('connection', (ws) => {
 
     if (type === 'media-state') {
       const { audioEnabled, videoEnabled } = data;
+      const room = webrtcRooms.get(meetingId);
+      if (room && room.has(peerId)) {
+        const peerObj = room.get(peerId);
+        peerObj.audioEnabled = audioEnabled;
+        peerObj.videoEnabled = videoEnabled;
+      }
       broadcastToRoom(peerId, {
         type: 'peer-media-state',
         fromPeerId: peerId,
