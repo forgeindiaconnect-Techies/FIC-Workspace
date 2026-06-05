@@ -90,8 +90,8 @@ app.post('/api/meetings', authenticate, async (req, res) => {
     });
 
     // --- AI Assistant Notification Feature ---
-    if (req.user.role && req.user.role.toLowerCase() === 'admin' && req.user.workspaceId) {
-      // Fetch team members in the same workspace (excluding the admin)
+    if (req.user.workspaceId) {
+      // Fetch team members in the same workspace (excluding the host)
       const teamMembers = await User.find({
         workspaceId: req.user.workspaceId,
         _id: { $ne: new mongoose.Types.ObjectId(req.user.id) }
@@ -99,23 +99,50 @@ app.post('/api/meetings', authenticate, async (req, res) => {
 
       if (teamMembers.length > 0) {
         const meetingTime = new Date(meeting.scheduledAt).toLocaleString();
+        const origin = req.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
+        const webLink = `${origin}/w/${req.user.workspaceId || 'default'}/meet/room/${joinCode}${plainPasscode ? `?pwd=${encodeURIComponent(plainPasscode)}&intent=join` : '?intent=join'}`;
+        const mobileLink = `nexus-workspace://meet/room/${joinCode}${plainPasscode ? `?pwd=${encodeURIComponent(plainPasscode)}` : ''}`;
         
+        const mailBody = `
+  <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b;">
+    <h2 style="color: #2563eb;">Meeting Invitation: ${title}</h2>
+    <p>Hi there,</p>
+    <p>You have been invited by <strong>${req.user.name}</strong> to join a Forge India Connect meeting.</p>
+    
+    <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0;">
+      <p style="margin: 0 0 10px 0;"><strong>Date & Time:</strong> ${meetingTime}</p>
+      <p style="margin: 0 0 10px 0;"><strong>Duration:</strong> ${meeting.durationMinutes} minutes</p>
+      <p style="margin: 0 0 10px 0;"><strong>Room Code:</strong> <span style="font-family: monospace; font-size: 16px; background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">${joinCode}</span></p>
+      ${plainPasscode ? `<p style="margin: 0;"><strong>Passcode:</strong> ${plainPasscode}</p>` : ''}
+    </div>
+
+    <div style="margin: 24px 0;">
+      <a href="${webLink}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; margin-right: 12px; margin-bottom: 12px;">Join on Web</a>
+      <a href="${mobileLink}" style="display: inline-block; padding: 12px 24px; background-color: #0f172a; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold;">Join on Mobile</a>
+    </div>
+
+    <p>You can also join by opening the <strong>Meetings</strong> app in your workspace and entering the Room Code above.</p>
+    <br/>
+    <p>Best regards,<br/><strong>Forge India Connect AI</strong></p>
+  </div>
+        `;
+
         const mailPromises = teamMembers.map(member => {
           return Mail.create({
             workspaceId: req.user.workspaceId,
             ownerEmail: member.email,
             folder: 'inbox',
             senderName: 'Forge India Connect AI',
-            senderEmail: 'ai@nexus.com',
+            senderEmail: 'nexus-ai@workspace.app',
             recipientEmails: [member.email],
-            subject: `New Meeting Scheduled: ${title}`,
-            body: `Hello ${member.name},\n\nA new meeting "${title}" has been scheduled by ${req.user.name} for ${meetingTime}.\n\nMeeting Join Code: ${joinCode}\n\nPlease be prepared to join at the scheduled time.\n\nBest,\nForge India Connect AI`,
+            subject: `Invitation: ${title}`,
+            body: mailBody,
             isRead: false
           });
         });
 
         await Promise.allSettled(mailPromises);
-        console.log(`[Meetings Service] AI Assistant sent ${teamMembers.length} meeting notifications.`);
+        console.log(`[Meetings Service] AI Assistant sent ${teamMembers.length} meeting HTML notifications.`);
       }
     }
     // ------------------------------------------
@@ -162,9 +189,14 @@ app.get('/api/meetings/join/:code', authenticate, async (req, res) => {
     }
 
     if (meeting.passcodeHash) {
-      const isPasscodeValid = passcode && await bcrypt.compare(String(passcode), meeting.passcodeHash);
-      if (!isPasscodeValid) {
-        return res.status(401).json({ error: 'Invalid meeting passcode.' });
+      const isHost = meeting.hostId.toString() === req.user.id;
+      const isParticipant = meeting.participantIds && meeting.participantIds.some(id => id.toString() === req.user.id);
+      
+      if (!isHost && !isParticipant) {
+        const isPasscodeValid = passcode && await bcrypt.compare(String(passcode), meeting.passcodeHash);
+        if (!isPasscodeValid) {
+          return res.status(401).json({ error: 'Invalid meeting passcode.' });
+        }
       }
     }
 
@@ -188,6 +220,7 @@ app.get('/api/meetings/join/:code', authenticate, async (req, res) => {
       durationMinutes: meeting.durationMinutes,
       status: 'live',
       hasPasscode: !!meeting.passcodeHash,
+      aiEnabled: !!meeting.aiEnabled,
       participantIds: meeting.participantIds,
       isHost: meeting.hostId.toString() === req.user.id
     });

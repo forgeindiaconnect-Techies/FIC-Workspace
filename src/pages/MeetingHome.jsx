@@ -225,9 +225,6 @@ const MeetingHome = () => {
           
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-semibold text-slate-800">Meetings Dashboard</h1>
-            <button onClick={() => navigate(`/w/${workspaceId}/mail`)} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
-              <Home size={16} /> Dashboard
-            </button>
           </div>
 
           {/* Action Cards */}

@@ -2,13 +2,13 @@ import React from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Dimensions, Platform, Modal, TextInput, ActivityIndicator,
-  Alert, StatusBar, useWindowDimensions,
+  Alert, StatusBar, useWindowDimensions, ViewStyle,
 } from 'react-native';
 import RenderHtml from 'react-native-render-html';
 import {
-  Video, Calendar, Clock, Users, Play, Bell, BellRing,
+  Video, Calendar, Clock, Users, Play, Bell, BellRing, User,
   Mic, MicOff, VideoOff, PhoneOff, Copy, Lock, Shield,
-  X, Send, MessageSquare, LogIn, ChevronRight, Wifi,
+  X, Send, MessageSquare, LogIn, ChevronRight, Wifi, Maximize2, Minimize2,
   FlipHorizontal, MonitorUp, Settings, Sparkles, Wand2, Globe, PhoneForwarded, MoreVertical, Link as LinkIcon, Check, Plus, Trash2
 } from 'lucide-react-native';
 import { api, getSession, SOCKET_URL } from '../lib/api';
@@ -131,6 +131,7 @@ export default function Meetings() {
   const dynamicIceServersRef = React.useRef<any[]>(getIceServers());
 
   const [aiAssistantActive, setAiAssistantActive] = React.useState(false);
+  const [pinnedUser, setPinnedUser] = React.useState<string | null>(null); // 'local' or a peer id
 
   const aiMediaRecorderRef = React.useRef<any>(null);
   const aiWsRef = React.useRef<WebSocket | null>(null);
@@ -880,7 +881,9 @@ export default function Meetings() {
           }
           if (msg.type === 'peer-left') {
             const id = peerKeyFor(msg);
-            setRemotePeers(prev => prev.filter(p => p.id !== id && p.id !== msg.peerId));
+            setRemotePeers(prev => prev.filter(p => p.id !== id && p.id !== msg.peerId && p.peerId !== msg.peerId && p.userId !== msg.peerId));
+            // Auto-unpin if the pinned user left
+            setPinnedUser(prev => (prev === id || prev === msg.peerId) ? null : prev);
             const pc = peerConnectionsRef.current.get(msg.peerId);
             try { pc?.close?.(); } catch {}
             peerConnectionsRef.current.delete(msg.peerId);
@@ -989,6 +992,13 @@ export default function Meetings() {
           }
           if (msg.type === 'error') {
             console.warn('[Signaling] Server error:', msg.message);
+          }
+          if (msg.type === 'chat-message') {
+            setChatMsgs(prev => [...prev, {
+              id: String(Date.now()) + Math.random(),
+              sender: msg.user?.name || msg.fromPeerId || 'Unknown',
+              text: msg.text
+            }]);
           }
         } catch (err) {
           console.warn('[Signaling] Parse error:', err);
@@ -1231,8 +1241,15 @@ export default function Meetings() {
 
   const sendChatMsg = () => {
     if (!chatInput.trim()) return;
-    setChatMsgs(p => [...p, { id: String(Date.now()), sender: 'You', text: chatInput.trim() }]);
+    const text = chatInput.trim();
+    setChatMsgs(p => [...p, { id: String(Date.now()), sender: 'You', text }]);
     setChatInput('');
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'chat-message',
+        data: { text, user: localUser }
+      }));
+    }
   };
 
   const generateSummary = async (id: string) => {
@@ -1629,83 +1646,163 @@ export default function Meetings() {
         <View style={s.roomBody}>
 
           {/* VIDEO GRID */}
-          <View style={s.videoGrid}>
+          <View style={pinnedUser ? s.videoGridPinned : s.videoGrid}>
+            {(() => {
+              const totalTiles = displayPeers.length + 1;
+              let tileStyle: ViewStyle = displayPeers.length === 0 ? s.videoTileFull : s.videoTileHalf;
+              if (totalTiles >= 3 && totalTiles <= 4) tileStyle = s.videoTileThird;
+              else if (totalTiles >= 5) tileStyle = s.videoTileQuarter;
 
-            {/* LOCAL CAMERA TILE */}
-            <View style={[s.videoTile, displayPeers.length === 0 ? s.videoTileFull : s.videoTileHalf]}>
-              {rtcAvailableNow && (localScreenStream || (rtcLocalStreamSource && !isVideoOff && !isSharing)) ? (
-                <RTCView
-                  style={s.cameraView}
-                  stream={localScreenStream || rtcLocalStreamSource}
-                  streamURL={typeof (localScreenStream || rtcLocalStreamSource) === 'string' ? (localScreenStream || rtcLocalStreamSource) : undefined}
-                  objectFit="cover"
-                  mirror={!localScreenStream && facing === 'front'}
-                  muted
-                />
-              ) : camReady ? (
-                <CameraView
-                  style={s.cameraView}
-                  facing={facing}
-                  mute={isMuted}
-                />
-              ) : (
-                <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
-                  <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
-                  {isSharing && <Text style={s.sharingLabel}>Screen Sharing</Text>}
-                  {isVideoOff && !isSharing && <Text style={s.camOffLabel}>Camera Off</Text>}
-                  {!cameraPermission?.granted && !isVideoOff && (
-                    <Text style={s.camOffLabel}>Tap camera to enable</Text>
-                  )}
-                  {!isMuted && (
-                    <View style={s.waveRow}>
-                      {audioLevels.map((h, i) => (
-                        <View key={i} style={[s.waveBar, { height: Math.max(3, h * 0.25) }]} />
-                      ))}
+              // ---- PINNED MODE ----
+              if (pinnedUser) {
+                const isPinnedLocal = pinnedUser === 'local';
+                const pinnedPeer = !isPinnedLocal ? displayPeers.find(p => p.id === pinnedUser || p.peerId === pinnedUser) : null;
+
+                if (!isPinnedLocal && !pinnedPeer) {
+                  setPinnedUser(null);
+                  return null;
+                }
+
+                const unpinnedPeers = isPinnedLocal ? displayPeers : displayPeers.filter(p => p.id !== pinnedUser && p.peerId !== pinnedUser);
+
+                return (
+                  <>
+                    {/* FOCUSED PINNED TILE */}
+                    <View style={s.pinnedTile}>
+                      {isPinnedLocal ? (
+                        <>
+                          {rtcAvailableNow && (localScreenStream || (rtcLocalStreamSource && !isVideoOff && !isSharing)) ? (
+                            <RTCView style={s.cameraView} stream={localScreenStream || rtcLocalStreamSource} objectFit="cover" mirror={!localScreenStream && facing === 'front'} muted />
+                          ) : camReady ? (
+                            <CameraView style={s.cameraView} facing={facing} mute={isMuted} />
+                          ) : (
+                            <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
+                              <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
+                            </View>
+                          )}
+                          <View style={s.namePlate}>
+                            <Shield size={9} color="#fff" />
+                            <Text style={s.namePlateText} numberOfLines={1}>{localUser?.name || 'You'} (You)</Text>
+                            {isMuted && <MicOff size={9} color="#ef4444" />}
+                            {isVideoOff && <VideoOff size={9} color="#ef4444" />}
+                          </View>
+                        </>
+                      ) : pinnedPeer ? (
+                        <>
+                          {(() => {
+                            const remoteStream = remoteStreams[pinnedPeer.id] || (pinnedPeer.peerId ? remoteStreams[pinnedPeer.peerId] : null);
+                            return rtcAvailableNow && remoteStream ? (
+                              <RTCView style={s.cameraView} stream={remoteStream} objectFit="cover" />
+                            ) : (
+                              <View style={[s.videoAvatar, { backgroundColor: (pinnedPeer as any).isBot ? '#1e40af' : '#475569' }]}>
+                                <Text style={s.videoAvatarText}>{(pinnedPeer as any).isBot ? 'FI' : avatarFor(pinnedPeer.name)}</Text>
+                              </View>
+                            );
+                          })()}
+                          <View style={s.namePlate}>
+                            {(pinnedPeer as any).isBot ? <Sparkles size={9} color="#fff" /> : <User size={9} color="#fff" />}
+                            <Text style={s.namePlateText} numberOfLines={1}>{pinnedPeer.name}</Text>
+                          </View>
+                        </>
+                      ) : null}
+                      {/* Unpin button */}
+                      <TouchableOpacity style={s.pinBtnOverlay} onPress={() => setPinnedUser(null)}>
+                        <Minimize2 size={16} color="#fff" />
+                      </TouchableOpacity>
                     </View>
-                  )}
-                </View>
-              )}
-              <View style={s.namePlate}>
-                <Shield size={9} color="#fff" />
-                <Text style={s.namePlateText} numberOfLines={1}>{localUser?.name || 'You'} (You)</Text>
-                {isMuted && <MicOff size={9} color="#ef4444" />}
-                {isVideoOff && <VideoOff size={9} color="#ef4444" />}
-              </View>
-            </View>
 
-            {/* REMOTE PEER TILES */}
-            {displayPeers.slice(0, 3).map(peer => {
-              const remoteStream = remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null);
-              return (
-                <View key={peer.id || peer.id} style={[s.videoTile, s.videoTileHalf]}>
-                  {rtcAvailableNow && remoteStream ? (
-                    <RTCView
-                      style={s.cameraView}
-                      stream={remoteStream}
-                      objectFit="cover"
-                    />
-                  ) : (
-                    <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
-                      <Text style={s.videoAvatarText}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>
-                      {!(peer as any).isBot && (
-                        <View style={s.waveRow}>
-                          {audioLevels.map((h, i) => (
-                            <View key={i} style={[s.waveBar, { height: Math.max(3, h * 0.1) }]} />
-                          ))}
-                        </View>
+                    {/* HORIZONTAL STRIP OF UNPINNED */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.unpinnedStrip} contentContainerStyle={s.unpinnedStripContent}>
+                      {!isPinnedLocal && (
+                        <TouchableOpacity style={s.unpinnedTile} onPress={() => setPinnedUser('local')}>
+                          {camReady && !isVideoOff ? (
+                            <CameraView style={s.cameraView} facing={facing} mute={isMuted} />
+                          ) : (
+                            <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
+                              <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff' }}>{avatarFor(localUser?.name || 'You')}</Text>
+                            </View>
+                          )}
+                          <View style={s.namePlate}>
+                            <Text style={[s.namePlateText, { fontSize: 9 }]} numberOfLines={1}>You</Text>
+                          </View>
+                          <View style={s.pinBtnSmall}><Maximize2 size={10} color="#fff" /></View>
+                        </TouchableOpacity>
                       )}
-                    </View>
-                  )}
-                  <View style={s.namePlate}>
-                    {(peer as any).isBot ? <Sparkles size={9} color="#fff" /> : <UserIcon size={9} color="#fff" />}
-                    <Text style={s.namePlateText} numberOfLines={1}>{peer.name}</Text>
-                    {!(peer as any).isBot && <VideoOff size={9} color="#ef4444" />}
-                  </View>
-                </View>
-              );
-            })}
+                      {unpinnedPeers.map(peer => {
+                        const remoteStream = remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null);
+                        return (
+                          <TouchableOpacity key={peer.id} style={s.unpinnedTile} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
+                            {rtcAvailableNow && remoteStream ? (
+                              <RTCView style={s.cameraView} stream={remoteStream} objectFit="cover" />
+                            ) : (
+                              <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
+                                <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff' }}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>
+                              </View>
+                            )}
+                            <View style={s.namePlate}>
+                              <Text style={[s.namePlateText, { fontSize: 9 }]} numberOfLines={1}>{peer.name}</Text>
+                            </View>
+                            <View style={s.pinBtnSmall}><Maximize2 size={10} color="#fff" /></View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </>
+                );
+              }
 
-            {/* WAITING BANNER */}
+              // ---- NORMAL GRID MODE ----
+              return (
+                <>
+                  {/* LOCAL CAMERA TILE */}
+                  <TouchableOpacity activeOpacity={0.85} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser('local')}>
+                    {rtcAvailableNow && (localScreenStream || (rtcLocalStreamSource && !isVideoOff && !isSharing)) ? (
+                      <RTCView style={s.cameraView} stream={localScreenStream || rtcLocalStreamSource} objectFit="cover" mirror={!localScreenStream && facing === 'front'} muted />
+                    ) : camReady ? (
+                      <CameraView style={s.cameraView} facing={facing} mute={isMuted} />
+                    ) : (
+                      <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
+                        <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
+                        {isSharing && <Text style={s.sharingLabel}>Screen Sharing</Text>}
+                        {isVideoOff && !isSharing && <Text style={s.camOffLabel}>Camera Off</Text>}
+                        {!cameraPermission?.granted && !isVideoOff && <Text style={s.camOffLabel}>Tap camera to enable</Text>}
+                        {!isMuted && <View style={s.waveRow}>{audioLevels.map((h, i) => <View key={i} style={[s.waveBar, { height: Math.max(3, h * 0.25) }]} />)}</View>}
+                      </View>
+                    )}
+                    <View style={s.namePlate}>
+                      <Shield size={9} color="#fff" />
+                      <Text style={s.namePlateText} numberOfLines={1}>{localUser?.name || 'You'} (You)</Text>
+                      {isMuted && <MicOff size={9} color="#ef4444" />}
+                      {isVideoOff && <VideoOff size={9} color="#ef4444" />}
+                    </View>
+                    <View style={s.pinBtnSmall}><Maximize2 size={12} color="#fff" /></View>
+                  </TouchableOpacity>
+
+                  {/* REMOTE PEER TILES */}
+                  {displayPeers.map(peer => {
+                    const remoteStream = remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null);
+                    return (
+                      <TouchableOpacity activeOpacity={0.85} key={peer.id} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
+                        {rtcAvailableNow && remoteStream ? (
+                          <RTCView style={s.cameraView} stream={remoteStream} objectFit="cover" />
+                        ) : (
+                          <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
+                            <Text style={s.videoAvatarText}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>
+                            {!(peer as any).isBot && <View style={s.waveRow}>{audioLevels.map((h, i) => <View key={i} style={[s.waveBar, { height: Math.max(3, h * 0.1) }]} />)}</View>}
+                          </View>
+                        )}
+                        <View style={s.namePlate}>
+                          {(peer as any).isBot ? <Sparkles size={9} color="#fff" /> : <User size={9} color="#fff" />}
+                          <Text style={s.namePlateText} numberOfLines={1}>{peer.name}</Text>
+                          {!(peer as any).isBot && <VideoOff size={9} color="#ef4444" />}
+                        </View>
+                        <View style={s.pinBtnSmall}><Maximize2 size={12} color="#fff" /></View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
+              );
+            })()}
             {remotePeers.length === 0 && (
               <View style={s.waitingBanner}>
                 <Users size={15} color="#64748b" />
@@ -2356,6 +2453,15 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   videoTile: { backgroundColor: '#111827', borderRadius: 16, overflow: 'hidden', position: 'relative' },
   videoTileFull: { width: '100%', aspectRatio: 4 / 3 },
   videoTileHalf: { width: '48%', aspectRatio: 1 },
+  videoTileThird: { width: '31%', aspectRatio: 1 },
+  videoTileQuarter: { width: '23%', aspectRatio: 1 },
+  videoGridPinned: { flex: 1, flexDirection: 'column' as const, padding: 6, gap: 6 },
+  pinnedTile: { flex: 1, backgroundColor: '#111827', borderRadius: 16, overflow: 'hidden' as const, position: 'relative' as const, minHeight: 200 },
+  unpinnedStrip: { maxHeight: 110, flexShrink: 0 },
+  unpinnedStripContent: { flexDirection: 'row' as const, gap: 6, paddingHorizontal: 2 },
+  unpinnedTile: { width: 120, height: 90, backgroundColor: '#111827', borderRadius: 12, overflow: 'hidden' as const, position: 'relative' as const },
+  pinBtnOverlay: { position: 'absolute' as const, top: 8, right: 8, width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center' as const, justifyContent: 'center' as const, zIndex: 30 },
+  pinBtnSmall: { position: 'absolute' as const, top: 6, right: 6, width: 24, height: 24, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center' as const, justifyContent: 'center' as const, zIndex: 30 },
   cameraView: { flex: 1, width: '100%', height: '100%' },
   videoAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 140 },
   videoAvatarText: { fontSize: 36, fontWeight: '900', color: '#fff' },

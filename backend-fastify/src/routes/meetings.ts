@@ -140,6 +140,10 @@ export async function meetingRoutes(fastify: FastifyInstance) {
 
         if (targetEmails.length > 0) {
           const timeStr = (scheduledAt || startTime) ? new Date(scheduledAt || startTime).toLocaleString() : 'Now';
+          const origin = request.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
+          const webLink = `${origin}/w/${workspaceId}/meet/room/${joinCode}${plainPasscode ? `?pwd=${encodeURIComponent(plainPasscode)}&intent=join` : '?intent=join'}`;
+          const mobileLink = `nexus-workspace://meet/room/${joinCode}${plainPasscode ? `?pwd=${encodeURIComponent(plainPasscode)}&intent=join` : '?intent=join'}`;
+          
           const mailBody = `
   <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b;">
     <h2 style="color: #2563eb;">Meeting Invitation: ${meeting.title}</h2>
@@ -153,7 +157,12 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       ${plainPasscode ? `<p style="margin: 0;"><strong>Passcode:</strong> ${plainPasscode}</p>` : ''}
     </div>
 
-    <p>To join the meeting, open the <strong>Meetings</strong> app in your workspace and enter the Room Code above.</p>
+    <div style="margin: 24px 0;">
+      <a href="${webLink}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; margin-right: 12px; margin-bottom: 12px;">Join on Web</a>
+      <a href="${mobileLink}" style="display: inline-block; padding: 12px 24px; background-color: #0f172a; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold;">Join on Mobile</a>
+    </div>
+
+    <p>You can also join by opening the <strong>Meetings</strong> app in your workspace and entering the Room Code above.</p>
     <br/>
     <p>Best regards,<br/><strong>Forge India Connect AI</strong></p>
   </div>
@@ -225,9 +234,15 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       }
 
       if (meeting.passcodeHash) {
-        const isPasscodeValid = passcode && await bcrypt.compare(String(passcode), meeting.passcodeHash);
-        if (!isPasscodeValid) {
-          return reply.code(401).send({ error: 'Invalid meeting passcode.' });
+        const hostIdStr = (meeting.hostId as any)._id?.toString?.() || meeting.hostId.toString();
+        const isHost = hostIdStr === request.user!.id;
+        const isParticipant = meeting.participantIds && meeting.participantIds.some(id => id.toString() === request.user!.id);
+        
+        if (!isHost && !isParticipant) {
+          const isPasscodeValid = passcode && await bcrypt.compare(String(passcode), meeting.passcodeHash);
+          if (!isPasscodeValid) {
+            return reply.code(401).send({ error: 'Invalid meeting passcode.' });
+          }
         }
       }
 

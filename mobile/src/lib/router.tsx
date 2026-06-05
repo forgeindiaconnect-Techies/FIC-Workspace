@@ -55,7 +55,12 @@ export function useNavigate() {
 export function useLocation() {
   const context = useContext(NavigationContext);
   if (!context) throw new Error('useLocation must be used within NavigationProvider');
-  return { pathname: context.pathname };
+  
+  const parts = context.pathname.split('?');
+  const pathname = parts[0];
+  const search = parts.length > 1 ? '?' + parts[1] : '';
+  
+  return { pathname, search };
 }
 
 export function BrowserRouter({ children }: { children: React.ReactNode }) {
@@ -74,6 +79,7 @@ export function Routes({ children }: { children: React.ReactNode }) {
   if (!context) throw new Error('Routes must be used within NavigationProvider');
 
   const { pathname, navigate, setOutlet } = context;
+  const cleanPath = pathname.split('?')[0];
 
   const routesArray = React.Children.toArray(children) as React.ReactElement<RouteProps>[];
 
@@ -84,13 +90,13 @@ export function Routes({ children }: { children: React.ReactNode }) {
   const mainLayoutRoute = routesArray.find(r => r.props.path === '/');
   const wildcardRoute = routesArray.find(r => r.props.path === '*');
 
-  if (pathname === '/login') {
+  if (cleanPath === '/login') {
     matchedElement = loginRoute ? loginRoute.props.element : null;
-  } else if (pathname === '/' || pathname.startsWith('/')) {
+  } else if (cleanPath === '/' || cleanPath.startsWith('/')) {
     // Try to match a top-level route first (non-layout routes)
     const topLevelMatch = routesArray.find(r =>
       r.props.path && r.props.path !== '/' && r.props.path !== '*' && r.props.path !== '/login' &&
-      pathname === r.props.path
+      cleanPath === r.props.path
     );
 
     if (topLevelMatch) {
@@ -101,11 +107,11 @@ export function Routes({ children }: { children: React.ReactNode }) {
       if (mainLayoutRoute.props.children) {
         const subRoutes = React.Children.toArray(mainLayoutRoute.props.children) as React.ReactElement<RouteProps>[];
         // Strip leading slash for sub-path matching
-        const currentSubPath = pathname.replace(/^\//, ''); // e.g. "home" from "/home"
+        const currentSubPath = cleanPath.replace(/^\//, ''); // e.g. "home" from "/home"
 
         const matchedSub = subRoutes.find(r =>
           r.props.path === currentSubPath ||
-          (r.props.index && (currentSubPath === '' || pathname === '/'))
+          (r.props.index && (currentSubPath === '' || cleanPath === '/'))
         );
 
         if (matchedSub) {

@@ -221,7 +221,15 @@ const MailApp = () => {
               </div>
               <div className="flex-1 p-8 overflow-y-auto">
                 <div className="max-w-3xl">
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{selected.content}</p>
+                  <p 
+                    className="text-sm leading-relaxed whitespace-pre-wrap"
+                    dangerouslySetInnerHTML={{ 
+                      __html: (selected.content || '').replace(
+                        /(https?:\/\/[^\s]+|nexus-workspace:\/\/[^\s]+)/g, 
+                        '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline hover:text-blue-600">$1</a>'
+                      ) 
+                    }}
+                  ></p>
                   <div className="mt-12 pt-6 border-t border-dashed border-zinc-200 dark:border-zinc-800">
                     <p className="text-xs opacity-40 italic">Sent via Forge India Connect Pvt Ltd Workspace Secure Mail</p>
                   </div>

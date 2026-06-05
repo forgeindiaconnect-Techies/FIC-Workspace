@@ -2,6 +2,8 @@ import { WebSocket } from 'ws';
 import jwt from 'jsonwebtoken';
 import { Participant } from '../models/Participant';
 import { User } from '../models/User';
+import { Meeting } from '../models/Meeting';
+import { Types } from 'mongoose';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'nexus-jwt-secret-key';
 
@@ -151,6 +153,38 @@ export function handleWebRtcSignalling(ws: WebSocket) {
       return;
     }
 
+    if (type === 'chat-message') {
+      broadcastToRoom(meetingId, peerId, {
+        type: 'chat-message',
+        fromPeerId: peerId,
+        ...data
+      });
+      return;
+    }
+
+    if (type === 'end-meeting-all') {
+      broadcastToRoom(meetingId, peerId, { type: 'meeting-ended' });
+      
+      // Update database so users cannot join via link again
+      const query = Types.ObjectId.isValid(meetingId) 
+        ? { _id: meetingId } 
+        : { joinCode: meetingId };
+      
+      Meeting.updateOne(query, { status: 'ended' })
+        .catch(err => console.error('[WebRTC] Failed to update meeting status:', err));
+        
+      return;
+    }
+
+    if (type === 'kick-peer') {
+      const { targetPeerId } = data;
+      const target = rooms.get(meetingId)?.get(targetPeerId);
+      if (target) {
+        send(target.socket, { type: 'kicked' });
+      }
+      return;
+    }
+
     if (type === 'leave') {
       await cleanupPeer(meetingId, peerId);
       peerId = null;
@@ -184,5 +218,7 @@ async function cleanupPeer(roomId: string, pid: string) {
   await Participant.findOneAndUpdate(
     { meetingId: roomId, userId: pid },
     { leftAt: new Date() }
-  ).catch(() => {});
+  ).catch((e) => {
+    console.error('[WebRTC] cleanupPeer DB update error:', e);
+  });
 }

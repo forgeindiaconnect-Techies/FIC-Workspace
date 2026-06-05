@@ -151,26 +151,27 @@ function MeetingsClient({ auth, token }) {
 
   if (inMeeting && meetingDetails) {
     return (
-      <div className="h-screen w-screen flex flex-col bg-[#080b12] text-zinc-100 font-sans overflow-hidden">
+      <div className="min-h-screen w-full flex flex-col bg-[#080b12] text-zinc-100 font-sans overflow-hidden">
         {/* Huddle Header */}
-        <header className="h-16 border-b border-zinc-800/80 px-6 flex items-center justify-between shrink-0 bg-[#0c1220]/40 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-            <span className="font-extrabold text-sm tracking-tight">{meetingDetails.title}</span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-zinc-800 text-zinc-400 font-mono">
-              ROOM CODE: {meetingDetails.joinCode || meetingDetails.roomId}
+        <header className="h-16 border-b border-zinc-800/80 px-4 md:px-6 flex items-center justify-between shrink-0 bg-[#0c1220]/40 backdrop-blur-md">
+          <div className="flex items-center gap-2 md:gap-3 min-w-0">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+            <span className="font-extrabold text-xs md:text-sm tracking-tight truncate max-w-[120px] sm:max-w-none">{meetingDetails.title}</span>
+            <span className="text-[9px] md:text-[10px] font-bold px-1.5 md:py-0.5 rounded-lg bg-zinc-800 text-zinc-400 font-mono shrink-0">
+              {meetingDetails.joinCode || meetingDetails.roomId}
             </span>
           </div>
 
-          <div className="flex items-center gap-3 bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/20 text-[10px] font-bold text-green-400">
-            <span>RTC ACTIVE</span>
+          <div className="flex items-center gap-1.5 bg-green-500/10 px-2 py-0.5 md:px-3 md:py-1 rounded-xl border border-green-500/20 text-[9px] md:text-[10px] font-bold text-green-400 shrink-0">
+            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-ping hidden md:inline-block" />
+            <span>ACTIVE</span>
           </div>
         </header>
 
         {/* Video Huddles Canvas */}
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-6 overflow-y-auto">
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 md:p-6 overflow-y-auto pb-28 md:pb-24">
           {/* Host Video Card */}
-          <div className="bg-[#0f172a] rounded-[24px] border border-zinc-800 overflow-hidden relative group">
+          <div className="bg-[#0f172a] rounded-[24px] border border-zinc-800 overflow-hidden relative group aspect-video">
             {camOn ? (
               <div className="w-full h-full bg-[#1b253b]/35 flex items-center justify-center relative">
                 <span className="font-black text-4xl text-blue-500">{auth.user[0]}</span>
@@ -195,7 +196,7 @@ function MeetingsClient({ auth, token }) {
 
           {/* Active Peers Video Cards */}
           {peers.map((peer) => (
-            <div key={peer.id} className="bg-[#0f172a] rounded-[24px] border border-zinc-800 overflow-hidden relative group">
+            <div key={peer.id} className="bg-[#0f172a] rounded-[24px] border border-zinc-800 overflow-hidden relative group aspect-video">
               <div className={`w-full h-full bg-[#1b253b]/15 flex items-center justify-center relative ${peer.speaking ? 'border-2 border-green-500/60 shadow-lg shadow-green-500/5' : ''}`}>
                 <span className="font-bold text-2xl text-zinc-500">{peer.name[0]}</span>
                 <span className="absolute bottom-4 left-4 bg-zinc-900/60 text-[10px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-md text-white border border-zinc-800">
@@ -212,32 +213,33 @@ function MeetingsClient({ auth, token }) {
         </div>
 
         {/* Media Controls Footer bar */}
-        <footer className="h-20 border-t border-zinc-850 bg-[#0c1220] px-8 flex items-center justify-between shrink-0">
-          <div className="flex gap-2.5">
+        <footer className="h-20 border-t border-zinc-850 bg-[#0c1220] px-4 md:px-8 flex items-center justify-between shrink-0">
+          <div className="flex gap-2">
             <button
               onClick={() => setMicOn(!micOn)}
-              className={`w-11 h-11 rounded-2xl flex items-center justify-center border transition-all ${
+              className={`w-10 h-10 md:w-11 md:h-11 rounded-2xl flex items-center justify-center border transition-all ${
                 micOn ? 'bg-zinc-800 border-zinc-700 hover:bg-zinc-750 text-white' : 'bg-red-950/20 border-red-500/20 text-red-500 hover:bg-red-950/40'
               }`}
             >
-              {micOn ? <Mic size={18} /> : <MicOff size={18} />}
+              {micOn ? <Mic size={16} md:size={18} /> : <MicOff size={16} md:size={18} />}
             </button>
             <button
               onClick={() => setCamOn(!camOn)}
-              className={`w-11 h-11 rounded-2xl flex items-center justify-center border transition-all ${
+              className={`w-10 h-10 md:w-11 md:h-11 rounded-2xl flex items-center justify-center border transition-all ${
                 camOn ? 'bg-zinc-800 border-zinc-700 hover:bg-zinc-750 text-white' : 'bg-red-950/20 border-red-500/20 text-red-500 hover:bg-red-950/40'
               }`}
             >
-              {camOn ? <Video size={18} /> : <VideoOff size={18} />}
+              {camOn ? <Video size={16} md:size={18} /> : <VideoOff size={16} md:size={18} />}
             </button>
           </div>
 
           <button
             onClick={handleLeaveMeeting}
-            className="flex items-center gap-2 px-8 py-3 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-red-500/20 transition-all"
+            className="flex items-center gap-1.5 md:gap-2 px-4 py-2.5 md:px-8 md:py-3 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-wider shadow-lg shadow-red-500/20 transition-all"
           >
-            <PhoneOff size={15} />
-            <span>End Call</span>
+            <PhoneOff size={14} />
+            <span className="hidden sm:inline">End Call</span>
+            <span className="sm:hidden">Leave</span>
           </button>
         </footer>
       </div>
@@ -245,9 +247,9 @@ function MeetingsClient({ auth, token }) {
   }
 
   return (
-    <div className="flex h-full gap-0 overflow-hidden bg-[#090d16] text-zinc-100">
+    <div className="flex flex-col md:flex-row h-full gap-0 overflow-hidden bg-[#090d16] text-zinc-100">
       {/* Left panel: Quick Launcher Actions */}
-      <div className="w-96 shrink-0 flex flex-col border-r border-zinc-850 p-8 gap-8 overflow-y-auto bg-[#0e1424]/40">
+      <div className="w-full md:w-96 shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-zinc-850 p-6 md:p-8 gap-6 md:gap-8 overflow-y-auto bg-[#0e1424]/40">
         <button onClick={() => { window.parent.postMessage({ type: 'NAVIGATE_HOME' }, '*'); }} className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2.5 rounded-2xl font-bold text-xs tracking-wide transition-all">
           <Home size={14} /> Back to Home
         </button>
@@ -257,7 +259,7 @@ function MeetingsClient({ auth, token }) {
         </div>
 
         {/* Join Meeting Box */}
-        <div className="bg-[#0f172a]/60 border border-zinc-800 p-6 rounded-[28px] space-y-4">
+        <div className="bg-[#0f172a]/60 border border-zinc-800 p-5 md:p-6 rounded-[28px] space-y-4">
           <h3 className="text-xs font-black uppercase tracking-wider text-zinc-300">Join via Code</h3>
           <div className="relative">
             <input
@@ -278,7 +280,7 @@ function MeetingsClient({ auth, token }) {
         </div>
 
         {/* Create Meeting Box */}
-        <div className="bg-[#0f172a]/60 border border-zinc-800 p-6 rounded-[28px] space-y-4">
+        <div className="bg-[#0f172a]/60 border border-zinc-800 p-5 md:p-6 rounded-[28px] space-y-4">
           <h3 className="text-xs font-black uppercase tracking-wider text-zinc-300">Schedule Room</h3>
           <div className="space-y-3">
             <input
@@ -301,7 +303,7 @@ function MeetingsClient({ auth, token }) {
 
       {/* Right panel: History & Rooms */}
       <div className="flex-1 flex flex-col overflow-hidden bg-[#070b13]">
-        <div className="px-8 py-6 border-b border-zinc-850 flex items-center gap-2">
+        <div className="px-6 md:px-8 py-4 md:py-6 border-b border-zinc-850 flex items-center gap-2">
           <Clock size={16} className="text-zinc-500" />
           <h2 className="text-xs font-black uppercase tracking-wider text-zinc-400">Past Huddle History logs</h2>
         </div>

@@ -7,8 +7,8 @@ import StarRating from '../components/StarRating';
 import { 
   Video as VideoIcon, Plus, Mic, MicOff, VideoOff, Phone, 
   Settings, Users, Monitor, MessageSquare, Link, X, 
-  Shield, Maximize2, Send, Paperclip, Disc, Hand, MoreVertical, Copy, Check, Loader2, AlertCircle,
-  Share2, LayoutGrid, Ghost, ChevronUp, Smile, Pin, Clock, Radio, Hexagon
+  Shield, Maximize2, Minimize2, Send, Paperclip, Disc, Hand, MoreVertical, Copy, Check, Loader2, AlertCircle,
+  Share2, LayoutGrid, Ghost, ChevronUp, Smile, Pin, PinOff, Clock, Radio, Hexagon
 , Wand2, Sparkles, FlipHorizontal, Lock, Play, PhoneOff, ChevronRight, ChevronLeft, Home} from 'lucide-react';
 import LogoImage from '../assets/landing-logo.png';
 
@@ -101,13 +101,21 @@ const MeetingApp = () => {
   
   const queryParams = new URLSearchParams(location.search);
   const urlPassword = queryParams.get('pwd');
-  const intent = location.state?.intent || queryParams.get('intent');
+  const urlIntent = location.state?.intent || queryParams.get('intent');
   
   // States
   const [appState, setAppState] = useState('lobby');
   const [code, setCode] = useState(id || '');
   const [password, setPassword] = useState(urlPassword || '');
   const [copied, setCopied] = useState(false);
+  const [intent, setIntent] = useState(urlIntent || 'join');
+
+  useEffect(() => {
+    if (intent === 'create' && !password) {
+      setPassword(Math.random().toString(36).slice(-6).toUpperCase());
+    }
+  }, [intent]);
+
   const [permissionError, setPermissionError] = useState(null);
   const [roomError, setRoomError] = useState(null);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -133,6 +141,7 @@ const MeetingApp = () => {
   const [hostControlsModal, setHostControlsModal] = useState(false);
   const [hostControlsTab, setHostControlsTab] = useState('meeting');
   const [waitingRoomEnabled, setWaitingRoomEnabled] = useState(false);
+  const [pinnedUser, setPinnedUser] = useState(null); // 'local' or a peerID
   
   // Refs
   const wsRef = useRef(null);
@@ -419,6 +428,13 @@ const MeetingApp = () => {
 
     if (stream) {
       stream.getTracks().forEach(track => {
+        if (track.kind === 'video' && isScreenSharing && screenStreamRef.current) {
+          const screenTrack = screenStreamRef.current.getVideoTracks()[0];
+          if (screenTrack) {
+            pc.addTrack(screenTrack, stream);
+            return;
+          }
+        }
         pc.addTrack(track, stream);
       });
     }
@@ -458,18 +474,26 @@ const MeetingApp = () => {
 
   const toggleScreenShare = async () => {
     if (!isScreenSharing) {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        alert("Screen sharing is not supported on this browser (e.g., mobile browsers). Please use a desktop browser.");
+        return;
+      }
       try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ cursor: true });
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         screenStreamRef.current = stream;
         const screenTrack = stream.getVideoTracks()[0];
         peersRef.current.forEach(({ pc }) => {
+          if (!pc) return;
           const sender = pc.getSenders().find(s => s.track?.kind === 'video');
           if (sender) sender.replaceTrack(screenTrack);
         });
         if (userVideo.current) userVideo.current.srcObject = stream;
         setIsScreenSharing(true);
         screenTrack.onended = () => stopScreenShare();
-      } catch (err) { console.error(err); }
+      } catch (err) {
+        console.error(err);
+        alert('Could not start screen sharing. Permission denied or unsupported.');
+      }
     } else { stopScreenShare(); }
   };
 
@@ -477,6 +501,7 @@ const MeetingApp = () => {
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach(track => track.stop());
       peersRef.current.forEach(({ pc }) => {
+        if (!pc) return;
         const videoTrack = streamRef.current?.getVideoTracks()[0];
         const sender = pc.getSenders().find(s => s.track?.kind === 'video');
         if (sender && videoTrack) sender.replaceTrack(videoTrack);
@@ -534,32 +559,69 @@ const MeetingApp = () => {
           }
           // Initiate offers with peers whose ID sorts higher (avoid SDP glare)
           for (const peer of peers) {
+            peersRef.current.push({ peerID: peer.peerId, pc: null });
+
             if (shouldInitiateOfferRef.current(peer.peerId)) {
               const pc = await createPeerConnectionRef.current(peer.peerId, streamRef.current, peer.name);
               if (pc) {
-                peersRef.current.push({ peerID: peer.peerId, pc });
-                setPeers(prev => [...prev, { peerID: peer.peerId, pc, stream: null, name: peer.name }]);
+                const pRef = peersRef.current.find(p => p.peerID === peer.peerId);
+                if (pRef) pRef.pc = pc;
+                setPeers(prev => {
+                  if (peer.name === 'Forge India Connect AI') {
+                    const existingBot = prev.find(p => p.name === 'Forge India Connect AI');
+                    if (existingBot && existingBot.peerID === 'ai-assistant-bot') {
+                      return prev.map(p => p.peerID === 'ai-assistant-bot' ? { ...p, peerID: peer.peerId, name: peer.name, pc } : p);
+                    } else if (existingBot) return prev;
+                  }
+                  if (prev.find(p => p.peerID === peer.peerId)) return prev;
+                  return [...prev, { peerID: peer.peerId, pc, stream: null, name: peer.name }];
+                });
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
                 sendWsRef.current('offer', { targetPeerId: peer.peerId, sdp: offer });
               }
             } else {
               // The other peer will send the offer — just register the peer
-              setPeers(prev => [...prev, { peerID: peer.peerId, pc: null, stream: null, name: peer.name }]);
+              setPeers(prev => {
+                if (peer.name === 'Forge India Connect AI') {
+                  const existingBot = prev.find(p => p.name === 'Forge India Connect AI');
+                  if (existingBot && existingBot.peerID === 'ai-assistant-bot') {
+                    return prev.map(p => p.peerID === 'ai-assistant-bot' ? { ...p, peerID: peer.peerId, name: peer.name } : p);
+                  } else if (existingBot) return prev;
+                }
+                if (prev.find(p => p.peerID === peer.peerId)) return prev;
+                return [...prev, { peerID: peer.peerId, pc: null, stream: null, name: peer.name }];
+              });
             }
           }
         }
         if (msg.type === 'peer-joined') {
           if (msg.peerId === peerIdRef.current) return;
           if (peersRef.current.find(p => p.peerID === msg.peerId)) return;
-          setPeers(prev => [...prev, { peerID: msg.peerId, pc: null, stream: null, name: msg.name || 'Participant' }]);
+          
+          peersRef.current.push({ peerID: msg.peerId, pc: null });
+          
+          setPeers(prev => {
+             if (msg.name === 'Forge India Connect AI') {
+                const existingBot = prev.find(p => p.name === 'Forge India Connect AI');
+                if (existingBot && existingBot.peerID === 'ai-assistant-bot') {
+                   return prev.map(p => p.peerID === 'ai-assistant-bot' ? { ...p, peerID: msg.peerId, name: msg.name } : p);
+                } else if (existingBot) {
+                   return prev;
+                }
+             }
+             if (prev.find(p => p.peerID === msg.peerId)) return prev;
+             return [...prev, { peerID: msg.peerId, pc: null, stream: null, name: msg.name || 'Participant' }];
+          });
+          
           if (msg.name === 'Forge India Connect AI') {
             setAiAssistantActive(true);
           }
           if (shouldInitiateOfferRef.current(msg.peerId)) {
             const pc = await createPeerConnectionRef.current(msg.peerId, streamRef.current, msg.name || 'Participant');
             if (pc) {
-              peersRef.current.push({ peerID: msg.peerId, pc });
+              const pRef = peersRef.current.find(p => p.peerID === msg.peerId);
+              if (pRef) pRef.pc = pc;
               setPeers(prev => prev.map(p => p.peerID === msg.peerId ? { ...p, pc } : p));
               const offer = await pc.createOffer();
               await pc.setLocalDescription(offer);
@@ -572,8 +634,18 @@ const MeetingApp = () => {
           let pc = peersRef.current.find(p => p.peerID === fromPeerId)?.pc;
           if (!pc) {
             pc = await createPeerConnectionRef.current(fromPeerId, streamRef.current, 'Participant');
-            peersRef.current.push({ peerID: fromPeerId, pc });
-            setPeers(prev => [...prev, { peerID: fromPeerId, pc, stream: null, name: 'Participant' }]);
+            let pRef = peersRef.current.find(p => p.peerID === fromPeerId);
+            if (pRef) {
+               pRef.pc = pc;
+            } else {
+               peersRef.current.push({ peerID: fromPeerId, pc });
+            }
+            setPeers(prev => {
+               if (prev.find(p => p.peerID === fromPeerId)) {
+                  return prev.map(p => p.peerID === fromPeerId ? { ...p, pc } : p);
+               }
+               return [...prev, { peerID: fromPeerId, pc, stream: null, name: 'Participant' }];
+            });
           }
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
@@ -629,11 +701,34 @@ const MeetingApp = () => {
           if (peerObj?.pc) try { peerObj.pc.close(); } catch {}
           peersRef.current = peersRef.current.filter(p => p.peerID !== pid);
           setPeers(prev => prev.filter(p => p.peerID !== pid));
+          // Auto-unpin if pinned user left
+          setPinnedUser(prev => prev === pid ? null : prev);
         }
         if (msg.type === 'error') {
           console.warn('[Signaling] Server error:', msg.message);
+          if (msg.message === 'Room is locked by host') {
+            alert('The host has locked this meeting.');
+            setAppState('lobby');
+            ws.close();
+            return;
+          }
           setRoomError(msg.message);
           setIsVerifying(false);
+        }
+        if (msg.type === 'meeting-ended') {
+          alert('The host has ended this meeting for all participants.');
+          handleEndCall();
+        }
+        if (msg.type === 'kicked') {
+          alert('You have been removed from the meeting by the host.');
+          handleEndCall();
+        }
+        if (msg.type === 'chat-message') {
+          setMeetingMessages(prev => [...prev, {
+            user: msg.user,
+            text: msg.text,
+            time: msg.time || new Date().toLocaleTimeString()
+          }]);
         }
       } catch (err) {
         console.warn('[Signaling] Parse error:', err);
@@ -676,7 +771,13 @@ const MeetingApp = () => {
     }
 
     try {
+      let activePassword = password;
       if (intent === 'create') {
+        if (!activePassword) {
+          activePassword = Math.random().toString(36).slice(-6).toUpperCase();
+          setPassword(activePassword);
+        }
+        
         const createRes = await fetch(getApiUrl('/api/meetings'), {
           method: 'POST',
           headers: {
@@ -685,7 +786,7 @@ const MeetingApp = () => {
           },
           body: JSON.stringify({
             title: `${auth.user || 'User'}'s Meeting`,
-            passcode: password || undefined,
+            passcode: activePassword,
             roomId: cleanCode,
             intent: 'create',
           }),
@@ -696,11 +797,11 @@ const MeetingApp = () => {
         }
         cleanCode = createdMeeting.joinCode || cleanCode;
         setCode(cleanCode);
-        navigate(`/w/${workspaceId}/meet/room/${encodeURIComponent(cleanCode)}${password ? `?pwd=${encodeURIComponent(password)}&intent=join` : '?intent=join'}`, { replace: true });
+        navigate(`/w/${workspaceId}/meet/room/${encodeURIComponent(cleanCode)}?pwd=${encodeURIComponent(activePassword)}&intent=join`, { replace: true });
       }
 
       // Resolve meeting via REST to get MongoDB _id
-      const query = password ? `?passcode=${encodeURIComponent(password)}` : '';
+      const query = activePassword ? `?passcode=${encodeURIComponent(activePassword)}` : '';
       const res = await fetch(getApiUrl(`/api/meetings/join/${encodeURIComponent(cleanCode)}${query}`), {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -713,6 +814,7 @@ const MeetingApp = () => {
         throw new Error('Meeting resolved but no valid signaling ID returned.');
       }
       setMeetingMetadata(data);
+      setIsHost(!!data.isHost);
 
       // Connect WebSocket signaling with the MongoDB _id
       connectSignaling(signalingRoomId, token);
@@ -728,6 +830,9 @@ const MeetingApp = () => {
     const msg = { user: auth.user, text: chatInput, time: new Date().toLocaleTimeString() };
     setMeetingMessages(prev => [...prev, msg]);
     setChatInput('');
+    if (sendWsRef.current) {
+      sendWsRef.current('chat-message', { text: msg.text, user: msg.user, time: msg.time });
+    }
   };
 
   useEffect(() => {
@@ -796,26 +901,26 @@ const MeetingApp = () => {
       
       {/* 1. LOBBY STATE */}
       {appState === 'lobby' && (
-        <div className="h-screen w-screen flex flex-col items-center justify-center p-8 bg-[#0a0b0d]">
-           <div className="absolute top-6 left-6">
+        <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 md:p-8 bg-[#0a0b0d] overflow-y-auto">
+           <div className="absolute top-6 left-6 z-10">
              <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-zinc-400 hover:text-white hover:bg-white/10 transition-all">
                <Home size={14} /> Home
              </button>
            </div>
-           <div className="w-full max-w-2xl space-y-10 animate-fade">
-              <div className="relative aspect-video bg-[#1a1b1e] rounded-[40px] overflow-hidden border-2 border-white/5 shadow-2xl">
+           <div className="w-full max-w-2xl space-y-6 md:space-y-10 animate-fade mt-16 md:mt-0">
+              <div className="relative aspect-video bg-[#1a1b1e] rounded-[24px] md:rounded-[40px] overflow-hidden border-2 border-white/5 shadow-2xl">
                  <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover mirror ${!videoOn ? 'hidden' : ''}`} />
                  {!videoOn && <div className="absolute inset-0 flex items-center justify-center"><UserAvatar name={auth.user} /></div>}
                  
-                 <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-4">
-                    <button onClick={() => setMicOn(!micOn)} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${micOn ? 'bg-white/10 hover:bg-white/20' : 'bg-red-500'}`}><Mic size={24} /></button>
-                    <button onClick={() => setVideoOn(!videoOn)} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${videoOn ? 'bg-white/10 hover:bg-white/20' : 'bg-red-500'}`}><VideoIcon size={24} /></button>
+                 <div className="absolute bottom-4 md:bottom-8 left-1/2 -translate-x-1/2 flex gap-3 md:gap-4">
+                    <button onClick={() => setMicOn(!micOn)} className={`w-11 h-11 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-all ${micOn ? 'bg-white/10 hover:bg-white/20' : 'bg-red-500'}`}><Mic size={20} /></button>
+                    <button onClick={() => setVideoOn(!videoOn)} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${videoOn ? 'bg-white/10 hover:bg-white/20' : 'bg-red-500'}`}><VideoIcon size={20} /></button>
                  </div>
               </div>
-              <div className="text-center space-y-6">
+              <div className="text-center space-y-4 md:space-y-6">
                  <div className="space-y-1">
-                    <h2 className="text-3xl font-black">Ready to join?</h2>
-                    <div className="flex items-center justify-center gap-3 mt-2">
+                    <h2 className="text-2xl md:text-3xl font-black">Ready to join?</h2>
+                    <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3 mt-2">
                        <div 
                           onClick={copyMeetingInvite}
                           className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg flex items-center gap-2 cursor-pointer hover:bg-white/10 transition-all group"
@@ -851,14 +956,14 @@ const MeetingApp = () => {
                     </div>
                  )}
 
-                 <p className="text-zinc-500 text-sm">Check your camera and microphone before joining the meeting.</p>
+                 <p className="text-zinc-500 text-xs md:text-sm">Check your camera and microphone before joining the meeting.</p>
                  <button 
                     onClick={handleJoinCall} 
                     disabled={!!permissionError}
-                    className="px-12 py-4 bg-[#5244e1] disabled:opacity-50 disabled:cursor-not-allowed rounded-full font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
+                    className="px-8 md:px-12 py-3.5 md:py-4 bg-[#5244e1] disabled:opacity-50 disabled:cursor-not-allowed rounded-full font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
                  >
                     {intent === 'create' ? 'Create Meeting Now' : 'Join Meeting Now'}
-                 </button>
+                  </button>
               </div>
            </div>
         </div>
@@ -869,44 +974,44 @@ const MeetingApp = () => {
         <div className="h-screen w-screen flex flex-col bg-gray-50 font-sans">
           
           {/* TOP HEADER */}
-          <div className="h-[60px] px-4 flex items-center justify-between border-b border-gray-200 bg-white">
-            <div className="flex items-center gap-2">
-              <button onClick={handleEndCall} className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors">
-                <ChevronLeft size={24} className="text-gray-700" />
+          <div className="h-[60px] px-3 md:px-4 flex items-center justify-between border-b border-gray-200 bg-white">
+            <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+              <button onClick={handleEndCall} className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors">
+                <ChevronLeft size={20} className="text-gray-700" />
               </button>
-              <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors">
-                <Home size={18} className="text-gray-700" />
+              <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors">
+                <Home size={16} className="text-gray-700" />
               </button>
             </div>
-            <div className="flex items-center gap-4 ml-4">
+            <div className="hidden md:flex items-center gap-4 ml-4 shrink-0">
                <img src={LogoImage} alt="Forge India" className="h-6 w-auto object-contain" />
             </div>
-            <div className="flex flex-col items-center justify-center flex-1 mx-4">
-              <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-rose-100 rounded-full border border-rose-200 mb-1">
-                <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse" />
-                <span className="text-[9px] font-black tracking-widest text-rose-600 uppercase">Live</span>
+            <div className="flex flex-col items-center justify-center flex-1 mx-2 md:mx-4 min-w-0">
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-rose-100 rounded-full border border-rose-200 mb-0.5">
+                <div className="w-1 h-1 bg-rose-500 rounded-full animate-pulse" />
+                <span className="text-[8px] font-black tracking-widest text-rose-600 uppercase">Live</span>
               </div>
-              <h1 className="text-[15px] font-black text-gray-900 truncate max-w-[200px]">{meetingMetadata?.title || 'Meeting Room'}</h1>
+              <h1 className="text-xs md:text-[15px] font-black text-gray-900 truncate max-w-[120px] sm:max-w-[200px] text-center w-full">{meetingMetadata?.title || 'Meeting Room'}</h1>
             </div>
-            <div className="flex flex-col items-end justify-center min-w-[60px]">
-              <div className="flex items-center gap-1 mb-1">
-                <Shield size={11} className="text-emerald-500" />
-                <span className="text-[9px] font-black tracking-widest text-emerald-600 uppercase">E2EE</span>
+            <div className="flex flex-col items-end justify-center min-w-[50px] md:min-w-[60px] shrink-0">
+              <div className="flex items-center gap-0.5 md:gap-1 mb-0.5">
+                <Shield size={10} className="text-emerald-500" />
+                <span className="text-[8px] md:text-[9px] font-black tracking-widest text-emerald-600 uppercase hidden sm:inline">E2EE</span>
               </div>
-              <span className="text-[13px] font-bold text-gray-600 font-mono">{formatTime(duration)}</span>
+              <span className="text-xs md:text-[13px] font-bold text-gray-600 font-mono">{formatTime(duration)}</span>
             </div>
           </div>
 
           {/* ROOM ID STRIP */}
-          <div className="flex items-center justify-center gap-2 py-2.5 bg-white border-b border-gray-200 px-4">
-            <Copy size={12} className="text-gray-400" />
-            <span className="text-xs font-black text-gray-400 uppercase tracking-widest">ID:</span>
-            <span className="text-xs font-bold text-gray-700 select-all">{code}</span>
+          <div className="flex flex-wrap items-center justify-center gap-1.5 md:gap-2 py-2 bg-white border-b border-gray-200 px-4 text-center">
+            <Copy size={11} className="text-gray-400" />
+            <span className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-widest">ID:</span>
+            <span className="text-[10px] md:text-xs font-bold text-gray-700 select-all">{code}</span>
             {password && (
               <>
-                <Lock size={12} className="text-gray-400 ml-3" />
-                <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Pass:</span>
-                <span className="text-xs font-bold text-gray-700">{password}</span>
+                <Lock size={11} className="text-gray-400 ml-2 md:ml-3" />
+                <span className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-widest">Pass:</span>
+                <span className="text-[10px] md:text-xs font-bold text-gray-700">{password}</span>
               </>
             )}
           </div>
@@ -915,47 +1020,156 @@ const MeetingApp = () => {
           <div className="flex-1 flex overflow-hidden bg-gray-50 relative">
             
             {/* VIDEO GRID */}
-            <div className="flex-1 p-2 md:p-4 flex flex-wrap gap-2 overflow-y-auto content-start justify-center">
-              
-              {/* LOCAL CAMERA TILE */}
-              <div className={`relative rounded-3xl overflow-hidden bg-slate-800 ${peers.length === 0 ? 'w-full h-full max-w-[800px] aspect-video' : 'w-[calc(50%-0.25rem)] aspect-[3/4] md:aspect-video'}`}>
-                <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover mirror ${!videoOn ? 'hidden' : ''}`} />
-                {!videoOn && (
-                   <div className="absolute inset-0 bg-blue-600 flex flex-col items-center justify-center">
-                      <span className="text-4xl md:text-6xl font-black text-white/50">{auth.user?.charAt(0).toUpperCase()}</span>
-                      {/* Fake Audio Waveform */}
-                      {!micOn ? null : (
-                          <div className="absolute bottom-1/4 flex gap-1 items-end h-8">
-                             {[1,2,3,4,5].map(i => <div key={i} className="w-1 bg-white/50 rounded-full animate-pulse" style={{ height: Math.random() * 100 + '%' }} />)}
+            <div className={`flex-1 pb-28 md:pb-24 overflow-hidden ${
+              pinnedUser ? 'flex flex-col md:flex-row p-2 md:p-3 gap-2' : 'p-2 md:p-4 flex flex-wrap gap-2 overflow-y-auto content-start justify-center'
+            }`}>
+
+              {/* ---- PINNED VIEW: Focus + Strip ---- */}
+              {pinnedUser ? (
+                <>
+                  {/* FOCUSED (PINNED) TILE */}
+                  <div className="flex-1 min-h-0 min-w-0 relative rounded-3xl overflow-hidden bg-slate-800">
+                    {pinnedUser === 'local' ? (
+                      <>
+                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn && !isScreenSharing) ? 'hidden' : ''} ${!isScreenSharing ? 'mirror' : ''}`} />
+                        {(!videoOn && !isScreenSharing) && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
+                            <span className="text-6xl md:text-8xl font-black text-white">{auth.user?.charAt(0).toUpperCase()}</span>
                           </div>
-                      )}
-                   </div>
-                )}
-                <div className="absolute bottom-3 left-3 right-3 z-20">
-                   <div className="bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
-                      <div className="flex items-center gap-2 overflow-hidden">
-                         <Shield size={12} className="text-emerald-400 shrink-0" />
-                         <span className="text-xs font-bold text-white truncate">{auth.user} (You)</span>
+                        )}
+                        <div className="absolute bottom-4 left-4 right-4 z-20">
+                          <div className="bg-slate-900/80 backdrop-blur-md px-4 py-2.5 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <Shield size={14} className="text-emerald-400 shrink-0" />
+                              <span className="text-sm font-bold text-white truncate">{auth.user} (You)</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                              {!micOn && <MicOff size={14} className="text-rose-500" />}
+                              {!videoOn && <VideoOff size={14} className="text-rose-500" />}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (() => {
+                      const pinnedPeer = peers.find(p => p.peerID === pinnedUser);
+                      if (!pinnedPeer) { setPinnedUser(null); return null; }
+                      return (
+                        <>
+                          <RemoteVideo peer={pinnedPeer} isSpeaking={speakingUser === pinnedPeer.peerID || activeSpeakers.includes(pinnedPeer.peerID)} mobileStyle={false} />
+                          <div className="absolute bottom-4 left-4 right-4 z-20">
+                            <div className="bg-slate-900/80 backdrop-blur-md px-4 py-2.5 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
+                              <span className="text-sm font-bold text-white truncate">{pinnedPeer.name}</span>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                    {/* Unpin button */}
+                    <button onClick={() => setPinnedUser(null)} className="absolute top-3 right-3 z-30 w-9 h-9 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-black/80 transition-all group" title="Unpin">
+                      <PinOff size={16} className="text-white/70 group-hover:text-white" />
+                    </button>
+                  </div>
+
+                  {/* UNPINNED STRIP */}
+                  <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-y-auto md:overflow-x-hidden md:w-[200px] shrink-0 pb-2 md:pb-0">
+                    {/* Local tile in strip (if not pinned) */}
+                    {pinnedUser !== 'local' && (
+                      <div className="relative rounded-2xl overflow-hidden bg-slate-800 w-[140px] md:w-full aspect-video shrink-0 cursor-pointer group" onClick={() => setPinnedUser('local')}>
+                        <video playsInline muted ref={pinnedUser !== 'local' ? undefined : userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn && !isScreenSharing) ? 'hidden' : ''} ${!isScreenSharing ? 'mirror' : ''}`} />
+                        {(!videoOn && !isScreenSharing) && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
+                            <span className="text-xl font-black text-white">{auth.user?.charAt(0).toUpperCase()}</span>
+                          </div>
+                        )}
+                        <div className="absolute bottom-1.5 left-1.5 right-1.5 z-20">
+                          <div className="bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded-lg flex items-center gap-1.5 border border-white/10">
+                            <span className="text-[10px] font-bold text-white truncate">{auth.user} (You)</span>
+                          </div>
+                        </div>
+                        <div className="absolute top-1.5 right-1.5 z-30 w-6 h-6 rounded-lg bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Pin size={12} className="text-white/80" />
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                         {!micOn && <MicOff size={12} className="text-rose-500" />}
-                         {!videoOn && <VideoOff size={12} className="text-rose-500" />}
+                    )}
+                    {/* Remote peers in strip (if not pinned) */}
+                    {peers.filter(p => p.peerID !== pinnedUser).map(peer => (
+                      <div key={peer.peerID} className="relative rounded-2xl overflow-hidden bg-violet-600 w-[140px] md:w-full aspect-video shrink-0 cursor-pointer group" onClick={() => setPinnedUser(peer.peerID)}>
+                        <RemoteVideo peer={peer} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} mobileStyle={true} />
+                        <div className="absolute bottom-1.5 left-1.5 right-1.5 z-20">
+                          <div className="bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded-lg flex items-center gap-1.5 border border-white/10">
+                            <span className="text-[10px] font-bold text-white truncate">{peer.name}</span>
+                          </div>
+                        </div>
+                        <div className="absolute top-1.5 right-1.5 z-30 w-6 h-6 rounded-lg bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Pin size={12} className="text-white/80" />
+                        </div>
                       </div>
-                   </div>
-                </div>
-              </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                /* ---- NORMAL GRID VIEW ---- */
+                <>
+              {/* LOCAL CAMERA TILE */}
+              {(() => {
+                 const totalTiles = peers.length + 1;
+                 let tileClass = 'w-full h-full max-w-[800px] aspect-video';
+                 if (totalTiles === 2) tileClass = 'w-[calc(50%-0.25rem)] aspect-[3/4] md:aspect-video';
+                 else if (totalTiles === 3 || totalTiles === 4) tileClass = 'w-[calc(50%-0.25rem)] aspect-video';
+                 else if (totalTiles >= 5 && totalTiles <= 6) tileClass = 'w-[calc(33.333%-0.33rem)] aspect-video';
+                 else if (totalTiles > 6) tileClass = 'w-[calc(25%-0.375rem)] aspect-video';
+                 
+                 return (
+                     <div className={`relative rounded-3xl overflow-hidden bg-slate-800 ${tileClass} cursor-pointer group`}>
+                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn && !isScreenSharing) ? 'hidden' : ''} ${!isScreenSharing ? 'mirror' : ''}`} />
+                        {(!videoOn && !isScreenSharing) && (
+                           <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
+                              <span className="text-4xl md:text-6xl font-black text-white">{auth.user?.charAt(0).toUpperCase()}</span>
+                           </div>
+                        )}
+                        <div className="absolute bottom-3 left-3 right-3 z-20">
+                          <div className="bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
+                             <div className="flex items-center gap-2 overflow-hidden">
+                                <Shield size={12} className="text-emerald-400 shrink-0" />
+                                <span className="text-xs font-bold text-white truncate">{auth.user} (You)</span>
+                             </div>
+                             <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                {!micOn && <MicOff size={12} className="text-rose-500" />}
+                                {!videoOn && <VideoOff size={12} className="text-rose-500" />}
+                             </div>
+                          </div>
+                       </div>
+                       {/* Pin button overlay */}
+                       <button onClick={() => setPinnedUser('local')} className="absolute top-3 right-3 z-30 w-8 h-8 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-all" title="Pin to fullscreen">
+                         <Maximize2 size={14} className="text-white/80" />
+                       </button>
+                    </div>
+                 );
+              })()}
 
               {/* REMOTE PEER TILES */}
-              {peers.slice(0, 3).map((peer) => (
-                 <div key={peer.peerID} className={`relative rounded-3xl overflow-hidden bg-violet-600 ${peers.length === 0 ? 'w-full h-full' : 'w-[calc(50%-0.25rem)] aspect-[3/4] md:aspect-video'}`}>
+              {peers.map((peer) => {
+                 const totalTiles = peers.length + 1;
+                 let tileClass = 'w-[calc(50%-0.25rem)] aspect-[3/4] md:aspect-video';
+                 if (totalTiles === 3 || totalTiles === 4) tileClass = 'w-[calc(50%-0.25rem)] aspect-video';
+                 else if (totalTiles >= 5 && totalTiles <= 6) tileClass = 'w-[calc(33.333%-0.33rem)] aspect-video';
+                 else if (totalTiles > 6) tileClass = 'w-[calc(25%-0.375rem)] aspect-video';
+
+                 return (
+                 <div key={peer.peerID} className={`relative rounded-3xl overflow-hidden bg-violet-600 ${tileClass} cursor-pointer group`}>
                     <RemoteVideo peer={peer} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} mobileStyle={true} />
                     <div className="absolute bottom-3 left-3 right-3 z-20">
                        <div className="bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
                           <span className="text-xs font-bold text-white truncate">{peer.name}</span>
                        </div>
                     </div>
+                    {/* Pin button overlay */}
+                    <button onClick={() => setPinnedUser(peer.peerID)} className="absolute top-3 right-3 z-30 w-8 h-8 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-all" title="Pin to fullscreen">
+                      <Maximize2 size={14} className="text-white/80" />
+                    </button>
                  </div>
-              ))}
+                 );
+              })}
 
               {/* WAITING BANNER */}
               {peers.length === 0 && (
@@ -964,12 +1178,14 @@ const MeetingApp = () => {
                     <span className="text-sm font-bold text-slate-300 text-center">Share the room ID to invite others</span>
                  </div>
               )}
+                </>
+              )}
 
             </div>
 
             {/* SIDE PANEL (Chat/Participants) */}
             {activeSidebar && (
-               <div className="absolute inset-y-0 right-0 w-80 bg-[#1e293b] border-l border-slate-800 shadow-2xl flex flex-col z-40 animate-in slide-in-from-right duration-300">
+               <div className="absolute inset-y-0 right-0 w-full sm:w-80 bg-[#1e293b] border-l border-slate-800 shadow-2xl flex flex-col z-40 animate-in slide-in-from-right duration-300">
                   <div className="p-4 border-b border-slate-800 flex items-center justify-between">
                      <h3 className="text-sm font-black text-white">{activeSidebar === 'chat' ? 'Chat' : 'People'}</h3>
                      <button onClick={() => setActiveSidebar(null)} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400">
@@ -1031,59 +1247,68 @@ const MeetingApp = () => {
 
           {/* CONTROL DOCK */}
           <div className="pb-6 pt-4 bg-gradient-to-t from-[#0f172a] to-transparent pointer-events-none absolute bottom-0 inset-x-0 z-30 flex justify-center">
-            <div className="pointer-events-auto flex items-center gap-3 px-6 py-4 bg-slate-900/90 backdrop-blur-xl border border-slate-700/50 rounded-[32px] shadow-2xl">
+            <div className="pointer-events-auto flex items-center max-w-[95vw] overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] gap-1.5 md:gap-3 px-2.5 md:px-6 py-2.5 md:py-4 bg-slate-900/90 backdrop-blur-xl border border-slate-700/50 rounded-[24px] md:rounded-[32px] shadow-2xl">
                
-               <button onClick={() => setMicOn(!micOn)} className={`flex flex-col items-center gap-1.5 w-[60px] opacity-100`}>
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${micOn ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-rose-500 text-white shadow-lg shadow-rose-500/30'}`}>
-                     {micOn ? <Mic size={20} /> : <MicOff size={20} />}
+               <button onClick={() => setMicOn(!micOn)} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0 opacity-100">
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all ${micOn ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-rose-500 text-white shadow-lg shadow-rose-500/30'}`}>
+                     {micOn ? <Mic size={18} /> : <MicOff size={18} />}
                   </div>
-                  <span className={`text-[10px] font-black tracking-widest uppercase ${micOn ? 'text-slate-400' : 'text-rose-500'}`}>{micOn ? 'Mute' : 'Unmute'}</span>
+                  <span className={`text-[9px] md:text-[10px] font-black tracking-widest uppercase hidden md:block ${micOn ? 'text-slate-400' : 'text-rose-500'}`}>{micOn ? 'Mute' : 'Unmute'}</span>
                </button>
                
-               <button onClick={() => setVideoOn(!videoOn)} className={`flex flex-col items-center gap-1.5 w-[60px]`}>
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${videoOn ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-rose-500 text-white shadow-lg shadow-rose-500/30'}`}>
-                     {videoOn ? <VideoIcon size={20} /> : <VideoOff size={20} />}
+               <button onClick={() => setVideoOn(!videoOn)} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0">
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all ${videoOn ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-rose-500 text-white shadow-lg shadow-rose-500/30'}`}>
+                     {videoOn ? <VideoIcon size={18} /> : <VideoOff size={18} />}
                   </div>
-                  <span className={`text-[10px] font-black tracking-widest uppercase ${videoOn ? 'text-slate-400' : 'text-rose-500'}`}>{videoOn ? 'Stop' : 'Start'}</span>
+                  <span className={`text-[9px] md:text-[10px] font-black tracking-widest uppercase hidden md:block ${videoOn ? 'text-slate-400' : 'text-rose-500'}`}>{videoOn ? 'Stop' : 'Start'}</span>
                </button>
 
-               <div className="w-px h-8 bg-slate-800 mx-1" />
+               <div className="w-px h-6 md:h-8 bg-slate-800 mx-0.5 md:mx-1 shrink-0" />
 
-               <button onClick={toggleScreenShare} className="flex flex-col items-center gap-1.5 w-[60px]">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isScreenSharing ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
-                     <Monitor size={20} />
+               <button onClick={toggleScreenShare} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0">
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all ${isScreenSharing ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+                     <Monitor size={18} />
                   </div>
-                  <span className={`text-[10px] font-black tracking-widest uppercase ${isScreenSharing ? 'text-blue-400' : 'text-slate-400'}`}>Share</span>
+                  <span className={`text-[9px] md:text-[10px] font-black tracking-widest uppercase hidden md:block ${isScreenSharing ? 'text-blue-400' : 'text-slate-400'}`}>Share</span>
                </button>
 
-               <button onClick={handleStartAI} className="flex flex-col items-center gap-1.5 w-[60px]">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${aiAssistantActive ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
-                     <Wand2 size={20} />
+               <button onClick={handleStartAI} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0">
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all ${aiAssistantActive ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+                     <Wand2 size={18} />
                   </div>
-                  <span className={`text-[10px] font-black tracking-widest uppercase ${aiAssistantActive ? 'text-emerald-400' : 'text-slate-400'}`}>AI Bot</span>
+                  <span className={`text-[9px] md:text-[10px] font-black tracking-widest uppercase hidden md:block ${aiAssistantActive ? 'text-emerald-400' : 'text-slate-400'}`}>AI Bot</span>
                </button>
 
-               <button onClick={() => setActiveSidebar(p => p === 'participants' ? null : 'participants')} className="flex flex-col items-center gap-1.5 w-[60px]">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${activeSidebar === 'participants' ? 'bg-slate-700 text-white' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
-                     <Users size={20} />
+               {isHost && (
+                  <button onClick={() => setHostControlsModal(true)} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0">
+                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all ${hostControlsModal ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+                        <Shield size={18} />
+                     </div>
+                     <span className={`text-[9px] md:text-[10px] font-black tracking-widest uppercase hidden md:block ${hostControlsModal ? 'text-blue-400' : 'text-slate-400'}`}>Host</span>
+                  </button>
+               )}
+
+               <button onClick={() => setActiveSidebar(p => p === 'participants' ? null : 'participants')} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0">
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all ${activeSidebar === 'participants' ? 'bg-slate-700 text-white' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+                     <Users size={18} />
                   </div>
-                  <span className="text-[10px] font-black tracking-widest uppercase text-slate-400">People</span>
+                  <span className="text-[9px] md:text-[10px] font-black tracking-widest uppercase text-slate-400 hidden md:block">People</span>
                </button>
 
-               <button onClick={() => setActiveSidebar(p => p === 'chat' ? null : 'chat')} className="flex flex-col items-center gap-1.5 w-[60px]">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${activeSidebar === 'chat' ? 'bg-slate-700 text-white' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
-                     <MessageSquare size={20} />
+               <button onClick={() => setActiveSidebar(p => p === 'chat' ? null : 'chat')} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0">
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all ${activeSidebar === 'chat' ? 'bg-slate-700 text-white' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+                     <MessageSquare size={18} />
                   </div>
-                  <span className="text-[10px] font-black tracking-widest uppercase text-slate-400">Chat</span>
+                  <span className="text-[9px] md:text-[10px] font-black tracking-widest uppercase text-slate-400 hidden md:block">Chat</span>
                </button>
 
-               <div className="w-px h-8 bg-slate-800 mx-1" />
+               <div className="w-px h-6 md:h-8 bg-slate-800 mx-0.5 md:mx-1 shrink-0" />
 
-               <button onClick={handleEndCall} className="flex flex-col items-center gap-1.5 w-[60px]">
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center bg-rose-600 text-white hover:bg-rose-500 shadow-lg shadow-rose-600/30 transition-all">
-                     <PhoneOff size={20} />
+               <button onClick={handleEndCall} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0">
+                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center bg-rose-600 text-white hover:bg-rose-500 shadow-lg shadow-rose-600/30 transition-all">
+                     <PhoneOff size={18} />
                   </div>
-                  <span className="text-[10px] font-black tracking-widest uppercase text-rose-500">End</span>
+                  <span className="text-[9px] md:text-[10px] font-black tracking-widest uppercase text-rose-500 hidden md:block">End</span>
                </button>
 
             </div>
@@ -1123,7 +1348,12 @@ const MeetingApp = () => {
                         <div className="space-y-6">
                            <div className="space-y-2">
                               <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Meeting Actions</p>
-                              <button onClick={handleEndCall} className="w-full flex items-center gap-4 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 transition-colors group">
+                              <button onClick={() => {
+                                 if (window.confirm("Are you sure you want to end the meeting for everyone?")) {
+                                    if (sendWsRef.current) sendWsRef.current('end-meeting-all', {});
+                                    handleEndCall();
+                                 }
+                              }} className="w-full flex items-center gap-4 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 transition-colors group">
                                  <div className="w-10 h-10 rounded-xl bg-rose-500 flex items-center justify-center"><PhoneOff size={18} className="text-white" /></div>
                                  <div className="text-left flex-1">
                                     <p className="text-sm font-bold text-rose-500">End Meeting for All</p>
@@ -1149,7 +1379,11 @@ const MeetingApp = () => {
                                     <p className="text-sm font-bold text-white">Lock Meeting</p>
                                     <p className="text-[10px] font-medium text-zinc-400">Prevent anyone else from joining</p>
                                  </div>
-                                 <button onClick={() => setRoomLocked(!roomLocked)} className={`w-12 h-7 rounded-full transition-all relative ${roomLocked ? 'bg-blue-500' : 'bg-white/10'}`}>
+                                 <button onClick={() => {
+                                    const newLocked = !roomLocked;
+                                    setRoomLocked(newLocked);
+                                    if (sendWsRef.current) sendWsRef.current('update-room-settings', { locked: newLocked });
+                                 }} className={`w-12 h-7 rounded-full transition-all relative ${roomLocked ? 'bg-blue-500' : 'bg-white/10'}`}>
                                     <div className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all ${roomLocked ? 'right-1' : 'left-1'}`} />
                                  </button>
                               </div>
@@ -1175,7 +1409,12 @@ const MeetingApp = () => {
                                     <p className="text-xs font-bold text-white">{p.name}</p>
                                  </div>
                                  <div className="flex gap-2">
-                                    <button className="px-3 py-1 bg-white/10 rounded-lg text-[9px] font-black uppercase text-zinc-300 hover:text-white transition-colors">Kick</button>
+                                    <button onClick={() => {
+                                       if (window.confirm(`Kick ${p.name}?`)) {
+                                          if (sendWsRef.current) sendWsRef.current('kick-peer', { targetPeerId: p.peerID });
+                                          setPeers(prev => prev.filter(peer => peer.peerID !== p.peerID));
+                                       }
+                                    }} className="px-3 py-1 bg-white/10 rounded-lg text-[9px] font-black uppercase text-zinc-300 hover:text-white transition-colors">Kick</button>
                                  </div>
                               </div>
                            ))}
@@ -1204,29 +1443,29 @@ const MeetingApp = () => {
       
 {/* 3. ENDED STATE */}
       {appState === 'ended' && (
-        <div className="h-screen w-screen flex flex-col items-center justify-center p-6 text-center animate-fade bg-[#0a0b0d]">
-           <div className="max-w-md w-full space-y-8">
-              <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center text-emerald-500 mx-auto"><Check size={40} /></div>
-              <h1 className="text-3xl font-black">Meeting Ended</h1>
-              <div className="bg-white/5 p-8 rounded-[32px] border border-white/5 grid grid-cols-2 gap-4">
-                 <div><p className="text-[10px] font-black uppercase text-zinc-400">Duration</p><p className="font-black">{Math.floor(finalStats.duration / 60)}m</p></div>
-                 <div><p className="text-[10px] font-black uppercase text-zinc-400">Attendees</p><p className="font-black">{finalStats.participants}</p></div>
+        <div className="min-h-screen w-full flex flex-col items-center justify-center p-6 text-center animate-fade bg-[#0a0b0d] overflow-y-auto">
+           <div className="max-w-md w-full space-y-6 md:space-y-8 py-8">
+              <div className="w-16 h-16 md:w-20 md:h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center text-emerald-500 mx-auto"><Check size={32} md:size={40} /></div>
+              <h1 className="text-2xl md:text-3xl font-black">Meeting Ended</h1>
+              <div className="bg-white/5 p-6 md:p-8 rounded-[24px] md:rounded-[32px] border border-white/5 grid grid-cols-2 gap-4">
+                 <div><p className="text-[10px] font-black uppercase text-zinc-400">Duration</p><p className="font-black text-sm md:text-base">{Math.floor(finalStats.duration / 60)}m</p></div>
+                 <div><p className="text-[10px] font-black uppercase text-zinc-400">Attendees</p><p className="font-black text-sm md:text-base">{finalStats.participants}</p></div>
               </div>
-              <button onClick={() => navigate(`/w/${workspaceId}/meet`)} className="w-full py-4 bg-[#5244e1] rounded-3xl font-black uppercase tracking-widest text-xs">Return Home Dashboard</button>
+              <button onClick={() => navigate(`/w/${workspaceId}/meet`)} className="w-full py-3.5 md:py-4 bg-[#5244e1] rounded-3xl font-black uppercase tracking-widest text-xs">Return Home Dashboard</button>
            </div>
         </div>
       )}
 
       {/* 4. ERROR STATE */}
       {roomError && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 text-center animate-fade bg-[#0a0b0d]">
-           <div className="max-w-md w-full space-y-8">
-              <div className="w-20 h-20 bg-rose-500/10 rounded-3xl flex items-center justify-center text-rose-500 mx-auto">
-                 <AlertCircle size={40} />
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 text-center animate-fade bg-[#0a0b0d] overflow-y-auto">
+           <div className="max-w-md w-full space-y-6 md:space-y-8 py-8">
+              <div className="w-16 h-16 md:w-20 md:h-20 bg-rose-500/10 rounded-3xl flex items-center justify-center text-rose-500 mx-auto">
+                 <AlertCircle size={32} md:size={40} />
               </div>
               <div className="space-y-2">
-                 <h1 className="text-3xl font-black text-white">Join Failed</h1>
-                 <p className="text-zinc-500 text-sm">{roomError}</p>
+                 <h1 className="text-2xl md:text-3xl font-black text-white">Join Failed</h1>
+                 <p className="text-zinc-500 text-xs md:text-sm">{roomError}</p>
               </div>
               <div className="flex flex-col gap-3">
                  <button 
@@ -1235,11 +1474,11 @@ const MeetingApp = () => {
                        setAppState('lobby');
                        window.location.reload();
                     }} 
-                    className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-3xl font-black uppercase tracking-widest text-xs text-white"
+                    className="w-full py-3.5 md:py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-3xl font-black uppercase tracking-widest text-xs text-white"
                  >Try Again</button>
                  <button 
                     onClick={() => navigate(`/w/${workspaceId}/meet`)} 
-                    className="w-full py-4 bg-[#5244e1] rounded-3xl font-black uppercase tracking-widest text-xs text-white"
+                    className="w-full py-3.5 md:py-4 bg-[#5244e1] rounded-3xl font-black uppercase tracking-widest text-xs text-white"
                  >Return to Dashboard</button>
               </div>
            </div>
@@ -1248,35 +1487,35 @@ const MeetingApp = () => {
 
       {/* 5. WAITING ROOM STATE */}
       {isWaiting && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 text-center animate-fade bg-[#0a0b0d]">
-           <div className="max-w-md w-full space-y-10">
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 text-center animate-fade bg-[#0a0b0d] overflow-y-auto">
+           <div className="max-w-md w-full space-y-8 md:space-y-10 py-8">
               <div className="relative">
-                 <div className="w-24 h-24 bg-indigo-500/10 rounded-[32px] flex items-center justify-center text-indigo-500 mx-auto animate-bounce">
-                    <Clock size={48} />
+                 <div className="w-20 h-20 md:w-24 md:h-24 bg-indigo-500/10 rounded-[24px] md:rounded-[32px] flex items-center justify-center text-indigo-500 mx-auto animate-bounce">
+                    <Clock size={40} md:size={48} />
                  </div>
-                 <div className="absolute -top-2 -right-2 w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center border-4 border-[#0a0b0d] animate-pulse">
-                    <Shield size={16} className="text-white" />
+                 <div className="absolute -top-1 -right-1 w-6 h-6 md:w-8 md:h-8 bg-amber-500 rounded-full flex items-center justify-center border-4 border-[#0a0b0d] animate-pulse">
+                    <Shield size={12} md:size={16} className="text-white" />
                  </div>
               </div>
               
-              <div className="space-y-4">
-                 <h1 className="text-4xl font-black text-white tracking-tight">Hang tight!</h1>
-                 <p className="text-zinc-400 text-sm leading-relaxed">
+              <div className="space-y-3 md:space-y-4">
+                 <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight">Hang tight!</h1>
+                 <p className="text-zinc-400 text-xs md:text-sm leading-relaxed">
                     The meeting is locked for security. We've notified the host that you're waiting in the lobby.
                  </p>
               </div>
 
-              <div className="p-6 bg-white/5 border border-white/10 rounded-[32px] space-y-4">
+              <div className="p-5 md:p-6 bg-white/5 border border-white/10 rounded-[24px] md:rounded-[32px] space-y-4">
                  <div className="flex items-center gap-4 text-left">
                     <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-white uppercase">{auth.user?.charAt(0)}</div>
                     <div>
-                       <p className="text-xs font-black uppercase text-zinc-500">Joining as</p>
+                       <p className="text-[9px] md:text-xs font-black uppercase text-zinc-500">Joining as</p>
                        <p className="text-sm font-bold text-white">{auth.user}</p>
                     </div>
                  </div>
               </div>
 
-              <div className="pt-8">
+              <div className="pt-6 md:pt-8">
                  <button 
                     onClick={() => {
                         setIsWaiting(false);

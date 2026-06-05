@@ -13,9 +13,10 @@ import {
   Alert,
   useWindowDimensions,
   Image,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  Linking
 } from 'react-native';
-import RenderHtml from 'react-native-render-html';
+import RenderHtml, { HTMLElementModel, HTMLContentModel } from 'react-native-render-html';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { 
@@ -69,6 +70,31 @@ const buildLocalSmartDraft = (prompt: string, subject: string, context: string) 
     '',
     'Best regards,'
   ].join('\n');
+};
+
+const renderTextWithLinks = (text: string, navigate?: any) => {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+|nexus-workspace:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, i) => {
+    if (part.match(urlRegex)) {
+      return (
+        <Text key={i} style={{ color: '#0052CC', textDecorationLine: 'underline' }} onPress={() => {
+          if (part.startsWith('nexus-workspace://meet/room/') && navigate) {
+            const parsed = part.replace('nexus-workspace://meet/room/', '');
+            const [roomId, query] = parsed.split('?');
+            const pwdMatch = query ? query.match(/(?:^|&)pwd=([^&]+)/) : null;
+            navigate(`/meetings?joinCode=${roomId}&pwd=${pwdMatch ? pwdMatch[1] : ''}`);
+          } else {
+            Linking.openURL(part).catch(e => console.warn(e));
+          }
+        }}>
+          {part}
+        </Text>
+      );
+    }
+    return <Text key={i}>{part}</Text>;
+  });
 };
 
 export default function Mail() {
@@ -495,9 +521,33 @@ export default function Mail() {
                 contentWidth={contentWidth}
                 source={{ html: selectedEmail.body }}
                 baseStyle={{ fontSize: 14, color: '#334155', lineHeight: 22 }}
+                customHTMLElementModels={{
+                  a: HTMLElementModel.fromCustomModel({
+                    tagName: 'a',
+                    mixedUAStyles: {
+                      marginVertical: 4,
+                      padding: 12
+                    },
+                    contentModel: HTMLContentModel.block
+                  })
+                }}
+                renderersProps={{
+                  a: {
+                    onPress: (event, href) => {
+                      if (href.startsWith('nexus-workspace://meet/room/')) {
+                        const parsed = href.replace('nexus-workspace://meet/room/', '');
+                        const [roomId, query] = parsed.split('?');
+                        const pwdMatch = query ? query.match(/(?:^|&)pwd=([^&]+)/) : null;
+                        navigate(`/meetings?joinCode=${roomId}&pwd=${pwdMatch ? pwdMatch[1] : ''}`);
+                      } else {
+                        Linking.openURL(href).catch(err => console.warn('Cannot open url:', err));
+                      }
+                    }
+                  }
+                }}
               />
             ) : (
-              <Text style={styles.emailContentText}>{selectedEmail.body}</Text>
+              <Text style={styles.emailContentText}>{renderTextWithLinks(selectedEmail.body, navigate)}</Text>
             )}
           </View>
           

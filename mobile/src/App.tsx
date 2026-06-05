@@ -38,6 +38,43 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 import { useFonts } from 'expo-font';
 import { Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold } from '@expo-google-fonts/outfit';
+import * as Linking from 'expo-linking';
+import { useNavigate } from './lib/router';
+
+function DeepLinkHandler() {
+  const navigate = useNavigate();
+  
+  React.useEffect(() => {
+    const handleUrl = (url: string) => {
+      try {
+        const parsed = Linking.parse(url);
+        // If deep link is nexus://meet/room/123-456-789?pwd=abc
+        // parsed.path might be 'meet/room/123-456-789'
+        if (parsed.path && parsed.path.startsWith('meet/room/')) {
+          const roomId = parsed.path.replace('meet/room/', '');
+          const pwd = parsed.queryParams?.pwd || '';
+          navigate(`/meetings?joinCode=${roomId}&pwd=${pwd}`);
+        } else if (url.includes('/meet/room/')) {
+          // Fallback for universal links
+          const match = url.match(/\/meet\/room\/([\w-]+)/);
+          if (match) {
+            const pwdMatch = url.match(/[?&]pwd=([^&]+)/);
+            navigate(`/meetings?joinCode=${match[1]}&pwd=${pwdMatch ? pwdMatch[1] : ''}`);
+          }
+        }
+      } catch (e) {
+        console.warn('Deep link parse error:', e);
+      }
+    };
+
+    const sub = Linking.addEventListener('url', (e) => handleUrl(e.url));
+    Linking.getInitialURL().then((url) => { if (url) handleUrl(url); });
+    
+    return () => sub.remove();
+  }, [navigate]);
+
+  return null;
+}
 
 export default function App() {
   const [loading, setLoading] = React.useState(true);
@@ -75,6 +112,7 @@ export default function App() {
       </View>
   ) : (
     <BrowserRouter>
+      <DeepLinkHandler />
       <Routes>
         {/* Public route */}
         <Route path="/login" element={<Login />} />

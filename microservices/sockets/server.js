@@ -16,6 +16,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'nexus-jwt-secret-key';
 const activeMailSockets = new Map(); // email -> ws
 const onlineCallUsers = new Map();   // email -> ws
 const webrtcRooms = new Map();       // meetingId -> Map(peerId -> { socket, name, avatarUrl })
+const webrtcRoomsMeta = new Map();   // meetingId -> { locked: boolean }
 
 // Helper to send json
 function sendJson(ws, payload) {
@@ -290,6 +291,10 @@ wssWebRtc.on('connection', (ws) => {
       peerId = user._id.toString();
       meetingId = String(roomKey);
 
+      if (webrtcRoomsMeta.get(meetingId)?.locked) {
+        return sendJson(ws, { type: 'error', message: 'Room is locked by host' });
+      }
+
       if (!webrtcRooms.has(meetingId)) {
         webrtcRooms.set(meetingId, new Map());
       }
@@ -365,6 +370,34 @@ wssWebRtc.on('connection', (ws) => {
         audioEnabled,
         videoEnabled,
       });
+      return;
+    }
+
+    if (type === 'update-room-settings') {
+      const { locked } = data;
+      const meta = webrtcRoomsMeta.get(meetingId) || {};
+      if (locked !== undefined) meta.locked = locked;
+      webrtcRoomsMeta.set(meetingId, meta);
+      return;
+    }
+
+    if (type === 'end-meeting-all') {
+      broadcastToRoom(peerId, { type: 'meeting-ended' });
+      // Clear the room
+      webrtcRooms.delete(meetingId);
+      webrtcRoomsMeta.delete(meetingId);
+      return;
+    }
+
+    if (type === 'kick-peer') {
+      const { targetPeerId } = data;
+      const target = webrtcRooms.get(meetingId)?.get(targetPeerId);
+      if (target) {
+        sendJson(target.socket, { type: 'kicked' });
+        target.socket.close();
+        webrtcRooms.get(meetingId).delete(targetPeerId);
+        broadcastToRoom(targetPeerId, { type: 'peer-left', peerId: targetPeerId });
+      }
       return;
     }
 
