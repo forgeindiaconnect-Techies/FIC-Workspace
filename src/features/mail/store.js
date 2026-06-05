@@ -12,6 +12,9 @@ export const useMailStore = create((set) => ({
   isSidebarCollapsed: false,
   toggleSidebar: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
   
+  isMobileMenuOpen: false,
+  setMobileMenuOpen: (open) => set({ isMobileMenuOpen: open }),
+  
   isComposeOpen: false,
   setComposeOpen: (open) => set({ isComposeOpen: open }),
   

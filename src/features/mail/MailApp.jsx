@@ -12,7 +12,6 @@ import { useMailStore } from './store';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { io } from 'socket.io-client';
 import { DndContext, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { Plus } from 'lucide-react';
 
@@ -77,16 +76,22 @@ const MailApp = () => {
   }, [setComposeOpen, setSearchOpen, setFolder]);
 
   useEffect(() => {
-    const socket = io(getSocketUrl());
+    const wsUrl = getApiUrl('').replace('http', 'ws') + '/ws/mail';
+    const ws = new WebSocket(wsUrl);
     const auth = JSON.parse(localStorage.getItem('auth') || '{}');
     
-    socket.on('new-email', (data) => {
-      if (data.recipient === auth.email || data.workspaceId === auth.workspaceId) {
-        queryClient.invalidateQueries(['mails']);
-      }
-    });
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'new-email') {
+          if (data.payload?.recipient === auth.email || data.payload?.workspaceId === auth.workspaceId) {
+            queryClient.invalidateQueries(['mails']);
+          }
+        }
+      } catch (e) {}
+    };
 
-    return () => socket.disconnect();
+    return () => ws.close();
   }, []);
 
   return (
@@ -102,7 +107,7 @@ const MailApp = () => {
 import { useTheme } from '../../context/ThemeContext';
 
 const MailWorkspace = () => {
-  const { isSearchOpen, isSettingsOpen, setComposeOpen } = useMailStore();
+  const { selectedId, isSearchOpen, isSettingsOpen, setComposeOpen, isMobileMenuOpen, setMobileMenuOpen } = useMailStore();
   const { setIsDark } = useTheme();
 
   useEffect(() => {
@@ -111,12 +116,22 @@ const MailWorkspace = () => {
   }, [setIsDark]);
 
   return (
-    <div className="h-screen w-screen bg-[var(--bg)] text-[var(--text-primary)] font-sans flex overflow-hidden selection:bg-[var(--brand-light)] selection:text-[var(--brand-primary)]">
-      <Sidebar />
+    <div className="h-screen w-screen bg-[var(--bg)] text-[var(--text-primary)] font-sans flex overflow-hidden selection:bg-[var(--brand-light)] selection:text-[var(--brand-primary)] relative">
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setMobileMenuOpen(false)} />
+      )}
       
-      <main className="flex-1 flex min-w-0 overflow-hidden relative">
-        <MailList />
-        <ReadingPane />
+      <div className={cn("fixed inset-y-0 left-0 z-40 transform transition-transform duration-300 md:relative md:translate-x-0", isMobileMenuOpen ? "translate-x-0" : "-translate-x-full")}>
+        <Sidebar />
+      </div>
+      
+      <main className="flex-1 flex min-w-0 overflow-hidden relative flex-col md:flex-row">
+        <div className={cn("flex-1 h-full md:w-[380px] md:flex-none", selectedId ? "hidden md:flex" : "flex")}>
+          <MailList />
+        </div>
+        <div className={cn("flex-1 h-full min-w-0", !selectedId ? "hidden md:flex" : "flex")}>
+          <ReadingPane />
+        </div>
       </main>
 
       <ComposeModal />

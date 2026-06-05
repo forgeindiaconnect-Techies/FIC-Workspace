@@ -188,16 +188,16 @@ const ComposeModal = () => {
           animate={{ 
             y: isMinimized ? 460 : 0, 
             opacity: 1,
-            width: isMaximized ? '100vw' : 520,
-            height: isMinimized ? 48 : (isMaximized ? '100vh' : 580),
-            bottom: isMaximized ? 0 : 0,
-            right: isMaximized ? 0 : 40,
-            borderRadius: isMaximized ? 0 : 16
+            width: isMaximized || window.innerWidth < 768 ? '100vw' : 520,
+            height: isMinimized ? 48 : (isMaximized || window.innerWidth < 768 ? '100vh' : 580),
+            bottom: isMaximized || window.innerWidth < 768 ? 0 : 0,
+            right: isMaximized || window.innerWidth < 768 ? 0 : 40,
+            borderRadius: isMaximized || window.innerWidth < 768 ? 0 : 16
           }}
           exit={{ y: 500, opacity: 0 }}
           className={cn(
             "fixed z-[100] bg-[var(--surface-0)] border border-[var(--border)] shadow-2xl flex flex-col overflow-hidden",
-            isMaximized ? "top-0 left-0" : ""
+            isMaximized || window.innerWidth < 768 ? "top-0 left-0" : ""
           )}
         >
           {/* Header */}

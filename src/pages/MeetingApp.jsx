@@ -56,11 +56,13 @@ const RemoteVideo = ({ peer, isSpeaking, mobileStyle }) => {
     } 
   }, [peer.stream]);
 
+  const actualHasVideo = peer.videoEnabled !== false && hasVideo;
+
   return (
     <div className={`relative rounded-[32px] bg-[#1a1b1e] border-2 transition-all duration-500 overflow-hidden group aspect-video flex items-center justify-center
       ${isSpeaking ? 'border-[#5244e1] shadow-[0_0_30px_rgba(82,68,225,0.2)]' : 'border-white/5'}`}>
-       <video playsInline ref={videoRef} autoPlay className={`w-full h-full object-cover ${!hasVideo ? 'hidden' : ''}`} />
-       {!hasVideo && (
+       <video playsInline ref={videoRef} autoPlay className={`w-full h-full object-cover ${!actualHasVideo ? 'hidden' : ''}`} />
+       {!actualHasVideo && (
          mobileStyle ? (
             <div className="absolute inset-0 bg-violet-600 flex flex-col items-center justify-center">
                <span className="text-4xl md:text-6xl font-black text-white/50">{peer.name?.charAt(0)?.toUpperCase()}</span>
@@ -75,11 +77,19 @@ const RemoteVideo = ({ peer, isSpeaking, mobileStyle }) => {
           </div>
        )}
 
-       {mobileStyle ? null : (
-       <div className="absolute bottom-4 left-4 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-xl text-[10px] font-bold border border-white/10 z-10">
-          {peer.name}
+       <div className={`absolute bottom-4 left-4 right-4 flex items-center justify-between z-10 ${mobileStyle ? 'px-2' : ''}`}>
+          <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-xl text-[10px] font-bold border border-white/10 text-white">
+             {peer.name}
+          </div>
+          <div className="flex gap-2">
+             <div className="bg-black/40 backdrop-blur-md px-2 py-1.5 rounded-xl border border-white/10 text-white">
+                {peer.audioEnabled !== false ? <Mic size={12} /> : <MicOff size={12} className="text-red-500" />}
+             </div>
+             <div className="bg-black/40 backdrop-blur-md px-2 py-1.5 rounded-xl border border-white/10 text-white">
+                {peer.videoEnabled !== false ? <VideoIcon size={12} /> : <VideoOff size={12} className="text-red-500" />}
+             </div>
+          </div>
        </div>
-       )}
     </div>
   );
 };
@@ -704,6 +714,13 @@ const MeetingApp = () => {
           // Auto-unpin if pinned user left
           setPinnedUser(prev => prev === pid ? null : prev);
         }
+        if (msg.type === 'peer-media-state') {
+          setPeers(prev => prev.map(p => 
+            p.peerID === msg.fromPeerId 
+              ? { ...p, audioEnabled: msg.audioEnabled, videoEnabled: msg.videoEnabled } 
+              : p
+          ));
+        }
         if (msg.type === 'error') {
           console.warn('[Signaling] Server error:', msg.message);
           if (msg.message === 'Room is locked by host') {
@@ -831,7 +848,7 @@ const MeetingApp = () => {
     setMeetingMessages(prev => [...prev, msg]);
     setChatInput('');
     if (sendWsRef.current) {
-      sendWsRef.current('chat-message', { text: msg.text, user: msg.user, time: msg.time });
+      sendWsRef.current('chat-message', { data: { text: msg.text, user: msg.user, time: msg.time } });
     }
   };
 
@@ -867,6 +884,9 @@ const MeetingApp = () => {
     if (streamRef.current) {
       streamRef.current.getAudioTracks().forEach(track => track.enabled = micOn);
       streamRef.current.getVideoTracks().forEach(track => track.enabled = videoOn);
+    }
+    if (sendWsRef.current) {
+      sendWsRef.current('media-state', { audioEnabled: micOn, videoEnabled: videoOn });
     }
   }, [micOn, videoOn]);
 

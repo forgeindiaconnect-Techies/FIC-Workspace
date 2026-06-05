@@ -1,0 +1,321 @@
+[
+  {
+    "prompt": "Create a professional 5-slide quarterly business review presentation for Q3 2024 with KPIs, revenue chart, and action items.",
+    "slide_plan": [
+      {
+        "slide": 1,
+        "type": "title",
+        "layout": "dark_hero",
+        "content": "Q3 2024 Business Review"
+      },
+      {
+        "slide": 2,
+        "type": "kpi_cards",
+        "layout": "4_card_grid",
+        "content": "Revenue, Growth %, NPS, CAC"
+      },
+      {
+        "slide": 3,
+        "type": "chart",
+        "layout": "bar_chart_full",
+        "content": "Monthly Revenue Jan–Sep"
+      },
+      {
+        "slide": 4,
+        "type": "two_column",
+        "layout": "wins_risks",
+        "content": "Wins vs Challenges"
+      },
+      {
+        "slide": 5,
+        "type": "action_items",
+        "layout": "numbered_list",
+        "content": "Q4 Priorities"
+      }
+    ],
+    "design_spec": {
+      "palette": "Midnight Executive",
+      "primary": "1E2761",
+      "secondary": "CADCFC",
+      "accent": "FFFFFF",
+      "header_font": "Calibri",
+      "body_font": "Calibri Light",
+      "title_size": 40,
+      "body_size": 14,
+      "dark_slides": [
+        1,
+        5
+      ],
+      "light_slides": [
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "prompt": "Build a 6-slide startup pitch deck for a SaaS company raising Series A. Include problem, solution, traction, team, and ask slides.",
+    "slide_plan": [
+      {
+        "slide": 1,
+        "type": "cover",
+        "layout": "dark_tagline"
+      },
+      {
+        "slide": 2,
+        "type": "problem",
+        "layout": "stat_callout"
+      },
+      {
+        "slide": 3,
+        "type": "solution",
+        "layout": "three_pillars"
+      },
+      {
+        "slide": 4,
+        "type": "traction",
+        "layout": "metrics_chart"
+      },
+      {
+        "slide": 5,
+        "type": "team",
+        "layout": "photo_cards"
+      },
+      {
+        "slide": 6,
+        "type": "ask",
+        "layout": "dark_closing"
+      }
+    ],
+    "design_spec": {
+      "palette": "Coral Energy",
+      "primary": "F96167",
+      "secondary": "2F3C7E",
+      "accent": "F9E795",
+      "header_font": "Georgia",
+      "body_font": "Calibri",
+      "title_size": 40,
+      "body_size": 14
+    }
+  },
+  {
+    "prompt": "Make a 5-slide training presentation on 'Effective Communication in the Workplace' for onboarding new employees.",
+    "slide_plan": [
+      {
+        "slide": 1,
+        "type": "cover",
+        "layout": "light_hero"
+      },
+      {
+        "slide": 2,
+        "type": "agenda",
+        "layout": "numbered_agenda"
+      },
+      {
+        "slide": 3,
+        "type": "content",
+        "layout": "icon_row"
+      },
+      {
+        "slide": 4,
+        "type": "content",
+        "layout": "two_column_tips"
+      },
+      {
+        "slide": 5,
+        "type": "quiz_cta",
+        "layout": "dark_closing"
+      }
+    ],
+    "design_spec": {
+      "palette": "Teal Trust",
+      "primary": "028090",
+      "secondary": "02C39A",
+      "accent": "F0FDFA",
+      "header_font": "Trebuchet MS",
+      "body_font": "Calibri",
+      "title_size": 36,
+      "body_size": 14
+    }
+  },
+  {
+    "prompt": "Create a 5-slide annual marketing performance report with channel breakdown, funnel, and recommendations.",
+    "slide_plan": [
+      {
+        "slide": 1,
+        "type": "cover",
+        "layout": "bold_dark"
+      },
+      {
+        "slide": 2,
+        "type": "overview",
+        "layout": "scorecard_row"
+      },
+      {
+        "slide": 3,
+        "type": "chart",
+        "layout": "pie_plus_bar"
+      },
+      {
+        "slide": 4,
+        "type": "funnel",
+        "layout": "funnel_table"
+      },
+      {
+        "slide": 5,
+        "type": "recommendations",
+        "layout": "numbered_dark"
+      }
+    ],
+    "design_spec": {
+      "palette": "Cherry Bold",
+      "primary": "990011",
+      "secondary": "FCF6F5",
+      "accent": "2F3C7E",
+      "header_font": "Arial Black",
+      "body_font": "Calibri",
+      "title_size": 36,
+      "body_size": 13
+    }
+  },
+  {
+    "prompt": "Build a 4-slide product roadmap presentation showing Q1–Q4 milestones, feature priorities, and a vision slide.",
+    "slide_plan": [
+      {
+        "slide": 1,
+        "type": "cover",
+        "layout": "vision_dark"
+      },
+      {
+        "slide": 2,
+        "type": "roadmap_timeline",
+        "layout": "quarterly_bands"
+      },
+      {
+        "slide": 3,
+        "type": "priority_matrix",
+        "layout": "2x2_grid"
+      },
+      {
+        "slide": 4,
+        "type": "team_ask",
+        "layout": "split_layout"
+      }
+    ],
+    "design_spec": {
+      "palette": "Ocean Gradient",
+      "primary": "065A82",
+      "secondary": "1C7293",
+      "accent": "21295C",
+      "header_font": "Cambria",
+      "body_font": "Calibri",
+      "title_size": 36,
+      "body_size": 13
+    }
+  },
+  {
+    "prompt": "Create a 4-slide HR presentation showing employee engagement survey results with scores, highlights, and action plan.",
+    "slide_plan": [
+      {
+        "slide": 1,
+        "type": "cover",
+        "layout": "warm_hero"
+      },
+      {
+        "slide": 2,
+        "type": "scores",
+        "layout": "gauge_row"
+      },
+      {
+        "slide": 3,
+        "type": "themes",
+        "layout": "quote_cards"
+      },
+      {
+        "slide": 4,
+        "type": "action_plan",
+        "layout": "three_pillars_dark"
+      }
+    ],
+    "design_spec": {
+      "palette": "Warm Terracotta",
+      "primary": "B85042",
+      "secondary": "E7E8D1",
+      "accent": "A7BEAE",
+      "header_font": "Palatino",
+      "body_font": "Calibri",
+      "title_size": 34,
+      "body_size": 13
+    }
+  },
+  {
+    "prompt": "Create a 4-slide competitive analysis presentation covering market positioning, feature comparison table, SWOT, and strategic takeaways.",
+    "slide_plan": [
+      {
+        "slide": 1,
+        "type": "cover",
+        "layout": "split_dark_light"
+      },
+      {
+        "slide": 2,
+        "type": "competitive_table",
+        "layout": "comparison_matrix"
+      },
+      {
+        "slide": 3,
+        "type": "swot",
+        "layout": "2x2_quadrant"
+      },
+      {
+        "slide": 4,
+        "type": "takeaways",
+        "layout": "numbered_cards"
+      }
+    ],
+    "design_spec": {
+      "palette": "Charcoal Minimal",
+      "primary": "36454F",
+      "secondary": "F2F2F2",
+      "accent": "212121",
+      "header_font": "Arial Black",
+      "body_font": "Calibri",
+      "title_size": 32,
+      "body_size": 13
+    }
+  },
+  {
+    "prompt": "Create a 4-slide budget proposal for a new department initiative, with cost breakdown, ROI projection, and approval request.",
+    "slide_plan": [
+      {
+        "slide": 1,
+        "type": "executive_summary",
+        "layout": "light_banner"
+      },
+      {
+        "slide": 2,
+        "type": "cost_breakdown",
+        "layout": "donut_plus_table"
+      },
+      {
+        "slide": 3,
+        "type": "roi_projection",
+        "layout": "line_chart"
+      },
+      {
+        "slide": 4,
+        "type": "approval",
+        "layout": "dark_bold"
+      }
+    ],
+    "design_spec": {
+      "palette": "Forest & Moss",
+      "primary": "2C5F2D",
+      "secondary": "97BC62",
+      "accent": "F5F5F5",
+      "header_font": "Cambria",
+      "body_font": "Calibri",
+      "title_size": 32,
+      "body_size": 13
+    }
+  }
+]

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, Filter, ArrowUpDown, Star, Archive, 
   Trash2, Clock, CheckCircle, MoreVertical, Paperclip,
-  Zap, Mail, Inbox
+  Zap, Mail, Inbox, Menu
 } from 'lucide-react';
 import { useMailStore } from '../store';
 import { clsx } from 'clsx';
@@ -20,7 +20,7 @@ const MailList = () => {
   const { 
     folder, selectedId, setSelectedId, 
     selectedMails, toggleMailSelection, clearSelection,
-    searchQuery, getAuth
+    searchQuery, getAuth, setMobileMenuOpen
   } = useMailStore();
 
   const auth = getAuth();
@@ -87,12 +87,17 @@ const MailList = () => {
   }, [emails, folder, activeFilter, sortBy, email]);
 
   return (
-    <div className="w-[380px] h-full flex flex-col bg-[var(--surface-1)] border-r border-[var(--border)] shrink-0">
+    <div className="w-full md:w-[380px] h-full flex flex-col bg-[var(--surface-1)] border-r border-[var(--border)] shrink-0">
       {/* Header */}
       <div className="h-16 flex items-center justify-between px-6 border-b border-[var(--border)] shrink-0">
-        <h2 className="text-sm font-black uppercase tracking-[0.2em] text-[var(--text-primary)]">
-          {folder}
-        </h2>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setMobileMenuOpen(true)} className="md:hidden p-2 -ml-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)]">
+            <Menu size={20} />
+          </button>
+          <h2 className="text-sm font-black uppercase tracking-[0.2em] text-[var(--text-primary)]">
+            {folder}
+          </h2>
+        </div>
         <div className="flex items-center gap-1">
           <button className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all">
             <ArrowUpDown size={14} />

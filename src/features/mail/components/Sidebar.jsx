@@ -20,7 +20,7 @@ const Sidebar = () => {
     folder, setFolder, 
     isSidebarCollapsed, toggleSidebar, 
     setComposeOpen, setSearchOpen,
-    setSettingsOpen, getAuth
+    setSettingsOpen, getAuth, setMobileMenuOpen
   } = useMailStore();
   const navigate = useNavigate();
 
@@ -103,7 +103,7 @@ const Sidebar = () => {
             key={item.id} 
             item={item} 
             isActive={folder === item.id} 
-            onClick={() => setFolder(item.id)} 
+            onClick={() => { setFolder(item.id); setMobileMenuOpen(false); }} 
             collapsed={isSidebarCollapsed} 
           />
         ))}
@@ -125,7 +125,7 @@ const Sidebar = () => {
             key={label.id} 
             item={{ ...label, icon: Tag }} 
             isActive={folder === label.id} 
-            onClick={() => setFolder(label.id)} 
+            onClick={() => { setFolder(label.id); setMobileMenuOpen(false); }} 
             collapsed={isSidebarCollapsed}
             iconStyle={{ color: label.color }}
           />

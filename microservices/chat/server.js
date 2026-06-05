@@ -4,6 +4,22 @@ import multer from 'multer';
 import { connectMongo, User, KuralConversation, KuralMessage, KuralStatus, Task, Doc } from '../shared/database.js';
 import { authenticate } from '../shared/auth.js';
 import { uploadToCloudinary, resolveUploadName } from '../shared/cloudinary.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let cachedExamples = '';
+try {
+  const examplesPath = path.join(__dirname, 'ppt_examples.json');
+  if (fs.existsSync(examplesPath)) {
+    cachedExamples = fs.readFileSync(examplesPath, 'utf8');
+  }
+} catch (e) {
+  console.error("Failed to load ppt_examples.json", e);
+}
 
 const app = express();
 app.use(express.json());
@@ -602,7 +618,7 @@ The JSON schema must be exactly:
   "theme": "modern", // Options: modern, corporate, playful, dark, elegant
   "slides": [
     {
-      "layout": "title", // Options: title, bullets, split, quote
+      "layout": "title", // Options: title, bullets, split, quote, default
       "title": "Slide Title",
       "subtitle": "Subtitle or author (only for title layout)",
       "content": ["Point 1", "Point 2"] // Array of strings (for bullets/split), or a single string for quote
@@ -613,7 +629,11 @@ The JSON schema must be exactly:
 IMPORTANT RULES:
 1. NEVER use double quotes inside your string values. Use single quotes instead if needed.
 2. For quote layouts, just write the quote as a plain string, e.g., 'To be or not to be'.
-3. Output 5 to 7 beautifully structured slides.` 
+3. Output 5 to 7 beautifully structured slides.
+
+Here are some high-quality examples of presentation structures, layouts, and themes to learn from:
+${cachedExamples}
+` 
           },
           { role: 'user', content: prompt }
         ],
@@ -629,18 +649,10 @@ IMPORTANT RULES:
     const data = await response.json();
     let generatedJsonText = data.choices?.[0]?.message?.content || '{}';
     
-    // Robust extraction: find first { and last }
-    const startIndex = generatedJsonText.indexOf('{');
-    const endIndex = generatedJsonText.lastIndexOf('}');
-    if (startIndex !== -1 && endIndex !== -1 && endIndex >= startIndex) {
-      generatedJsonText = generatedJsonText.substring(startIndex, endIndex + 1);
-    } else {
-      generatedJsonText = generatedJsonText.trim();
-    }
-
     let presentationData = { theme: 'modern', slides: [] };
     try {
-      presentationData = JSON.parse(generatedJsonText);
+      const cleanedText = generatedJsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      presentationData = JSON.parse(cleanedText);
     } catch (parseError) {
       throw new Error(`Failed to parse AI output as JSON. Output: ${generatedJsonText}`);
     }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mail as MailIcon, Send, Star, FileText, Trash2, Plus, Paperclip, Search, X, Loader2, Download, Image as ImageIcon, ArrowLeft, MoreVertical, MoreHorizontal, Tag, Reply, Forward, Edit2, Home } from 'lucide-react';
+import { Mail as MailIcon, Send, Star, FileText, Trash2, Plus, Paperclip, Search, X, Loader2, Download, Image as ImageIcon, ArrowLeft, MoreVertical, MoreHorizontal, Tag, Reply, Forward, Edit2, Home, Menu } from 'lucide-react';
 
 const API_URL = 'http://localhost:3001/api';
 
@@ -82,6 +82,7 @@ function MailClient({ auth, token }) {
   const [composing, setComposing] = useState(false);
   const [search, setSearch] = useState('');
   const [folder, setFolder] = useState('Inbox');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [newMail, setNewMail] = useState({ to: '', subject: '', message: '' });
   const [sending, setSending] = useState(false);
   const [composeAttachments, setComposeAttachments] = useState([]);
@@ -235,9 +236,14 @@ function MailClient({ auth, token }) {
   ];
 
   return (
-    <div className="flex h-screen gap-0 overflow-hidden bg-white text-[#191C1E] font-sans">
+    <div className="flex h-screen gap-0 overflow-hidden bg-white text-[#191C1E] font-sans relative">
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && (
+        <div className="absolute inset-0 bg-[#191C1E]/60 z-30 md:hidden" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
       {/* Sidebar */}
-      <div className={`w-52 shrink-0 flex flex-col border-r border-[#C3C6D6]/50 bg-[#F8F9FB] p-4 gap-1.5 ${selected ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`${mobileMenuOpen ? 'flex absolute inset-y-0 left-0 z-40 shadow-2xl' : 'hidden md:flex'} w-52 shrink-0 flex-col border-r border-[#C3C6D6]/50 bg-[#F8F9FB] p-4 gap-1.5`}>
         <button onClick={() => { window.parent.postMessage({ type: 'NAVIGATE_HOME' }, '*'); }} className="w-full flex items-center justify-center gap-2 bg-[#E7E8EA] hover:bg-[#D4D6DB] text-[#576377] py-2.5 rounded-2xl font-bold text-xs tracking-wide mb-2 transition-all">
           <Home size={14} /> Home
         </button>
@@ -247,7 +253,7 @@ function MailClient({ auth, token }) {
         {folders.map(({ icon, label, count }) => (
           <button
             key={label}
-            onClick={() => { setFolder(label); setSelected(null); }}
+            onClick={() => { setFolder(label); setSelected(null); setMobileMenuOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
               folder === label 
                 ? 'bg-[#D4E0F8] text-[#003D9B]' 
@@ -263,8 +269,14 @@ function MailClient({ auth, token }) {
 
       {/* Thread List */}
       <div className={`w-full md:w-80 shrink-0 flex flex-col overflow-hidden border-r border-[#C3C6D6]/50 bg-white ${selected ? 'hidden md:flex' : 'flex'}`}>
-        <div className="p-4 border-b border-[#C3C6D6]/50 bg-[#F8F9FB]">
-          <div className="relative">
+        <div className="p-4 border-b border-[#C3C6D6]/50 bg-[#F8F9FB] flex items-center gap-3">
+          <button 
+            onClick={() => setMobileMenuOpen(true)} 
+            className="md:hidden w-10 h-10 shrink-0 flex items-center justify-center rounded-xl bg-white border border-[#C3C6D6] text-[#576377] hover:bg-[#F3F4F6] transition-colors"
+          >
+            <Menu size={18} />
+          </button>
+          <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#737685]" />
             <input
               type="text"

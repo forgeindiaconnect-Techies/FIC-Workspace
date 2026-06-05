@@ -1,0 +1,331 @@
+{
+  "dataset_name": "Professional PowerPoint Generation Training Dataset",
+  "version": "1.0",
+  "description": "Instruction-output pairs to train an AI to generate professional, visually rich PowerPoint presentations using pptxgenjs. Each sample includes a user prompt, structured slide plan, and annotated pptxgenjs code.",
+  "samples": [
+
+    {
+      "id": "001",
+      "category": "Business",
+      "topic": "Quarterly Business Review",
+      "user_prompt": "Create a professional 5-slide quarterly business review presentation for Q3 2024 with KPIs, revenue chart, and action items.",
+      "slide_plan": [
+        { "slide": 1, "type": "title", "layout": "dark_hero", "content": "Q3 2024 Business Review" },
+        { "slide": 2, "type": "kpi_cards", "layout": "4_card_grid", "content": "Revenue, Growth %, NPS, CAC" },
+        { "slide": 3, "type": "chart", "layout": "bar_chart_full", "content": "Monthly Revenue Jan–Sep" },
+        { "slide": 4, "type": "two_column", "layout": "wins_risks", "content": "Wins vs Challenges" },
+        { "slide": 5, "type": "action_items", "layout": "numbered_list", "content": "Q4 Priorities" }
+      ],
+      "design_spec": {
+        "palette": "Midnight Executive",
+        "primary": "1E2761",
+        "secondary": "CADCFC",
+        "accent": "FFFFFF",
+        "header_font": "Calibri",
+        "body_font": "Calibri Light",
+        "title_size": 40,
+        "body_size": 14,
+        "dark_slides": [1, 5],
+        "light_slides": [2, 3, 4]
+      },
+      "pptxgenjs_code": "const pptxgen = require('pptxgenjs');\nconst pres = new pptxgen();\npres.layout = 'LAYOUT_16x9';\n\n// === SLIDE 1: Dark Title Slide ===\nconst s1 = pres.addSlide();\ns1.background = { color: '1E2761' };\ns1.addText('Q3 2024', { x: 0.8, y: 1.5, w: 8, h: 0.6, fontSize: 16, color: 'CADCFC', fontFace: 'Calibri Light', charSpacing: 6 });\ns1.addText('Business Review', { x: 0.8, y: 2.1, w: 8, h: 1.2, fontSize: 48, color: 'FFFFFF', fontFace: 'Calibri', bold: true });\ns1.addText('Prepared by Finance & Strategy · October 2024', { x: 0.8, y: 3.5, w: 8, h: 0.4, fontSize: 13, color: 'CADCFC', fontFace: 'Calibri Light' });\ns1.addShape(pres.shapes.RECTANGLE, { x: 0.8, y: 4.2, w: 1.2, h: 0.06, fill: { color: 'CADCFC' }, line: { color: 'CADCFC' } });\n\n// === SLIDE 2: KPI Cards ===\nconst s2 = pres.addSlide();\ns2.background = { color: 'F8F9FC' };\ns2.addText('Key Performance Indicators', { x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, color: '1E2761', fontFace: 'Calibri', bold: true });\nconst kpis = [\n  { label: 'Total Revenue', value: '$4.2M', change: '+18% YoY', x: 0.4 },\n  { label: 'Growth Rate', value: '18%', change: '+3pts vs Q2', x: 2.9 },\n  { label: 'NPS Score', value: '72', change: '+5 vs Q2', x: 5.4 },\n  { label: 'CAC', value: '$142', change: '-12% YoY', x: 7.9 }\n];\nkpis.forEach(k => {\n  s2.addShape(pres.shapes.RECTANGLE, { x: k.x, y: 1.2, w: 2.2, h: 2.8, fill: { color: 'FFFFFF' }, shadow: { type: 'outer', color: '000000', blur: 8, offset: 2, angle: 135, opacity: 0.1 }, line: { color: 'EEEEEE', width: 0.5 } });\n  s2.addShape(pres.shapes.RECTANGLE, { x: k.x, y: 1.2, w: 2.2, h: 0.08, fill: { color: '1E2761' }, line: { color: '1E2761' } });\n  s2.addText(k.label, { x: k.x + 0.15, y: 1.4, w: 1.9, h: 0.4, fontSize: 11, color: '6B7280', fontFace: 'Calibri Light' });\n  s2.addText(k.value, { x: k.x + 0.1, y: 1.9, w: 2.0, h: 0.8, fontSize: 36, color: '1E2761', fontFace: 'Calibri', bold: true });\n  s2.addText(k.change, { x: k.x + 0.15, y: 2.75, w: 1.9, h: 0.4, fontSize: 11, color: '059669', fontFace: 'Calibri Light' });\n});\n\n// === SLIDE 3: Revenue Chart ===\nconst s3 = pres.addSlide();\ns3.background = { color: 'FFFFFF' };\ns3.addText('Monthly Revenue · Jan – Sep 2024', { x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, color: '1E2761', fontFace: 'Calibri', bold: true });\ns3.addChart(pres.charts.BAR, [{ name: 'Revenue ($K)', labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep'], values: [320,345,390,410,440,460,490,510,560] }], { x: 0.5, y: 1.0, w: 9, h: 4.0, barDir: 'col', chartColors: ['1E2761'], chartArea: { fill: { color: 'FFFFFF' }, roundedCorners: true }, catAxisLabelColor: '6B7280', valAxisLabelColor: '6B7280', valGridLine: { color: 'E5E7EB', size: 0.5 }, catGridLine: { style: 'none' }, showValue: true, dataLabelColor: '1E2761', showLegend: false });\n\n// === SLIDE 4: Two Column — Wins vs Challenges ===\nconst s4 = pres.addSlide();\ns4.background = { color: 'F8F9FC' };\ns4.addText('Q3 Highlights & Challenges', { x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, color: '1E2761', fontFace: 'Calibri', bold: true });\n// Left column - Wins\ns4.addShape(pres.shapes.RECTANGLE, { x: 0.4, y: 1.1, w: 4.2, h: 3.8, fill: { color: 'FFFFFF' }, shadow: { type: 'outer', color: '000000', blur: 6, offset: 2, angle: 135, opacity: 0.08 } });\ns4.addShape(pres.shapes.RECTANGLE, { x: 0.4, y: 1.1, w: 4.2, h: 0.08, fill: { color: '059669' }, line: { color: '059669' } });\ns4.addText('✓  Wins', { x: 0.6, y: 1.25, w: 3.8, h: 0.45, fontSize: 14, color: '059669', fontFace: 'Calibri', bold: true });\nconst wins = ['Exceeded revenue target by 8%', 'Launched 2 new product features', 'Reduced churn by 15%', 'Expanded to 3 new markets'];\nwins.forEach((w, i) => { s4.addText(w, { x: 0.65, y: 1.9 + i * 0.55, w: 3.7, h: 0.45, fontSize: 13, color: '374151', fontFace: 'Calibri Light' }); });\n// Right column - Challenges\ns4.addShape(pres.shapes.RECTANGLE, { x: 5.4, y: 1.1, w: 4.2, h: 3.8, fill: { color: 'FFFFFF' }, shadow: { type: 'outer', color: '000000', blur: 6, offset: 2, angle: 135, opacity: 0.08 } });\ns4.addShape(pres.shapes.RECTANGLE, { x: 5.4, y: 1.1, w: 4.2, h: 0.08, fill: { color: 'DC2626' }, line: { color: 'DC2626' } });\ns4.addText('⚠  Challenges', { x: 5.6, y: 1.25, w: 3.8, h: 0.45, fontSize: 14, color: 'DC2626', fontFace: 'Calibri', bold: true });\nconst risks = ['Supply chain delays in APAC', 'Rising CAC in paid channels', 'Hiring pipeline behind plan', 'Tech debt slowing releases'];\nrisks.forEach((r, i) => { s4.addText(r, { x: 5.65, y: 1.9 + i * 0.55, w: 3.7, h: 0.45, fontSize: 13, color: '374151', fontFace: 'Calibri Light' }); });\n\n// === SLIDE 5: Action Items (Dark) ===\nconst s5 = pres.addSlide();\ns5.background = { color: '1E2761' };\ns5.addText('Q4 Priorities', { x: 0.8, y: 0.5, w: 8, h: 0.8, fontSize: 34, color: 'FFFFFF', fontFace: 'Calibri', bold: true });\nconst actions = ['Accelerate hiring: 8 roles to close by Nov 15', 'Launch paid referral program to lower CAC', 'Complete APAC vendor diversification', 'Ship v2.4 product milestone — feature freeze Oct 25', 'Set Q4 OKRs and cascade to all teams'];\nactions.forEach((a, i) => {\n  s5.addShape(pres.shapes.OVAL, { x: 0.8, y: 1.5 + i * 0.7, w: 0.38, h: 0.38, fill: { color: 'CADCFC' }, line: { color: 'CADCFC' } });\n  s5.addText(String(i + 1), { x: 0.8, y: 1.5 + i * 0.7, w: 0.38, h: 0.38, fontSize: 13, color: '1E2761', fontFace: 'Calibri', bold: true, align: 'center', valign: 'middle' });\n  s5.addText(a, { x: 1.35, y: 1.5 + i * 0.7, w: 7.8, h: 0.38, fontSize: 14, color: 'CADCFC', fontFace: 'Calibri Light', valign: 'middle' });\n});\n\npres.writeFile({ fileName: 'Q3_Business_Review.pptx' });",
+      "design_principles_used": [
+        "Dark title + dark closing slide (sandwich structure)",
+        "Card grid with shadow for KPIs",
+        "Top accent bar on cards for color identity",
+        "Native bar chart with styled axes",
+        "Two-column layout with color-coded header bars",
+        "Numbered action items with icon circles"
+      ]
+    },
+
+    {
+      "id": "002",
+      "category": "Startup",
+      "topic": "Investor Pitch Deck",
+      "user_prompt": "Build a 6-slide startup pitch deck for a SaaS company raising Series A. Include problem, solution, traction, team, and ask slides.",
+      "slide_plan": [
+        { "slide": 1, "type": "cover", "layout": "dark_tagline" },
+        { "slide": 2, "type": "problem", "layout": "stat_callout" },
+        { "slide": 3, "type": "solution", "layout": "three_pillars" },
+        { "slide": 4, "type": "traction", "layout": "metrics_chart" },
+        { "slide": 5, "type": "team", "layout": "photo_cards" },
+        { "slide": 6, "type": "ask", "layout": "dark_closing" }
+      ],
+      "design_spec": {
+        "palette": "Coral Energy",
+        "primary": "F96167",
+        "secondary": "2F3C7E",
+        "accent": "F9E795",
+        "header_font": "Georgia",
+        "body_font": "Calibri",
+        "title_size": 40,
+        "body_size": 14
+      },
+      "pptxgenjs_code": "const pptxgen = require('pptxgenjs');\nconst pres = new pptxgen();\npres.layout = 'LAYOUT_16x9';\n\n// === SLIDE 1: Cover ===\nconst s1 = pres.addSlide();\ns1.background = { color: '2F3C7E' };\ns1.addText('NOVA', { x: 0.8, y: 1.3, w: 8, h: 1.2, fontSize: 64, color: 'FFFFFF', fontFace: 'Georgia', bold: true, charSpacing: 8 });\ns1.addText('The operating system for modern field sales teams.', { x: 0.8, y: 2.7, w: 7, h: 0.9, fontSize: 18, color: 'F9E795', fontFace: 'Calibri Light', italic: true });\ns1.addText('Series A · $8M Raise · Deck for Qualified Investors', { x: 0.8, y: 4.8, w: 8, h: 0.4, fontSize: 11, color: 'CADCFC', fontFace: 'Calibri Light', charSpacing: 2 });\n\n// === SLIDE 2: Problem ===\nconst s2 = pres.addSlide();\ns2.background = { color: 'FFFFFF' };\ns2.addText('The Problem', { x: 0.5, y: 0.3, w: 9, h: 0.7, fontSize: 28, color: '2F3C7E', fontFace: 'Georgia', bold: true });\n// Big stat callout\nconst stats = [{ val: '62%', label: 'of sales reps miss quota every year' }, { val: '3.2hrs', label: 'wasted daily on manual data entry' }, { val: '$1.2T', label: 'in lost deals due to poor follow-up' }];\nstats.forEach((s, i) => {\n  const x = 0.4 + i * 3.2;\n  s2.addShape(pres.shapes.RECTANGLE, { x, y: 1.2, w: 2.8, h: 3.5, fill: { color: i === 1 ? 'F96167' : 'F8F9FC' }, line: { color: 'EEEEEE' } });\n  s2.addText(s.val, { x: x + 0.15, y: 1.7, w: 2.5, h: 1.2, fontSize: 44, color: i === 1 ? 'FFFFFF' : 'F96167', fontFace: 'Georgia', bold: true, align: 'center' });\n  s2.addText(s.label, { x: x + 0.15, y: 3.0, w: 2.5, h: 1.2, fontSize: 13, color: i === 1 ? 'FFFFFF' : '374151', fontFace: 'Calibri Light', align: 'center' });\n});\n\n// === SLIDE 3: Solution — Three Pillars ===\nconst s3 = pres.addSlide();\ns3.background = { color: 'F8F9FC' };\ns3.addText('Our Solution', { x: 0.5, y: 0.3, w: 9, h: 0.7, fontSize: 28, color: '2F3C7E', fontFace: 'Georgia', bold: true });\nconst pillars = [\n  { title: 'Auto-Log', desc: 'AI captures every call, email, and meeting. Zero manual input.', color: 'F96167' },\n  { title: 'Smart Coach', desc: 'Real-time nudges guide reps through every deal stage.', color: '2F3C7E' },\n  { title: 'Pipeline Intel', desc: 'Forecast with 94% accuracy using deal-signal AI.', color: 'F9E795' }\n];\npillars.forEach((p, i) => {\n  const x = 0.4 + i * 3.15;\n  s3.addShape(pres.shapes.RECTANGLE, { x, y: 1.2, w: 2.85, h: 3.8, fill: { color: 'FFFFFF' }, shadow: { type: 'outer', color: '000000', blur: 8, offset: 2, angle: 135, opacity: 0.1 } });\n  s3.addShape(pres.shapes.RECTANGLE, { x, y: 1.2, w: 2.85, h: 0.5, fill: { color: p.color }, line: { color: p.color } });\n  s3.addText(p.title, { x: x + 0.15, y: 1.9, w: 2.55, h: 0.6, fontSize: 18, color: '1F2937', fontFace: 'Georgia', bold: true });\n  s3.addText(p.desc, { x: x + 0.15, y: 2.65, w: 2.55, h: 1.8, fontSize: 13, color: '4B5563', fontFace: 'Calibri Light' });\n});\n\n// === SLIDE 4: Traction ===\nconst s4 = pres.addSlide();\ns4.background = { color: 'FFFFFF' };\ns4.addText('Traction', { x: 0.5, y: 0.3, w: 9, h: 0.7, fontSize: 28, color: '2F3C7E', fontFace: 'Georgia', bold: true });\nconst tMetrics = [{ val: '214', label: 'Enterprise Customers' }, { val: '$2.8M', label: 'ARR' }, { val: '18%', label: 'MoM Growth' }, { val: '4.8★', label: 'G2 Rating' }];\ntMetrics.forEach((m, i) => {\n  s4.addShape(pres.shapes.RECTANGLE, { x: 0.4 + i * 2.35, y: 1.0, w: 2.1, h: 1.5, fill: { color: '2F3C7E' }, line: { color: '2F3C7E' } });\n  s4.addText(m.val, { x: 0.4 + i * 2.35, y: 1.1, w: 2.1, h: 0.8, fontSize: 32, color: 'F9E795', fontFace: 'Georgia', bold: true, align: 'center' });\n  s4.addText(m.label, { x: 0.4 + i * 2.35, y: 1.9, w: 2.1, h: 0.45, fontSize: 11, color: 'CADCFC', fontFace: 'Calibri Light', align: 'center' });\n});\ns4.addChart(pres.charts.LINE, [{ name: 'ARR ($K)', labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep'], values: [280,320,370,430,510,620,760,920,1100] }], { x: 0.5, y: 2.8, w: 9, h: 2.6, chartColors: ['F96167'], lineSize: 3, lineSmooth: true, chartArea: { fill: { color: 'FFFFFF' } }, catAxisLabelColor: '9CA3AF', valAxisLabelColor: '9CA3AF', valGridLine: { color: 'F3F4F6', size: 0.5 }, catGridLine: { style: 'none' }, showLegend: false });\n\n// === SLIDE 5: Team ===\nconst s5 = pres.addSlide();\ns5.background = { color: 'F8F9FC' };\ns5.addText('The Team', { x: 0.5, y: 0.3, w: 9, h: 0.7, fontSize: 28, color: '2F3C7E', fontFace: 'Georgia', bold: true });\nconst team = [\n  { name: 'Sarah Chen', role: 'CEO & Co-Founder', bg: 'Ex-Salesforce VP, Stanford MBA' },\n  { name: 'Marcus Lee', role: 'CTO & Co-Founder', bg: 'Ex-Palantir Staff Eng, MIT CS' },\n  { name: 'Priya Nair', role: 'Head of Sales', bg: '3x startup GTM, $40M pipeline built' },\n  { name: 'David Walsh', role: 'Head of Product', bg: 'Ex-HubSpot PM, 4 product launches' }\n];\nteam.forEach((t, i) => {\n  const x = 0.4 + (i % 2) * 4.8, y = i < 2 ? 1.2 : 3.0;\n  s5.addShape(pres.shapes.OVAL, { x: x + 0.15, y, w: 1.0, h: 1.0, fill: { color: i % 2 === 0 ? 'F96167' : '2F3C7E' }, line: { color: 'TRANSPARENT' } });\n  s5.addText(t.name.split(' ').map(n => n[0]).join(''), { x: x + 0.15, y, w: 1.0, h: 1.0, fontSize: 22, color: 'FFFFFF', fontFace: 'Georgia', bold: true, align: 'center', valign: 'middle' });\n  s5.addText(t.name, { x: x + 1.3, y: y + 0.05, w: 3.2, h: 0.45, fontSize: 14, color: '1F2937', fontFace: 'Calibri', bold: true });\n  s5.addText(t.role, { x: x + 1.3, y: y + 0.42, w: 3.2, h: 0.35, fontSize: 12, color: 'F96167', fontFace: 'Calibri Light' });\n  s5.addText(t.bg, { x: x + 1.3, y: y + 0.72, w: 3.2, h: 0.35, fontSize: 11, color: '6B7280', fontFace: 'Calibri Light', italic: true });\n});\n\n// === SLIDE 6: The Ask (Dark) ===\nconst s6 = pres.addSlide();\ns6.background = { color: '2F3C7E' };\ns6.addText('The Ask', { x: 0.8, y: 0.7, w: 8, h: 0.7, fontSize: 16, color: 'F9E795', fontFace: 'Calibri Light', charSpacing: 6 });\ns6.addText('$8M Series A', { x: 0.8, y: 1.4, w: 8, h: 1.2, fontSize: 52, color: 'FFFFFF', fontFace: 'Georgia', bold: true });\nconst uses = [['40%', 'Engineering & Product'], ['30%', 'Sales & Marketing'], ['20%', 'Customer Success'], ['10%', 'G&A']];\nuses.forEach((u, i) => {\n  s6.addShape(pres.shapes.RECTANGLE, { x: 0.8 + i * 2.25, y: 3.0, w: 2.0, h: 0.06, fill: { color: 'F96167' }, line: { color: 'F96167' } });\n  s6.addText(u[0], { x: 0.8 + i * 2.25, y: 3.15, w: 2.0, h: 0.6, fontSize: 28, color: 'F9E795', fontFace: 'Georgia', bold: true, align: 'center' });\n  s6.addText(u[1], { x: 0.8 + i * 2.25, y: 3.75, w: 2.0, h: 0.5, fontSize: 11, color: 'CADCFC', fontFace: 'Calibri Light', align: 'center' });\n});\ns6.addText('contact@gonova.io  |  gonova.io', { x: 0.8, y: 5.0, w: 8, h: 0.4, fontSize: 12, color: 'F9E795', fontFace: 'Calibri Light' });\n\npres.writeFile({ fileName: 'Nova_Series_A_Pitch.pptx' });",
+      "design_principles_used": [
+        "Large charSpacing for premium brand feel on title",
+        "Highlighted middle stat card for emphasis",
+        "Pillar cards with colored top bands",
+        "KPI rectangles with contrasting text",
+        "Avatar initials with colored oval for team slide",
+        "Use-of-funds breakdown with accent lines"
+      ]
+    },
+
+    {
+      "id": "003",
+      "category": "Education",
+      "topic": "Training / Course Module",
+      "user_prompt": "Make a 5-slide training presentation on 'Effective Communication in the Workplace' for onboarding new employees.",
+      "slide_plan": [
+        { "slide": 1, "type": "cover", "layout": "light_hero" },
+        { "slide": 2, "type": "agenda", "layout": "numbered_agenda" },
+        { "slide": 3, "type": "content", "layout": "icon_row" },
+        { "slide": 4, "type": "content", "layout": "two_column_tips" },
+        { "slide": 5, "type": "quiz_cta", "layout": "dark_closing" }
+      ],
+      "design_spec": {
+        "palette": "Teal Trust",
+        "primary": "028090",
+        "secondary": "02C39A",
+        "accent": "F0FDFA",
+        "header_font": "Trebuchet MS",
+        "body_font": "Calibri",
+        "title_size": 36,
+        "body_size": 14
+      },
+      "pptxgenjs_code": "const pptxgen = require('pptxgenjs');\nconst pres = new pptxgen();\npres.layout = 'LAYOUT_16x9';\n\n// === SLIDE 1: Cover (Light) ===\nconst s1 = pres.addSlide();\ns1.background = { color: 'F0FDFA' };\ns1.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 3.5, h: 5.625, fill: { color: '028090' }, line: { color: '028090' } });\ns1.addText('MODULE 3', { x: 0.2, y: 1.2, w: 3.0, h: 0.4, fontSize: 12, color: '02C39A', fontFace: 'Calibri Light', charSpacing: 4, align: 'center' });\ns1.addText('Effective\\nCommunication', { x: 0.2, y: 1.8, w: 3.0, h: 1.8, fontSize: 28, color: 'FFFFFF', fontFace: 'Trebuchet MS', bold: true, align: 'center' });\ns1.addText('in the Workplace', { x: 0.2, y: 3.6, w: 3.0, h: 0.5, fontSize: 14, color: 'B2EBF2', fontFace: 'Calibri Light', align: 'center' });\ns1.addText('New Employee Onboarding · HR Learning & Development', { x: 3.8, y: 4.9, w: 5.8, h: 0.4, fontSize: 11, color: '6B7280', fontFace: 'Calibri Light' });\ns1.addText('What you will learn today', { x: 4.0, y: 1.2, w: 5.5, h: 0.5, fontSize: 20, color: '028090', fontFace: 'Trebuchet MS', bold: true });\nconst learns = ['Why communication quality drives results', 'The 4 core communication channels', 'Active listening techniques', 'Handling difficult conversations'];\nlearns.forEach((l, i) => { s1.addText(l, { x: 4.2, y: 1.9 + i * 0.55, w: 5.3, h: 0.45, fontSize: 14, color: '374151', fontFace: 'Calibri Light' }); });\n\n// === SLIDE 2: Agenda ===\nconst s2 = pres.addSlide();\ns2.background = { color: 'FFFFFF' };\ns2.addText('Today\\'s Agenda', { x: 0.5, y: 0.3, w: 9, h: 0.7, fontSize: 28, color: '028090', fontFace: 'Trebuchet MS', bold: true });\nconst items = ['Why Communication Matters · 5 min', 'The 4 Core Channels · 10 min', 'Active Listening Tactics · 10 min', 'Difficult Conversations · 10 min', 'Q&A & Knowledge Check · 5 min'];\nitems.forEach((item, i) => {\n  const y = 1.2 + i * 0.75;\n  s2.addShape(pres.shapes.RECTANGLE, { x: 0.5, y, w: 0.5, h: 0.5, fill: { color: i % 2 === 0 ? '028090' : '02C39A' }, line: { color: 'TRANSPARENT' } });\n  s2.addText(String(i + 1), { x: 0.5, y, w: 0.5, h: 0.5, fontSize: 14, color: 'FFFFFF', fontFace: 'Trebuchet MS', bold: true, align: 'center', valign: 'middle' });\n  s2.addText(item, { x: 1.2, y: y + 0.04, w: 7.5, h: 0.45, fontSize: 14, color: '374151', fontFace: 'Calibri Light', valign: 'middle' });\n  if (i < items.length - 1) s2.addShape(pres.shapes.LINE, { x: 0.5, y: y + 0.52, w: 8.5, h: 0, line: { color: 'E5E7EB', width: 0.5 } });\n});\n\n// === SLIDE 3: Icon Row — 4 Channels ===\nconst s3 = pres.addSlide();\ns3.background = { color: 'F0FDFA' };\ns3.addText('The 4 Core Communication Channels', { x: 0.5, y: 0.3, w: 9, h: 0.7, fontSize: 24, color: '028090', fontFace: 'Trebuchet MS', bold: true });\nconst channels = [\n  { emoji: '💬', title: 'Verbal', desc: 'Clarity, tone, and pacing in face-to-face conversations', color: '028090' },\n  { emoji: '✍️', title: 'Written', desc: 'Emails, Slack, and docs: concise and structured', color: '02C39A' },\n  { emoji: '🤝', title: 'Non-verbal', desc: 'Body language, eye contact, and posture', color: '028090' },\n  { emoji: '👂', title: 'Listening', desc: 'Active, empathetic, and without interruption', color: '02C39A' }\n];\nchannels.forEach((c, i) => {\n  const x = 0.4 + i * 2.35;\n  s3.addShape(pres.shapes.RECTANGLE, { x, y: 1.2, w: 2.1, h: 3.8, fill: { color: 'FFFFFF' }, shadow: { type: 'outer', color: '000000', blur: 6, offset: 2, angle: 135, opacity: 0.08 } });\n  s3.addShape(pres.shapes.OVAL, { x: x + 0.55, y: 1.4, w: 1.0, h: 1.0, fill: { color: c.color }, line: { color: 'TRANSPARENT' } });\n  s3.addText(c.emoji, { x: x + 0.55, y: 1.4, w: 1.0, h: 1.0, fontSize: 26, align: 'center', valign: 'middle' });\n  s3.addText(c.title, { x: x + 0.1, y: 2.55, w: 1.9, h: 0.5, fontSize: 15, color: '1F2937', fontFace: 'Trebuchet MS', bold: true, align: 'center' });\n  s3.addText(c.desc, { x: x + 0.1, y: 3.1, w: 1.9, h: 1.6, fontSize: 12, color: '6B7280', fontFace: 'Calibri Light', align: 'center' });\n});\n\n// === SLIDE 4: Two-column Tips ===\nconst s4 = pres.addSlide();\ns4.background = { color: 'FFFFFF' };\ns4.addText('Active Listening — Do\\'s & Don\\'ts', { x: 0.5, y: 0.3, w: 9, h: 0.7, fontSize: 24, color: '028090', fontFace: 'Trebuchet MS', bold: true });\n// Dos\ns4.addShape(pres.shapes.RECTANGLE, { x: 0.4, y: 1.1, w: 4.2, h: 4.0, fill: { color: 'F0FDFA' }, line: { color: 'E0F7F4' } });\ns4.addText('✅  DO', { x: 0.6, y: 1.25, w: 3.8, h: 0.45, fontSize: 14, color: '028090', fontFace: 'Trebuchet MS', bold: true });\nconst dos = ['Maintain comfortable eye contact', 'Paraphrase to confirm understanding', 'Ask clarifying questions', 'Pause before responding', 'Nod and use verbal affirmations'];\ndos.forEach((d, i) => { s4.addText('• ' + d, { x: 0.65, y: 1.85 + i * 0.55, w: 3.8, h: 0.45, fontSize: 13, color: '374151', fontFace: 'Calibri Light' }); });\n// Donts\ns4.addShape(pres.shapes.RECTANGLE, { x: 5.4, y: 1.1, w: 4.2, h: 4.0, fill: { color: 'FFF5F5' }, line: { color: 'FEE2E2' } });\ns4.addText(\"❌  DON'T\", { x: 5.6, y: 1.25, w: 3.8, h: 0.45, fontSize: 14, color: 'DC2626', fontFace: 'Trebuchet MS', bold: true });\nconst donts = ['Interrupt while someone is speaking', 'Formulate your reply mid-listen', 'Check your phone or laptop', 'Dismiss feelings with \"calm down\"', 'Jump to solutions too early'];\ndonts.forEach((d, i) => { s4.addText('• ' + d, { x: 5.65, y: 1.85 + i * 0.55, w: 3.8, h: 0.45, fontSize: 13, color: '374151', fontFace: 'Calibri Light' }); });\n\n// === SLIDE 5: Dark CTA ===\nconst s5 = pres.addSlide();\ns5.background = { color: '028090' };\ns5.addText('You\\'re Ready!', { x: 0.8, y: 1.2, w: 8, h: 1.0, fontSize: 42, color: 'FFFFFF', fontFace: 'Trebuchet MS', bold: true });\ns5.addText('Complete the knowledge check on your onboarding portal.', { x: 0.8, y: 2.5, w: 8, h: 0.6, fontSize: 18, color: 'B2EBF2', fontFace: 'Calibri Light' });\ns5.addShape(pres.shapes.RECTANGLE, { x: 0.8, y: 3.4, w: 3.2, h: 0.65, fill: { color: '02C39A' }, line: { color: '02C39A' } });\ns5.addText('→  Take the Quiz', { x: 0.8, y: 3.4, w: 3.2, h: 0.65, fontSize: 15, color: 'FFFFFF', fontFace: 'Trebuchet MS', bold: true, align: 'center', valign: 'middle' });\ns5.addText('Questions? Reach out to hr-learning@company.com', { x: 0.8, y: 5.0, w: 8, h: 0.4, fontSize: 12, color: 'B2EBF2', fontFace: 'Calibri Light' });\n\npres.writeFile({ fileName: 'Effective_Communication_Module3.pptx' });",
+      "design_principles_used": [
+        "Full-height sidebar as brand element on cover",
+        "Numbered agenda with alternating color squares and divider lines",
+        "Icon+circle cards for four equal concepts",
+        "Color-coded do/don't columns with light background tints",
+        "CTA button using filled rectangle with centered text"
+      ]
+    },
+
+    {
+      "id": "004",
+      "category": "Data/Analytics",
+      "topic": "Annual Marketing Report",
+      "user_prompt": "Create a 5-slide annual marketing performance report with channel breakdown, funnel, and recommendations.",
+      "slide_plan": [
+        { "slide": 1, "type": "cover", "layout": "bold_dark" },
+        { "slide": 2, "type": "overview", "layout": "scorecard_row" },
+        { "slide": 3, "type": "chart", "layout": "pie_plus_bar" },
+        { "slide": 4, "type": "funnel", "layout": "funnel_table" },
+        { "slide": 5, "type": "recommendations", "layout": "numbered_dark" }
+      ],
+      "design_spec": {
+        "palette": "Cherry Bold",
+        "primary": "990011",
+        "secondary": "FCF6F5",
+        "accent": "2F3C7E",
+        "header_font": "Arial Black",
+        "body_font": "Calibri",
+        "title_size": 36,
+        "body_size": 13
+      },
+      "pptxgenjs_code": "const pptxgen = require('pptxgenjs');\nconst pres = new pptxgen();\npres.layout = 'LAYOUT_16x9';\n\n// === SLIDE 1: Cover ===\nconst s1 = pres.addSlide();\ns1.background = { color: '990011' };\ns1.addText('2024 ANNUAL', { x: 0.8, y: 1.0, w: 8, h: 0.6, fontSize: 14, color: 'FFCCCC', fontFace: 'Calibri Light', charSpacing: 8 });\ns1.addText('Marketing\\nPerformance\\nReport', { x: 0.8, y: 1.6, w: 7, h: 2.4, fontSize: 44, color: 'FFFFFF', fontFace: 'Arial Black', bold: true });\ns1.addText('Marketing Intelligence · Prepared January 2025', { x: 0.8, y: 4.8, w: 8, h: 0.4, fontSize: 12, color: 'FFCCCC', fontFace: 'Calibri Light' });\n\n// === SLIDE 2: Scorecard ===\nconst s2 = pres.addSlide();\ns2.background = { color: 'FFFFFF' };\ns2.addText('2024 at a Glance', { x: 0.5, y: 0.3, w: 9, h: 0.65, fontSize: 26, color: '990011', fontFace: 'Arial Black', bold: true });\nconst scores = [\n  { metric: 'Total Leads', value: '48,200', vs: '+24% YoY', up: true },\n  { metric: 'MQLs', value: '11,340', vs: '+18% YoY', up: true },\n  { metric: 'Pipeline ($M)', value: '$22.1M', vs: '+31% YoY', up: true },\n  { metric: 'CAC', value: '$164', vs: '-8% YoY', up: true },\n  { metric: 'ROAS', value: '3.8x', vs: '+0.4 vs 2023', up: true }\n];\nscores.forEach((s, i) => {\n  const x = 0.3 + i * 1.9;\n  s2.addShape(pres.shapes.RECTANGLE, { x, y: 1.1, w: 1.75, h: 2.6, fill: { color: i === 2 ? '990011' : 'FCF6F5' }, line: { color: 'EEEEEE' }, shadow: { type: 'outer', color: '000000', blur: 4, offset: 1, angle: 135, opacity: 0.08 } });\n  s2.addText(s.metric, { x: x + 0.08, y: 1.25, w: 1.6, h: 0.45, fontSize: 10, color: i === 2 ? 'FFCCCC' : '6B7280', fontFace: 'Calibri Light', align: 'center' });\n  s2.addText(s.value, { x: x + 0.05, y: 1.75, w: 1.65, h: 0.7, fontSize: 22, color: i === 2 ? 'FFFFFF' : '990011', fontFace: 'Arial Black', align: 'center', bold: true });\n  s2.addText(s.vs, { x: x + 0.08, y: 2.5, w: 1.6, h: 0.4, fontSize: 10, color: i === 2 ? 'FFD6D6' : '059669', fontFace: 'Calibri Light', align: 'center' });\n});\n// Add a summary note\ns2.addText('All metrics vs FY2023 baseline. MQL threshold: engagement score ≥ 65.', { x: 0.5, y: 4.5, w: 9, h: 0.4, fontSize: 10, color: '9CA3AF', fontFace: 'Calibri Light', italic: true });\n\n// === SLIDE 3: Channel Mix Chart ===\nconst s3 = pres.addSlide();\ns3.background = { color: 'FCF6F5' };\ns3.addText('Channel Performance', { x: 0.5, y: 0.3, w: 9, h: 0.65, fontSize: 26, color: '990011', fontFace: 'Arial Black', bold: true });\ns3.addChart(pres.charts.PIE, [{ name: 'Leads by Channel', labels: ['Organic Search', 'Paid Social', 'Email', 'Events', 'Referral', 'Direct'], values: [32, 24, 18, 12, 8, 6] }], { x: 0.3, y: 1.0, w: 4.8, h: 4.3, chartColors: ['990011','B91C1C','DC2626','EF4444','FCA5A5','FEE2E2'], showPercent: true, showLegend: true, legendPos: 'b', dataLabelColor: 'FFFFFF', dataLabelFontSize: 12 });\ns3.addChart(pres.charts.BAR, [{ name: 'CPL ($)', labels: ['Organic','Referral','Email','Events','Direct','Paid Social'], values: [12, 18, 24, 38, 42, 67] }], { x: 5.5, y: 1.0, w: 4.2, h: 4.3, barDir: 'bar', chartColors: ['990011'], chartArea: { fill: { color: 'FFFFFF' } }, catAxisLabelColor: '4B5563', valAxisLabelColor: '4B5563', valGridLine: { color: 'E5E7EB', size: 0.5 }, catGridLine: { style: 'none' }, showValue: true, dataLabelColor: '990011', showTitle: true, title: 'Cost Per Lead ($)', titleColor: '374151', titleFontSize: 13, showLegend: false });\n\n// === SLIDE 4: Funnel Table ===\nconst s4 = pres.addSlide();\ns4.background = { color: 'FFFFFF' };\ns4.addText('Demand Generation Funnel', { x: 0.5, y: 0.3, w: 9, h: 0.65, fontSize: 26, color: '990011', fontFace: 'Arial Black', bold: true });\nconst headers = [{ text: 'Stage', options: { bold: true, color: 'FFFFFF', fill: { color: '990011' }, align: 'center' } }, { text: 'Volume', options: { bold: true, color: 'FFFFFF', fill: { color: '990011' }, align: 'center' } }, { text: 'Conv. Rate', options: { bold: true, color: 'FFFFFF', fill: { color: '990011' }, align: 'center' } }, { text: '△ vs 2023', options: { bold: true, color: 'FFFFFF', fill: { color: '990011' }, align: 'center' } }];\nconst rows = [['Visitors', '1,240,000', '–', '+29%'], ['Leads', '48,200', '3.9%', '+24%'], ['MQLs', '11,340', '23.5%', '+18%'], ['SQLs', '3,402', '30.0%', '+22%'], ['Opportunities', '1,020', '30.0%', '+15%'], ['Closed Won', '204', '20.0%', '+11%']];\nconst tableData = [headers, ...rows.map((r, ri) => r.map((cell, ci) => ({ text: cell, options: { color: ci === 0 ? '990011' : '374151', bold: ci === 0, fill: { color: ri % 2 === 0 ? 'FFFFFF' : 'FCF6F5' }, align: ci === 0 ? 'left' : 'center' } })))];\ns4.addTable(tableData, { x: 0.5, y: 1.1, w: 9, colW: [3, 2, 2, 2], border: { pt: 0.5, color: 'E5E7EB' }, fontSize: 13, fontFace: 'Calibri', rowH: 0.5 });\n\n// === SLIDE 5: Recommendations (Dark) ===\nconst s5 = pres.addSlide();\ns5.background = { color: '1C0306' };\ns5.addText('2025 Recommendations', { x: 0.7, y: 0.4, w: 8, h: 0.8, fontSize: 30, color: 'FFFFFF', fontFace: 'Arial Black', bold: true });\nconst recs = [\n  ['Double down on Organic Search', 'Lowest CPL at $12; invest in content & technical SEO to protect this channel.'],\n  ['Optimize Paid Social targeting', 'High volume but $67 CPL is unsustainable; refine ICP audiences and cut bottom 20% of ad sets.'],\n  ['Build a referral program', 'Referral CPL is $18 with high close rates; launch a formal partner incentive by Q1.'],\n  ['Improve SQL→Opp handoff', '30% SQL→Opp is strong; focus on speed-to-follow-up to close the gap to 35%.'],\n];\nrecs.forEach(([title, desc], i) => {\n  s5.addShape(pres.shapes.RECTANGLE, { x: 0.6, y: 1.4 + i * 0.95, w: 0.45, h: 0.45, fill: { color: '990011' }, line: { color: '990011' } });\n  s5.addText(String(i + 1), { x: 0.6, y: 1.4 + i * 0.95, w: 0.45, h: 0.45, fontSize: 14, color: 'FFFFFF', fontFace: 'Arial Black', align: 'center', valign: 'middle', bold: true });\n  s5.addText(title, { x: 1.2, y: 1.4 + i * 0.95, w: 8.2, h: 0.3, fontSize: 14, color: 'FFFFFF', fontFace: 'Arial Black', bold: true });\n  s5.addText(desc, { x: 1.2, y: 1.72 + i * 0.95, w: 8.2, h: 0.5, fontSize: 12, color: 'FFCCCC', fontFace: 'Calibri Light' });\n});\n\npres.writeFile({ fileName: '2024_Marketing_Report.pptx' });",
+      "design_principles_used": [
+        "Highlighted center card in scorecard row for emphasis",
+        "Side-by-side pie + bar for dual-view channel analysis",
+        "Styled native table with alternating row fill and colored header row",
+        "Two-line recommendation items (bold title + muted body)",
+        "Dark closing slide with brand red accent squares"
+      ]
+    },
+
+    {
+      "id": "005",
+      "category": "Product",
+      "topic": "Product Roadmap",
+      "user_prompt": "Build a 4-slide product roadmap presentation showing Q1–Q4 milestones, feature priorities, and a vision slide.",
+      "slide_plan": [
+        { "slide": 1, "type": "cover", "layout": "vision_dark" },
+        { "slide": 2, "type": "roadmap_timeline", "layout": "quarterly_bands" },
+        { "slide": 3, "type": "priority_matrix", "layout": "2x2_grid" },
+        { "slide": 4, "type": "team_ask", "layout": "split_layout" }
+      ],
+      "design_spec": {
+        "palette": "Ocean Gradient",
+        "primary": "065A82",
+        "secondary": "1C7293",
+        "accent": "21295C",
+        "header_font": "Cambria",
+        "body_font": "Calibri",
+        "title_size": 36,
+        "body_size": 13
+      },
+      "pptxgenjs_code": "const pptxgen = require('pptxgenjs');\nconst pres = new pptxgen();\npres.layout = 'LAYOUT_16x9';\n\n// === SLIDE 1: Vision Cover ===\nconst s1 = pres.addSlide();\ns1.background = { color: '21295C' };\ns1.addText('2025 PRODUCT ROADMAP', { x: 0.8, y: 1.1, w: 8, h: 0.5, fontSize: 13, color: '7EC8E3', fontFace: 'Calibri Light', charSpacing: 6 });\ns1.addText('Build the future\\nof intelligent work.', { x: 0.8, y: 1.7, w: 8, h: 2.0, fontSize: 42, color: 'FFFFFF', fontFace: 'Cambria', bold: true });\ns1.addText('Product & Engineering All-Hands · Q1 Planning', { x: 0.8, y: 4.9, w: 8, h: 0.4, fontSize: 12, color: '7EC8E3', fontFace: 'Calibri Light' });\n\n// === SLIDE 2: Quarterly Timeline ===\nconst s2 = pres.addSlide();\ns2.background = { color: 'FFFFFF' };\ns2.addText('2025 Roadmap', { x: 0.5, y: 0.25, w: 9, h: 0.65, fontSize: 26, color: '21295C', fontFace: 'Cambria', bold: true });\nconst quarters = [\n  { q: 'Q1', color: '065A82', items: ['Auth v2 & SSO', 'Onboarding redesign', 'Mobile beta launch'] },\n  { q: 'Q2', color: '1C7293', items: ['AI suggestions', 'API v3 public', 'Reporting module'] },\n  { q: 'Q3', color: '028090', items: ['Team workspaces', 'Integrations hub', 'Bulk actions'] },\n  { q: 'Q4', color: '02C39A', items: ['Enterprise tier', 'Audit logs', '2026 planning'] }\n];\nquarters.forEach((q, i) => {\n  const x = 0.4 + i * 2.35;\n  s2.addShape(pres.shapes.RECTANGLE, { x, y: 1.1, w: 2.1, h: 0.55, fill: { color: q.color }, line: { color: q.color } });\n  s2.addText(q.q, { x, y: 1.1, w: 2.1, h: 0.55, fontSize: 18, color: 'FFFFFF', fontFace: 'Cambria', bold: true, align: 'center', valign: 'middle' });\n  s2.addShape(pres.shapes.RECTANGLE, { x: x + 0.95, y: 1.65, w: 0.2, h: 3.3, fill: { color: 'E5E7EB' }, line: { color: 'E5E7EB' } });\n  q.items.forEach((item, j) => {\n    s2.addShape(pres.shapes.OVAL, { x: x + 0.8, y: 1.85 + j * 0.9, w: 0.5, h: 0.5, fill: { color: q.color }, line: { color: 'TRANSPARENT' } });\n    s2.addShape(pres.shapes.RECTANGLE, { x: x, y: 1.9 + j * 0.9, w: 2.1, h: 0.4, fill: { color: 'F0F9FF' }, line: { color: 'DBEAFE' } });\n    s2.addText(item, { x: x + 0.1, y: 1.9 + j * 0.9, w: 1.9, h: 0.4, fontSize: 11, color: '21295C', fontFace: 'Calibri', align: 'center', valign: 'middle' });\n  });\n});\n\n// === SLIDE 3: Priority 2x2 Grid ===\nconst s3 = pres.addSlide();\ns3.background = { color: 'F0F9FF' };\ns3.addText('Feature Priority Matrix', { x: 0.5, y: 0.25, w: 9, h: 0.65, fontSize: 26, color: '21295C', fontFace: 'Cambria', bold: true });\n// Axis labels\ns3.addText('HIGH IMPACT', { x: 0.1, y: 1.1, w: 1.5, h: 0.35, fontSize: 10, color: '065A82', fontFace: 'Calibri Light', charSpacing: 2, align: 'center' });\ns3.addText('LOW IMPACT', { x: 0.1, y: 4.3, w: 1.5, h: 0.35, fontSize: 10, color: '9CA3AF', fontFace: 'Calibri Light', charSpacing: 2, align: 'center' });\ns3.addText('LOW EFFORT →', { x: 1.7, y: 5.1, w: 3.5, h: 0.3, fontSize: 10, color: '9CA3AF', fontFace: 'Calibri Light', charSpacing: 2 });\ns3.addText('HIGH EFFORT →', { x: 5.6, y: 5.1, w: 3.5, h: 0.3, fontSize: 10, color: '9CA3AF', fontFace: 'Calibri Light', charSpacing: 2 });\nconst quadrants = [\n  { label: 'Do First', color: '065A82', x: 1.6, y: 1.0, items: ['AI suggestions\\n(Q2)', 'Auth SSO\\n(Q1)'] },\n  { label: 'Schedule', color: '1C7293', x: 5.6, y: 1.0, items: ['Enterprise\\ntier (Q4)', 'Audit\\nlogs (Q4)'] },\n  { label: 'Delegate', color: '028090', x: 1.6, y: 3.1, items: ['Bulk\\nactions (Q3)', 'Reporting\\nmodule (Q2)'] },\n  { label: 'Deprioritize', color: '9CA3AF', x: 5.6, y: 3.1, items: ['Legacy\\nexport', 'Admin\\nthemes'] }\n];\nquadrants.forEach(q => {\n  s3.addShape(pres.shapes.RECTANGLE, { x: q.x, y: q.y, w: 3.6, h: 1.85, fill: { color: 'FFFFFF' }, shadow: { type: 'outer', color: '000000', blur: 4, offset: 1, angle: 135, opacity: 0.08 }, line: { color: 'DBEAFE' } });\n  s3.addShape(pres.shapes.RECTANGLE, { x: q.x, y: q.y, w: 3.6, h: 0.07, fill: { color: q.color }, line: { color: q.color } });\n  s3.addText(q.label, { x: q.x + 0.1, y: q.y + 0.12, w: 3.4, h: 0.4, fontSize: 13, color: q.color, fontFace: 'Cambria', bold: true });\n  q.items.forEach((item, ii) => { s3.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: q.x + 0.15 + ii * 1.8, y: q.y + 0.62, w: 1.6, h: 0.9, fill: { color: 'F0F9FF' }, line: { color: 'DBEAFE' }, rectRadius: 0.05 }); s3.addText(item, { x: q.x + 0.15 + ii * 1.8, y: q.y + 0.62, w: 1.6, h: 0.9, fontSize: 11, color: '374151', fontFace: 'Calibri', align: 'center', valign: 'middle' }); });\n});\n\n// === SLIDE 4: Team Ask / Split ===\nconst s4 = pres.addSlide();\ns4.background = { color: '21295C' };\ns4.addShape(pres.shapes.RECTANGLE, { x: 5.1, y: 0, w: 4.9, h: 5.625, fill: { color: '065A82' }, line: { color: '065A82' } });\ns4.addText('What we need\\nfrom you', { x: 0.6, y: 1.2, w: 4.0, h: 1.8, fontSize: 34, color: 'FFFFFF', fontFace: 'Cambria', bold: true });\nconst needs = ['Approve Q1 headcount (3 FTEs)', 'Align on AI features scope by Jan 20', 'Confirm enterprise pricing model', 'Unblock API vendor contract'];\nneeds.forEach((n, i) => { s4.addShape(pres.shapes.RECTANGLE, { x: 0.6, y: 3.15 + i * 0.45, w: 0.3, h: 0.3, fill: { color: '02C39A' }, line: { color: '02C39A' } }); s4.addText(n, { x: 1.05, y: 3.15 + i * 0.45, w: 3.5, h: 0.3, fontSize: 12, color: 'B2D8E8', fontFace: 'Calibri Light', valign: 'middle' }); });\ns4.addText('Questions &\\nDiscussion', { x: 5.4, y: 1.4, w: 4.2, h: 1.4, fontSize: 32, color: 'FFFFFF', fontFace: 'Cambria', bold: true });\ns4.addText('Slides available at notion.so/product-roadmap-2025', { x: 5.4, y: 3.2, w: 4.2, h: 0.5, fontSize: 12, color: '7EC8E3', fontFace: 'Calibri Light', italic: true });\n\npres.writeFile({ fileName: 'Product_Roadmap_2025.pptx' });",
+      "design_principles_used": [
+        "Vertical timeline bands per quarter with milestone chips",
+        "2x2 priority matrix with top accent bars per quadrant",
+        "Split-panel layout for closing slide (ask vs Q&A)",
+        "Coordinated ocean blue palette across all slides",
+        "Rounded rectangles for feature pill cards in matrix"
+      ]
+    },
+
+    {
+      "id": "006",
+      "category": "HR/People",
+      "topic": "Employee Engagement Survey Results",
+      "user_prompt": "Create a 4-slide HR presentation showing employee engagement survey results with scores, highlights, and action plan.",
+      "slide_plan": [
+        { "slide": 1, "type": "cover", "layout": "warm_hero" },
+        { "slide": 2, "type": "scores", "layout": "gauge_row" },
+        { "slide": 3, "type": "themes", "layout": "quote_cards" },
+        { "slide": 4, "type": "action_plan", "layout": "three_pillars_dark" }
+      ],
+      "design_spec": {
+        "palette": "Warm Terracotta",
+        "primary": "B85042",
+        "secondary": "E7E8D1",
+        "accent": "A7BEAE",
+        "header_font": "Palatino",
+        "body_font": "Calibri",
+        "title_size": 34,
+        "body_size": 13
+      },
+      "pptxgenjs_code": "const pptxgen = require('pptxgenjs');\nconst pres = new pptxgen();\npres.layout = 'LAYOUT_16x9';\n\n// === SLIDE 1: Cover ===\nconst s1 = pres.addSlide();\ns1.background = { color: 'E7E8D1' };\ns1.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 10, h: 1.1, fill: { color: 'B85042' }, line: { color: 'B85042' } });\ns1.addText('PEOPLE & CULTURE', { x: 0.5, y: 0.0, w: 9, h: 1.1, fontSize: 13, color: 'FFFFFF', fontFace: 'Calibri Light', charSpacing: 4, valign: 'middle' });\ns1.addText('2024 Employee\\nEngagement Survey', { x: 0.8, y: 1.4, w: 8, h: 2.0, fontSize: 42, color: '3D2B1F', fontFace: 'Palatino', bold: true });\ns1.addText('Results & Action Plan', { x: 0.8, y: 3.5, w: 8, h: 0.6, fontSize: 18, color: 'B85042', fontFace: 'Palatino', italic: true });\ns1.addText('Shared with all employees · December 2024', { x: 0.8, y: 4.8, w: 8, h: 0.4, fontSize: 12, color: '6B5B4E', fontFace: 'Calibri Light' });\n\n// === SLIDE 2: Score Cards ===\nconst s2 = pres.addSlide();\ns2.background = { color: 'FFFFFF' };\ns2.addText('Overall Engagement: 74 / 100', { x: 0.5, y: 0.3, w: 9, h: 0.65, fontSize: 26, color: 'B85042', fontFace: 'Palatino', bold: true });\nconst cats = [\n  { name: 'Belonging', score: 81, prev: 76 },\n  { name: 'Growth', score: 69, prev: 64 },\n  { name: 'Manager Trust', score: 77, prev: 74 },\n  { name: 'Workload', score: 62, prev: 65 },\n  { name: 'Recognition', score: 72, prev: 68 }\n];\ncats.forEach((c, i) => {\n  const x = 0.4 + i * 1.9;\n  const fillH = 3.0 * (c.score / 100);\n  const gap = 3.0 - fillH;\n  s2.addShape(pres.shapes.RECTANGLE, { x: x + 0.55, y: 1.1, w: 0.7, h: 3.0, fill: { color: 'F3F4F6' }, line: { color: 'E5E7EB' } });\n  s2.addShape(pres.shapes.RECTANGLE, { x: x + 0.55, y: 1.1 + gap, w: 0.7, h: fillH, fill: { color: c.score >= 75 ? 'A7BEAE' : c.score >= 65 ? 'F9A825' : 'B85042' }, line: { color: 'TRANSPARENT' } });\n  s2.addText(String(c.score), { x: x + 0.35, y: 4.15, w: 1.1, h: 0.45, fontSize: 20, color: '1F2937', fontFace: 'Palatino', bold: true, align: 'center' });\n  const delta = c.score - c.prev;\n  s2.addText((delta >= 0 ? '+' : '') + delta, { x: x + 0.35, y: 4.6, w: 1.1, h: 0.3, fontSize: 11, color: delta >= 0 ? '059669' : 'DC2626', fontFace: 'Calibri Light', align: 'center' });\n  s2.addText(c.name, { x: x + 0.1, y: 5.0, w: 1.6, h: 0.4, fontSize: 11, color: '4B5563', fontFace: 'Calibri Light', align: 'center' });\n});\n\n// === SLIDE 3: Themes / Quotes ===\nconst s3 = pres.addSlide();\ns3.background = { color: 'E7E8D1' };\ns3.addText('What You Told Us', { x: 0.5, y: 0.3, w: 9, h: 0.65, fontSize: 26, color: 'B85042', fontFace: 'Palatino', bold: true });\nconst quotes = [\n  { q: '\"I feel proud of the work I do, but I wish I had more clarity on where I can grow.\"', tag: 'Growth & Career', color: 'A7BEAE' },\n  { q: '\"My manager is supportive — but our team workload feels unsustainable in high quarters.\"', tag: 'Workload', color: 'B85042' },\n  { q: '\"I feel like I belong here. The culture is the best part of this company.\"', tag: 'Belonging', color: '6B8F71' }\n];\nquotes.forEach((q, i) => {\n  const x = 0.4 + i * 3.15;\n  s3.addShape(pres.shapes.RECTANGLE, { x, y: 1.2, w: 2.9, h: 3.8, fill: { color: 'FFFFFF' }, shadow: { type: 'outer', color: '000000', blur: 6, offset: 2, angle: 135, opacity: 0.08 } });\n  s3.addShape(pres.shapes.RECTANGLE, { x, y: 1.2, w: 2.9, h: 0.07, fill: { color: q.color }, line: { color: q.color } });\n  s3.addText('❝', { x: x + 0.15, y: 1.35, w: 0.5, h: 0.5, fontSize: 30, color: q.color });\n  s3.addText(q.q, { x: x + 0.2, y: 1.9, w: 2.5, h: 2.2, fontSize: 12, color: '374151', fontFace: 'Calibri Light', italic: true });\n  s3.addText(q.tag, { x: x + 0.2, y: 4.2, w: 2.5, h: 0.4, fontSize: 11, color: q.color, fontFace: 'Calibri', bold: true });\n});\n\n// === SLIDE 4: Action Plan (Dark) ===\nconst s4 = pres.addSlide();\ns4.background = { color: '3D2B1F' };\ns4.addText('What We\\'re Doing About It', { x: 0.6, y: 0.4, w: 8, h: 0.7, fontSize: 28, color: 'FFFFFF', fontFace: 'Palatino', bold: true });\nconst actions = [\n  { icon: '📈', theme: 'Growth', action: 'Launch individual development plans (IDPs) for all employees by February.', owner: 'L&D', color: 'A7BEAE' },\n  { icon: '⚖️', theme: 'Workload', action: 'Implement quarterly capacity reviews; pilot flex Fridays in Q1.', owner: 'People Ops', color: 'F9A825' },\n  { icon: '🏅', theme: 'Recognition', action: 'Roll out peer recognition platform and monthly spotlight in all-hands.', owner: 'HRBP', color: 'B85042' }\n];\nactions.forEach((a, i) => {\n  const x = 0.5 + i * 3.1;\n  s4.addShape(pres.shapes.RECTANGLE, { x, y: 1.4, w: 2.8, h: 3.6, fill: { color: '4D3529' }, line: { color: '6B5B4E' } });\n  s4.addShape(pres.shapes.RECTANGLE, { x, y: 1.4, w: 2.8, h: 0.07, fill: { color: a.color }, line: { color: a.color } });\n  s4.addText(a.icon, { x: x + 0.1, y: 1.6, w: 0.55, h: 0.55, fontSize: 26 });\n  s4.addText(a.theme, { x: x + 0.15, y: 2.25, w: 2.5, h: 0.45, fontSize: 15, color: a.color, fontFace: 'Palatino', bold: true });\n  s4.addText(a.action, { x: x + 0.15, y: 2.75, w: 2.55, h: 1.8, fontSize: 12, color: 'E7E8D1', fontFace: 'Calibri Light' });\n  s4.addText('Owner: ' + a.owner, { x: x + 0.15, y: 4.7, w: 2.5, h: 0.3, fontSize: 11, color: '9CA3AF', fontFace: 'Calibri Light', italic: true });\n});\n\npres.writeFile({ fileName: 'Employee_Engagement_2024.pptx' });",
+      "design_principles_used": [
+        "Top header bar as brand band on cover",
+        "Vertical fill bars as custom gauge/bar for scores",
+        "Color encoding: green=strong, amber=neutral, red=at-risk",
+        "Quote cards with open-quote icon in brand color",
+        "Dark action cards with emoji icon, color top bar, and owner attribution"
+      ]
+    },
+
+    {
+      "id": "007",
+      "category": "Strategy",
+      "topic": "Competitive Landscape Analysis",
+      "user_prompt": "Create a 4-slide competitive analysis presentation covering market positioning, feature comparison table, SWOT, and strategic takeaways.",
+      "slide_plan": [
+        { "slide": 1, "type": "cover", "layout": "split_dark_light" },
+        { "slide": 2, "type": "competitive_table", "layout": "comparison_matrix" },
+        { "slide": 3, "type": "swot", "layout": "2x2_quadrant" },
+        { "slide": 4, "type": "takeaways", "layout": "numbered_cards" }
+      ],
+      "design_spec": {
+        "palette": "Charcoal Minimal",
+        "primary": "36454F",
+        "secondary": "F2F2F2",
+        "accent": "212121",
+        "header_font": "Arial Black",
+        "body_font": "Calibri",
+        "title_size": 32,
+        "body_size": 13
+      },
+      "pptxgenjs_code": "const pptxgen = require('pptxgenjs');\nconst pres = new pptxgen();\npres.layout = 'LAYOUT_16x9';\n\n// === SLIDE 1: Split Cover ===\nconst s1 = pres.addSlide();\ns1.background = { color: 'FFFFFF' };\ns1.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 5.0, h: 5.625, fill: { color: '36454F' }, line: { color: '36454F' } });\ns1.addText('COMPETITIVE\\nLANDSCAPE', { x: 0.3, y: 1.5, w: 4.3, h: 2.0, fontSize: 36, color: 'FFFFFF', fontFace: 'Arial Black', bold: true });\ns1.addText('2024 Market Analysis', { x: 0.3, y: 3.6, w: 4.3, h: 0.5, fontSize: 14, color: 'B0BEC5', fontFace: 'Calibri Light' });\ns1.addText('Strategy & Corporate Development\\nPrepared Q4 2024', { x: 5.3, y: 4.7, w: 4.3, h: 0.7, fontSize: 11, color: '6B7280', fontFace: 'Calibri Light' });\nconst bullets = ['Market sizing & positioning', 'Feature gap analysis', 'SWOT assessment', 'Strategic recommendations'];\nbullets.forEach((b, i) => { s1.addShape(pres.shapes.RECTANGLE, { x: 5.5, y: 1.3 + i * 0.65, w: 0.3, h: 0.3, fill: { color: '36454F' }, line: { color: '36454F' } }); s1.addText(b, { x: 5.95, y: 1.3 + i * 0.65, w: 3.7, h: 0.3, fontSize: 13, color: '374151', fontFace: 'Calibri Light', valign: 'middle' }); });\n\n// === SLIDE 2: Comparison Table ===\nconst s2 = pres.addSlide();\ns2.background = { color: 'F2F2F2' };\ns2.addText('Feature Comparison Matrix', { x: 0.5, y: 0.3, w: 9, h: 0.65, fontSize: 24, color: '36454F', fontFace: 'Arial Black', bold: true });\nconst headers = [{ text: 'Feature', options: { bold: true, color: 'FFFFFF', fill: { color: '36454F' } } }, { text: 'Us', options: { bold: true, color: 'FFFFFF', fill: { color: '36454F' }, align: 'center' } }, { text: 'Competitor A', options: { bold: true, color: 'FFFFFF', fill: { color: '36454F' }, align: 'center' } }, { text: 'Competitor B', options: { bold: true, color: 'FFFFFF', fill: { color: '36454F' }, align: 'center' } }, { text: 'Competitor C', options: { bold: true, color: 'FFFFFF', fill: { color: '36454F' }, align: 'center' } }];\nconst features = [['AI Automation', '✅', '✅', '❌', '✅'], ['Native Mobile', '✅', '❌', '✅', '❌'], ['API Access', '✅', '✅', '✅', '❌'], ['SSO / SAML', '✅', '✅', '❌', '❌'], ['Offline Mode', '❌', '❌', '✅', '❌'], ['Custom Reports', '✅', '❌', '✅', '✅'], ['24/7 Support', '✅', '❌', '❌', '✅']];\nconst tableData = [headers, ...features.map((r, ri) => r.map((cell, ci) => ({ text: cell, options: { fill: { color: ri % 2 === 0 ? 'FFFFFF' : 'F9F9F9' }, align: ci === 0 ? 'left' : 'center', color: cell === '✅' ? '059669' : cell === '❌' ? 'DC2626' : '374151', fontSize: ci === 0 ? 13 : 15, bold: ci === 0 } })))];\ns2.addTable(tableData, { x: 0.5, y: 1.1, w: 9, colW: [3, 1.5, 1.5, 1.5, 1.5], border: { pt: 0.5, color: 'E5E7EB' }, rowH: 0.48, fontFace: 'Calibri' });\n\n// === SLIDE 3: SWOT ===\nconst s3 = pres.addSlide();\ns3.background = { color: 'FFFFFF' };\ns3.addText('SWOT Analysis', { x: 0.5, y: 0.25, w: 9, h: 0.65, fontSize: 24, color: '36454F', fontFace: 'Arial Black', bold: true });\nconst swot = [\n  { label: 'Strengths', color: '36454F', bg: 'F0F4F8', items: ['Market-leading AI features', 'Strong NPS (72)', 'Mobile-first architecture'], x: 0.4, y: 1.1 },\n  { label: 'Weaknesses', color: 'B45309', bg: 'FFFBEB', items: ['No offline mode', 'Limited enterprise tier', 'Smaller partner ecosystem'], x: 5.2, y: 1.1 },\n  { label: 'Opportunities', color: '065F46', bg: 'F0FDF4', items: ['APAC market untapped', 'Enterprise upsell path', 'API marketplace integration'], x: 0.4, y: 3.2 },\n  { label: 'Threats', color: 'DC2626', bg: 'FFF5F5', items: ['Comp A adding AI in Q2', 'Price compression in SMB', 'Talent competition increasing'], x: 5.2, y: 3.2 }\n];\nswot.forEach(q => {\n  s3.addShape(pres.shapes.RECTANGLE, { x: q.x, y: q.y, w: 4.4, h: 2.0, fill: { color: q.bg }, line: { color: 'E5E7EB' } });\n  s3.addShape(pres.shapes.RECTANGLE, { x: q.x, y: q.y, w: 4.4, h: 0.07, fill: { color: q.color }, line: { color: q.color } });\n  s3.addText(q.label, { x: q.x + 0.15, y: q.y + 0.12, w: 4.1, h: 0.4, fontSize: 14, color: q.color, fontFace: 'Arial Black', bold: true });\n  q.items.forEach((item, j) => { s3.addText('• ' + item, { x: q.x + 0.2, y: q.y + 0.6 + j * 0.4, w: 4.0, h: 0.35, fontSize: 12, color: '374151', fontFace: 'Calibri Light' }); });\n});\n\n// === SLIDE 4: Strategic Takeaways ===\nconst s4 = pres.addSlide();\ns4.background = { color: '36454F' };\ns4.addText('Strategic Takeaways', { x: 0.6, y: 0.35, w: 8, h: 0.7, fontSize: 26, color: 'FFFFFF', fontFace: 'Arial Black', bold: true });\nconst takeaways = [\n  { num: '01', title: 'Defend the AI lead', body: 'Ship v2 before Comp A\\'s Q2 update. This is our primary differentiator.' },\n  { num: '02', title: 'Close the offline gap', body: 'Offline mode is a blocker for field-heavy enterprise deals. Roadmap for Q3.' },\n  { num: '03', title: 'Launch enterprise tier', body: 'Q4 target. Package SSO, audit logs, SLA, and custom onboarding together.' },\n  { num: '04', title: 'Enter APAC proactively', body: 'No strong incumbent in SEA. Pilot Singapore + Australia with local partner.' }\n];\ntakeaways.forEach((t, i) => {\n  const x = 0.5 + (i % 2) * 4.7, y = 1.25 + Math.floor(i / 2) * 1.85;\n  s4.addShape(pres.shapes.RECTANGLE, { x, y, w: 4.3, h: 1.6, fill: { color: '4A5D6B' }, line: { color: '5A6E7C' } });\n  s4.addText(t.num, { x: x + 0.15, y: y + 0.15, w: 0.7, h: 0.7, fontSize: 24, color: 'B0BEC5', fontFace: 'Arial Black', bold: true });\n  s4.addText(t.title, { x: x + 0.9, y: y + 0.15, w: 3.25, h: 0.45, fontSize: 14, color: 'FFFFFF', fontFace: 'Arial Black', bold: true });\n  s4.addText(t.body, { x: x + 0.9, y: y + 0.65, w: 3.25, h: 0.8, fontSize: 12, color: 'B0C4CE', fontFace: 'Calibri Light' });\n});\n\npres.writeFile({ fileName: 'Competitive_Analysis_2024.pptx' });",
+      "design_principles_used": [
+        "Split cover panel with agenda bullets on light side",
+        "Comparison table with emoji checkmarks and color coding",
+        "SWOT 2x2 quadrant grid with per-quadrant color coding",
+        "Numbered takeaway cards in 2x2 grid on dark background",
+        "Consistent charcoal minimal palette throughout"
+      ]
+    },
+
+    {
+      "id": "008",
+      "category": "Finance",
+      "topic": "Budget Proposal",
+      "user_prompt": "Create a 4-slide budget proposal for a new department initiative, with cost breakdown, ROI projection, and approval request.",
+      "slide_plan": [
+        { "slide": 1, "type": "executive_summary", "layout": "light_banner" },
+        { "slide": 2, "type": "cost_breakdown", "layout": "donut_plus_table" },
+        { "slide": 3, "type": "roi_projection", "layout": "line_chart" },
+        { "slide": 4, "type": "approval", "layout": "dark_bold" }
+      ],
+      "design_spec": {
+        "palette": "Forest & Moss",
+        "primary": "2C5F2D",
+        "secondary": "97BC62",
+        "accent": "F5F5F5",
+        "header_font": "Cambria",
+        "body_font": "Calibri",
+        "title_size": 32,
+        "body_size": 13
+      },
+      "pptxgenjs_code": "const pptxgen = require('pptxgenjs');\nconst pres = new pptxgen();\npres.layout = 'LAYOUT_16x9';\n\n// === SLIDE 1: Executive Summary ===\nconst s1 = pres.addSlide();\ns1.background = { color: 'F5F5F5' };\ns1.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 10, h: 0.8, fill: { color: '2C5F2D' }, line: { color: '2C5F2D' } });\ns1.addText('BUDGET PROPOSAL — DEPARTMENT INITIATIVE 2025', { x: 0.5, y: 0.0, w: 9, h: 0.8, fontSize: 12, color: 'FFFFFF', fontFace: 'Calibri Light', charSpacing: 2, valign: 'middle' });\ns1.addText('Executive Summary', { x: 0.6, y: 1.1, w: 8, h: 0.8, fontSize: 30, color: '2C5F2D', fontFace: 'Cambria', bold: true });\nconst summaryPoints = [\n  ['Initiative', 'Customer Success Platform Upgrade'],\n  ['Total Ask', '$480,000 over 12 months'],\n  ['Payback Period', '14 months'],\n  ['Expected ROI', '220% over 3 years'],\n  ['Sponsor', 'VP Customer Experience'],\n  ['Decision Needed By', 'January 31, 2025']\n];\nsummaryPoints.forEach(([label, val], i) => {\n  s1.addShape(pres.shapes.LINE, { x: 0.6, y: 2.1 + i * 0.52, w: 8.8, h: 0, line: { color: 'D1D5DB', width: 0.5 } });\n  s1.addText(label, { x: 0.6, y: 2.14 + i * 0.52, w: 3.0, h: 0.45, fontSize: 12, color: '6B7280', fontFace: 'Calibri Light' });\n  s1.addText(val, { x: 3.8, y: 2.14 + i * 0.52, w: 5.5, h: 0.45, fontSize: 13, color: '1F2937', fontFace: 'Calibri', bold: true });\n});\n\n// === SLIDE 2: Cost Breakdown ===\nconst s2 = pres.addSlide();\ns2.background = { color: 'FFFFFF' };\ns2.addText('Budget Breakdown', { x: 0.5, y: 0.3, w: 9, h: 0.65, fontSize: 26, color: '2C5F2D', fontFace: 'Cambria', bold: true });\ns2.addChart(pres.charts.DOUGHNUT, [{ name: 'Budget', labels: ['Software Licenses', 'Implementation', 'Training', 'Headcount', 'Contingency'], values: [144000, 120000, 48000, 132000, 36000] }], { x: 0.3, y: 1.1, w: 4.5, h: 4.2, chartColors: ['2C5F2D','97BC62','5A8A3C','C5E1A5','E8F5E9'], showPercent: true, showLegend: true, legendPos: 'b', holeSize: 55 });\nconst rows = [['Software Licenses', '$144,000', '30%'], ['Headcount (2 FTEs)', '$132,000', '27.5%'], ['Implementation', '$120,000', '25%'], ['Training', '$48,000', '10%'], ['Contingency (7.5%)', '$36,000', '7.5%'], ['TOTAL', '$480,000', '100%']];\nconst tHeaders = [{ text: 'Category', options: { bold: true, color: 'FFFFFF', fill: { color: '2C5F2D' } } }, { text: 'Amount', options: { bold: true, color: 'FFFFFF', fill: { color: '2C5F2D' }, align: 'center' } }, { text: 'Share', options: { bold: true, color: 'FFFFFF', fill: { color: '2C5F2D' }, align: 'center' } }];\nconst tData = [tHeaders, ...rows.map((r, ri) => r.map((cell, ci) => ({ text: cell, options: { fill: { color: ri === rows.length - 1 ? '2C5F2D' : ri % 2 === 0 ? 'FFFFFF' : 'F0F7EE' }, color: ri === rows.length - 1 ? 'FFFFFF' : ci === 0 ? '374151' : '1F2937', bold: ri === rows.length - 1, align: ci === 0 ? 'left' : 'center' } })))];\ns2.addTable(tData, { x: 5.0, y: 1.2, w: 4.7, colW: [2.5, 1.2, 1.0], border: { pt: 0.5, color: 'E5E7EB' }, rowH: 0.48, fontFace: 'Calibri', fontSize: 12 });\n\n// === SLIDE 3: ROI Projection ===\nconst s3 = pres.addSlide();\ns3.background = { color: 'F0F7EE' };\ns3.addText('ROI Projection (3-Year)', { x: 0.5, y: 0.3, w: 9, h: 0.65, fontSize: 26, color: '2C5F2D', fontFace: 'Cambria', bold: true });\ns3.addChart(pres.charts.LINE, [\n  { name: 'Cumulative Cost ($K)', labels: ['Q1','Q2','Q3','Q4','Y2 Q1','Y2 Q2','Y2 Q3','Y2 Q4','Y3 Q1','Y3 Q2','Y3 Q3','Y3 Q4'], values: [120,240,360,480,510,540,570,600,620,640,660,680] },\n  { name: 'Cumulative Benefit ($K)', labels: ['Q1','Q2','Q3','Q4','Y2 Q1','Y2 Q2','Y2 Q3','Y2 Q4','Y3 Q1','Y3 Q2','Y3 Q3','Y3 Q4'], values: [20,60,140,280,440,600,760,920,1080,1240,1400,1560] }\n], { x: 0.5, y: 1.1, w: 9, h: 4.2, chartColors: ['B0BEC5','2C5F2D'], lineSize: 3, lineSmooth: true, chartArea: { fill: { color: 'FFFFFF' } }, catAxisLabelColor: '6B7280', valAxisLabelColor: '6B7280', valGridLine: { color: 'E5E7EB', size: 0.5 }, catGridLine: { style: 'none' }, showLegend: true, legendPos: 'b' });\n\n// === SLIDE 4: Approval Request ===\nconst s4 = pres.addSlide();\ns4.background = { color: '2C5F2D' };\ns4.addText('Approval Request', { x: 0.8, y: 0.6, w: 8, h: 0.7, fontSize: 30, color: 'FFFFFF', fontFace: 'Cambria', bold: true });\nconst approvals = [{ label: 'Total Budget', val: '$480,000', note: 'FY2025 OPEX + CAPEX split' }, { label: 'Headcount', val: '2 FTEs', note: 'CSM Engineer + Analyst' }, { label: 'Start Date', val: 'Feb 1, 2025', note: 'Pending board sign-off' }];\napprovals.forEach((a, i) => {\n  s4.addShape(pres.shapes.RECTANGLE, { x: 0.8 + i * 2.9, y: 1.7, w: 2.6, h: 1.8, fill: { color: '3D7A3E' }, line: { color: '4A8C4B' } });\n  s4.addText(a.label, { x: 0.8 + i * 2.9 + 0.15, y: 1.85, w: 2.3, h: 0.4, fontSize: 11, color: 'C5E1A5', fontFace: 'Calibri Light', align: 'center' });\n  s4.addText(a.val, { x: 0.8 + i * 2.9 + 0.1, y: 2.25, w: 2.4, h: 0.65, fontSize: 24, color: 'FFFFFF', fontFace: 'Cambria', bold: true, align: 'center' });\n  s4.addText(a.note, { x: 0.8 + i * 2.9 + 0.1, y: 2.9, w: 2.4, h: 0.4, fontSize: 10, color: 'A5D6A7', fontFace: 'Calibri Light', align: 'center', italic: true });\n});\ns4.addText('Approvers: CFO · VP Finance · Department Head', { x: 0.8, y: 4.0, w: 8, h: 0.4, fontSize: 13, color: 'C5E1A5', fontFace: 'Calibri Light' });\ns4.addText('Submit signed approval form to finance@company.com by Jan 31.', { x: 0.8, y: 4.5, w: 8, h: 0.4, fontSize: 12, color: '81C784', fontFace: 'Calibri Light', italic: true });\n\npres.writeFile({ fileName: 'Budget_Proposal_2025.pptx' });",
+      "design_principles_used": [
+        "Header band with metadata row for branded cover",
+        "Key-value row list with divider lines for executive summary",
+        "Doughnut chart paired with formatted cost table",
+        "Two-series line chart showing cost vs benefit crossover",
+        "Dark approval slide with metric cards and named approvers"
+      ]
+    }
+
+  ],
+
+  "template_patterns": {
+    "slide_types": {
+      "title_dark": "Dark background, large heading, subtitle, light footer text. No accent line under title — use whitespace or background color instead.",
+      "kpi_cards": "Row of equally-sized white cards on light background. Each card: colored top accent bar (0.07\" tall), metric label (small, muted), large number (brand primary), delta vs prior period (green/red).",
+      "bar_chart": "Native pptxgenjs chart. Always style: custom chartColors, clean chartArea fill, muted axis labels, subtle valGridLine, no catGridLine, showValue with matching dataLabelColor.",
+      "line_chart": "Native pptxgenjs chart. lineSmooth: true, lineSize: 3. Same axis/grid styling as bar_chart.",
+      "two_column": "Two equal-width cards side by side. Each has colored top bar matching its theme (green=positive, red=negative). Header in matching color.",
+      "icon_row": "4 cards, each with oval icon circle at top, bold title, description text below. Cards same width, same height.",
+      "quote_card": "White card with colored top bar, large open-quote glyph, italic body text, tag label in brand color at bottom.",
+      "swot_2x2": "4 quadrant boxes in 2x2 grid. Each has colored top bar, bold colored header, bullet list items. Color code: strengths=dark, weaknesses=amber, opportunities=green, threats=red.",
+      "numbered_dark": "Dark background, numbered items using squares or circles with brand color fill, white number text, item title + description.",
+      "comparison_table": "pptxgenjs addTable with colored header row, alternating row fills, emoji checkmarks (✅/❌) color-coded green/red.",
+      "timeline": "Quarterly columns, each with colored header rectangle, vertical center bar (light gray), milestone chip shapes per item.",
+      "funnel_table": "Simple addTable with stage names and conversion rates, colored header, alternating rows.",
+      "split_cover": "Left panel: dark fill, large title. Right panel: white background, agenda bullets with colored square markers."
+    },
+    "anti_patterns": [
+      "Never use '#' before hex color values — causes file corruption",
+      "Never use accent lines under titles — hallmark of low-quality AI output",
+      "Never add colored header/footer bars just for decoration",
+      "Never default to cream/beige backgrounds (F5F5DC, FAF0E6, etc.) — use white or brand palette",
+      "Never encode opacity in 8-char hex colors — use the opacity property",
+      "Never reuse option objects across multiple addShape/addText calls — PptxGenJS mutates them",
+      "Never use unicode bullets (•) — use bullet: true in text options",
+      "Never use negative shadow offsets — corrupts file; use angle: 270 for upward shadows",
+      "Never use ROUNDED_RECTANGLE with rectangular accent overlays — corners won't align",
+      "Never stack all text in text-only slides — always add at least one visual element"
+    ],
+    "color_application": {
+      "rule": "One dominant color (60-70% visual weight), 1-2 supporting tones, one sharp accent",
+      "dark_light_sandwich": "Dark title slide + dark closing slide, light content slides in between",
+      "card_accent_bar": "Top 0.06-0.08\" colored bar on white cards provides color identity without overwhelming",
+      "shadow_values": "Standard card shadow: type=outer, color=000000, blur=6-8, offset=2, angle=135, opacity=0.08-0.12"
+    },
+    "typography": {
+      "title": "36-44pt bold, brand primary or white",
+      "section_header": "20-28pt bold, brand primary",
+      "body": "13-15pt, Calibri Light, dark gray (#374151 or #4B5563)",
+      "caption": "10-12pt, muted gray (#6B7280 or #9CA3AF), often italic",
+      "kpi_value": "28-48pt bold, brand primary or white",
+      "kpi_label": "10-12pt Calibri Light, muted gray",
+      "charSpacing_for_labels": "Use charSpacing: 4-8 on uppercase sub-labels/eyebrows for premium feel"
+    },
+    "spacing": {
+      "slide_margin": "Minimum 0.4-0.5 inches from slide edge",
+      "between_cards": "0.15-0.2 inches gap between cards in a row",
+      "between_content_blocks": "0.3-0.5 inches vertical gap",
+      "title_to_content": "0.3-0.4 inches below title before content starts"
+    }
+  },
+
+  "fine_tuning_instructions": {
+    "input_format": "User natural language prompt describing presentation topic, audience, and number of slides",
+    "output_format": "Valid pptxgenjs Node.js code that creates a complete, visually professional .pptx file",
+    "training_objective": "Model should learn to: (1) select an appropriate color palette for the topic, (2) choose varied layouts per slide, (3) produce syntactically correct pptxgenjs code, (4) apply all anti-patterns as hard constraints",
+    "evaluation_criteria": [
+      "Does the code run without errors?",
+      "Are all hex colors 6 chars with no # prefix?",
+      "Does each slide have at least one non-text visual element (shape, chart, or image)?",
+      "Are layouts varied across slides (no two slides identical structure)?",
+      "Is the color palette consistent and topic-appropriate?",
+      "Does the closing/title slide use a dark background?",
+      "Are there no accent underlines under titles?"
+    ]
+  }
+}

@@ -135,29 +135,30 @@ const MailApp = () => {
 
   return (
     <AppLayout appName="Mail" appIcon={MailIcon} appColor="#7C3AED">
-      <div className="flex h-full gap-0 overflow-hidden">
+      <div className="flex flex-col md:flex-row h-full gap-0 overflow-hidden relative">
         {/* Sidebar */}
-        <div className="w-44 shrink-0 flex flex-col border-r px-3 py-4 gap-1" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-          <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="sidebar-item mb-1" style={{ color: 'var(--text-2)' }}>
-            <Home size={15} /> Home
+        <div className={`md:w-44 shrink-0 flex flex-row md:flex-col border-b md:border-b-0 md:border-r px-3 py-2 md:py-4 gap-1 md:gap-1 overflow-x-auto md:overflow-x-visible no-scrollbar ${selected ? 'hidden md:flex' : 'flex'}`} style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+          <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="sidebar-item shrink-0 mb-0 md:mb-1" style={{ color: 'var(--text-2)' }}>
+            <Home size={15} /> <span className="hidden md:inline">Home</span>
           </button>
-          <button onClick={() => setComposing(true)} className="btn btn-primary w-full mb-4">
-            <Plus size={15} /> Compose
+          <button onClick={() => setComposing(true)} className="btn btn-primary shrink-0 w-auto md:w-full mb-0 md:mb-4 px-3 md:px-auto">
+            <Plus size={15} /> <span className="hidden md:inline">Compose</span>
           </button>
           {folders.map(({ icon, label, count }) => (
             <button key={label} onClick={() => { setFolder(label); setSelected(null); }}
-              className="sidebar-item"
+              className="sidebar-item shrink-0 whitespace-nowrap"
               style={{ background: folder === label ? 'var(--accent-muted)' : 'transparent', color: folder === label ? 'var(--accent)' : 'var(--text-2)' }}
             >
               {icon}
-              <span className="flex-1 text-left">{label}</span>
+              <span className="flex-1 text-left hidden md:inline">{label}</span>
+              <span className="md:hidden">{label}</span>
               {count > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'var(--accent)', color: 'white' }}>{count}</span>}
             </button>
           ))}
         </div>
 
         {/* Thread List */}
-        <div className="w-80 shrink-0 flex flex-col overflow-hidden border-r" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+        <div className={`md:w-80 shrink-0 flex-col overflow-hidden border-r ${selected ? 'hidden md:flex' : 'flex flex-1 md:flex-initial'}`} style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
           <div className="p-3 border-b" style={{ borderColor: 'var(--border)' }}>
             <div className="relative">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-3)' }} />
@@ -201,7 +202,7 @@ const MailApp = () => {
         </div>
 
         {/* Reading Pane */}
-        <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
+        <div className={`flex-1 flex-col overflow-hidden ${selected ? 'flex' : 'hidden md:flex'}`} style={{ background: 'var(--bg)' }}>
           {selected ? (
             <>
               <div className="px-6 py-4 border-b flex items-start justify-between" style={{ borderColor: 'var(--border)' }}>

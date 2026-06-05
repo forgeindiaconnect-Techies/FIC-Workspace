@@ -64,7 +64,7 @@ export default function Show() {
         const newSlides = response.slides.map((s: any, idx: number) => ({
           id: `${Date.now()}_${idx}`,
           title: s.title || 'Generated Slide',
-          content: s.content || s.points?.map((p: string) => `• ${p}`).join('\n') || ''
+          content: Array.isArray(s.content) ? s.content.join('\n') : (s.content || s.points?.map((p: string) => `• ${p}`).join('\n') || '')
         }));
         setSlides([...slides, ...newSlides]);
       }
