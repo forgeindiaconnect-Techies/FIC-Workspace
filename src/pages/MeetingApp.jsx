@@ -814,6 +814,23 @@ const MeetingApp = () => {
       return;
     }
 
+    if (!streamRef.current && !permissionError) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, 
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
+        });
+        streamRef.current = stream;
+        if (userVideo.current) userVideo.current.srcObject = stream;
+        setPermissionError(null);
+      } catch (err) {
+        console.error("Media error during join:", err);
+        setPermissionError(err.name);
+        setIsVerifying(false);
+        return;
+      }
+    }
+
     try {
       let activePassword = password;
       if (intent === 'create') {

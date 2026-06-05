@@ -288,7 +288,7 @@ wssWebRtc.on('connection', (ws) => {
       const user = await User.findById(decoded.userId).catch(() => null);
       if (!user) return sendJson(ws, { type: 'error', message: 'User not found' });
 
-      peerId = user._id.toString();
+      peerId = user._id.toString() + '_' + Math.random().toString(36).substring(2, 9);
       meetingId = String(roomKey);
 
       if (webrtcRoomsMeta.get(meetingId)?.locked) {
