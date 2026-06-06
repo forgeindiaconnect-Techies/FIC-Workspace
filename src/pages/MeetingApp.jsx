@@ -761,9 +761,8 @@ const MeetingApp = () => {
             audioEnabled: p.audioEnabled,
             videoEnabled: p.videoEnabled,
           }));
-          
           if (sendWsRef.current) {
-             sendWsRef.current('media-state', { audioEnabled: !isMutedRef.current, videoEnabled: videoOnRef.current });
+             sendWsRef.current('media-state', { audioEnabled: !isMutedRef.current, videoEnabled: videoOnRef.current, isScreenSharing: isScreenSharing });
           }
           
           if (peers.some(peer => peer.name === 'Forge India Connect AI')) {
@@ -934,6 +933,20 @@ const MeetingApp = () => {
                const updatedPeer = { ...p, audioEnabled: msg.audioEnabled, videoEnabled: msg.videoEnabled, isScreenSharing: msg.isScreenSharing };
                if (msg.isScreenSharing === false) {
                   updatedPeer.screenStream = null;
+               } else if (msg.isScreenSharing && !updatedPeer.screenStream && updatedPeer.stream) {
+                  // Self-healing: unbundle merged tracks from Mobile WebViews
+                  const videoTracks = updatedPeer.stream.getVideoTracks();
+                  if (videoTracks.length > 1) {
+                     const track = videoTracks[videoTracks.length - 1];
+                     updatedPeer.screenStream = new MediaStream([track]);
+                     updatedPeer.stream.removeTrack(track);
+                     setTimeout(() => setPinnedUser(`${msg.fromPeerId}_screen`), 100);
+                  } else if (videoTracks.length === 1 && msg.videoEnabled === false) {
+                     const track = videoTracks[0];
+                     updatedPeer.screenStream = new MediaStream([track]);
+                     updatedPeer.stream.removeTrack(track);
+                     setTimeout(() => setPinnedUser(`${msg.fromPeerId}_screen`), 100);
+                  }
                }
                return updatedPeer;
             }
