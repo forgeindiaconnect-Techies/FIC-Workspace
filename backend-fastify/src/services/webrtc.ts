@@ -142,13 +142,14 @@ export function handleWebRtcSignalling(ws: WebSocket) {
     }
 
     if (type === 'media-state') {
-      const { audioEnabled, videoEnabled } = data;
+      const { audioEnabled, videoEnabled, isScreenSharing } = data;
       broadcastToRoom(meetingId, peerId, {
         type: 'peer-media-state',
         fromPeerId: peerId,
         peerId,
         audioEnabled,
         videoEnabled,
+        isScreenSharing,
       });
       return;
     }

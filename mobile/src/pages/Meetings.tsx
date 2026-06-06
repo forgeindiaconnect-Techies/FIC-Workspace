@@ -29,6 +29,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 
 // expo-camera: works in Expo Go AND in APK builds (no custom native code needed)
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 
@@ -97,6 +98,21 @@ export default function Meetings() {
 
   React.useEffect(() => {
     api.meetings.getRooms().then(setRooms).catch(() => {});
+  }, []);
+
+  React.useEffect(() => {
+    if (!activeRoom) {
+      AsyncStorage.getItem('activeMeeting').then(saved => {
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (parsed && parsed.id) {
+              enterPersistentRoom(parsed);
+            }
+          } catch(e){}
+        }
+      });
+    }
   }, []);
 
   // In-call state
@@ -1081,6 +1097,7 @@ export default function Meetings() {
       }
 
       setActiveRoom(room);
+      AsyncStorage.setItem('activeMeeting', JSON.stringify(room)).catch(() => {});
       setIsMuted(false);
       setIsVideoOff(false);
       setIsSharing(false);
@@ -1130,6 +1147,7 @@ export default function Meetings() {
     setLocalScreenStream(null);
     setLocalStream(null);
     setActiveRoom(null);
+    AsyncStorage.removeItem('activeMeeting').catch(() => {});
     setSidePanel(null);
     setIsMuted(false);
     setIsVideoOff(false);
@@ -1938,18 +1956,18 @@ export default function Meetings() {
                     const senders = pc.getSenders();
                     const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
                     if (videoSender) videoSender.replaceTrack(screenTrack);
+                    else pc.addTrack(screenTrack, displayStream);
                   });
                   screenTrack.onended = () => {
                      setIsSharing(false);
                      setLocalScreenStream(null);
                      const camTrack = localStreamRef.current?.getVideoTracks()[0];
-                     if (camTrack) {
-                       peerConnectionsRef.current.forEach((pc: any) => {
-                          const senders = pc.getSenders();
-                          const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
-                          if (videoSender) videoSender.replaceTrack(camTrack);
-                       });
-                     }
+                     peerConnectionsRef.current.forEach((pc: any) => {
+                        const senders = pc.getSenders();
+                        const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
+                        if (videoSender && camTrack) videoSender.replaceTrack(camTrack);
+                        else if (videoSender && !camTrack) pc.removeTrack(videoSender);
+                     });
                   };
                 }
                 
@@ -1966,13 +1984,12 @@ export default function Meetings() {
                  setLocalScreenStream(null);
                }
                const camTrack = localStreamRef.current?.getVideoTracks()[0];
-               if (camTrack) {
-                 peerConnectionsRef.current.forEach((pc: any) => {
-                    const senders = pc.getSenders();
-                    const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
-                    if (videoSender) videoSender.replaceTrack(camTrack);
-                 });
-               }
+               peerConnectionsRef.current.forEach((pc: any) => {
+                  const senders = pc.getSenders();
+                  const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
+                  if (videoSender && camTrack) videoSender.replaceTrack(camTrack);
+                  else if (videoSender && !camTrack) pc.removeTrack(videoSender);
+               });
             }
           }}>
             <MonitorUp size={20} color={isSharing ? '#3b82f6' : '#fff'} />
@@ -2455,8 +2472,8 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   videoTile: { backgroundColor: '#111827', borderRadius: 16, overflow: 'hidden', position: 'relative' },
   videoTileFull: { width: '100%', aspectRatio: 4 / 3 },
   videoTileHalf: { width: '48%', aspectRatio: 1 },
-  videoTileThird: { width: '31%', aspectRatio: 1 },
-  videoTileQuarter: { width: '23%', aspectRatio: 1 },
+  videoTileThird: { width: isMobile ? '48%' : '31%', aspectRatio: 1 },
+  videoTileQuarter: { width: isMobile ? '48%' : '23%', aspectRatio: 1 },
   videoGridPinned: { flex: 1, flexDirection: 'column' as const, padding: 6, gap: 6 },
   pinnedTile: { flex: 1, backgroundColor: '#111827', borderRadius: 16, overflow: 'hidden' as const, position: 'relative' as const, minHeight: 200 },
   unpinnedStrip: { maxHeight: 110, flexShrink: 0 },

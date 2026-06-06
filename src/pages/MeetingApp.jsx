@@ -9,7 +9,7 @@ import {
   Settings, Users, Monitor, MessageSquare, Link, X, 
   Shield, Maximize2, Minimize2, Send, Paperclip, Disc, Hand, MoreVertical, Copy, Check, Loader2, AlertCircle,
   Share2, LayoutGrid, Ghost, ChevronUp, Smile, Pin, PinOff, Clock, Radio, Hexagon
-, Wand2, Sparkles, FlipHorizontal, Lock, Play, PhoneOff, ChevronRight, ChevronLeft, Home} from 'lucide-react';
+, Wand2, Sparkles, FlipHorizontal, Lock, Play, PhoneOff, ChevronRight, ChevronLeft, Home, Circle} from 'lucide-react';
 import LogoImage from '../assets/landing-logo.png';
 
 // --- SUB-COMPONENTS ---
@@ -56,40 +56,32 @@ const RemoteVideo = ({ peer, isSpeaking, mobileStyle }) => {
     } 
   }, [peer.stream]);
 
-  const actualHasVideo = peer.videoEnabled !== false && hasVideo;
+  const actualHasVideo = (peer.videoEnabled !== false || peer.isScreenSharing) && hasVideo;
+
+  useEffect(() => {
+    if (actualHasVideo && videoRef.current) {
+      videoRef.current.play().catch(e => console.warn("Remote video play error:", e));
+    }
+  }, [actualHasVideo]);
 
   return (
-    <div className={`relative rounded-[32px] bg-[#1a1b1e] border-2 transition-all duration-500 overflow-hidden group aspect-video flex items-center justify-center
-      ${isSpeaking ? 'border-[#5244e1] shadow-[0_0_30px_rgba(82,68,225,0.2)]' : 'border-white/5'}`}>
-       <video playsInline ref={videoRef} autoPlay className={`w-full h-full object-cover ${!actualHasVideo ? 'hidden' : ''}`} />
+    <div className={`absolute inset-0 w-full h-full bg-[#1a1b1e] transition-all duration-500 overflow-hidden flex items-center justify-center
+      ${isSpeaking ? 'ring-2 ring-inset ring-[#5244e1] shadow-[inset_0_0_30px_rgba(82,68,225,0.2)]' : ''}`}>
+       <video playsInline ref={videoRef} autoPlay className={`w-full h-full ${peer.isScreenSharing ? 'object-contain' : 'object-cover'} ${!actualHasVideo ? 'hidden' : ''}`} />
        {!actualHasVideo && (
          mobileStyle ? (
             <div className="absolute inset-0 bg-violet-600 flex flex-col items-center justify-center">
-               <span className="text-4xl md:text-6xl font-black text-white/50">{peer.name?.charAt(0)?.toUpperCase()}</span>
+               <span className="text-4xl md:text-6xl font-black text-white">{peer.name?.charAt(0)?.toUpperCase()}</span>
             </div>
          ) : <UserAvatar name={peer.name} profilePic={peer.profilePic} />
        )}
        
        {isSpeaking && (
-          <div className="absolute top-4 right-4 bg-[#5244e1] px-3 py-1 rounded-full flex items-center gap-1.5 animate-pulse z-10">
+          <div className="absolute top-3 right-3 bg-[#5244e1] px-3 py-1 rounded-full flex items-center gap-1.5 animate-pulse z-10 shadow-lg">
              <div className="w-1.5 h-1.5 bg-white rounded-full" />
              <span className="text-[8px] font-black uppercase tracking-widest text-white">Speaking</span>
           </div>
        )}
-
-       <div className={`absolute bottom-4 left-4 right-4 flex items-center justify-between z-10 ${mobileStyle ? 'px-2' : ''}`}>
-          <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-xl text-[10px] font-bold border border-white/10 text-white">
-             {peer.name}
-          </div>
-          <div className="flex gap-2">
-             <div className="bg-black/40 backdrop-blur-md px-2 py-1.5 rounded-xl border border-white/10 text-white">
-                {peer.audioEnabled !== false ? <Mic size={12} /> : <MicOff size={12} className="text-red-500" />}
-             </div>
-             <div className="bg-black/40 backdrop-blur-md px-2 py-1.5 rounded-xl border border-white/10 text-white">
-                {peer.videoEnabled !== false ? <VideoIcon size={12} /> : <VideoOff size={12} className="text-red-500" />}
-             </div>
-          </div>
-       </div>
     </div>
   );
 };
@@ -108,7 +100,8 @@ const MeetingApp = () => {
         navigate('/login');
      }
   }, [auth.user, navigate]);
-  
+
+
   const queryParams = new URLSearchParams(location.search);
   const urlPassword = queryParams.get('pwd');
   const urlIntent = location.state?.intent || queryParams.get('intent');
@@ -152,6 +145,7 @@ const MeetingApp = () => {
   const [hostControlsTab, setHostControlsTab] = useState('meeting');
   const [waitingRoomEnabled, setWaitingRoomEnabled] = useState(false);
   const [pinnedUser, setPinnedUser] = useState(null); // 'local' or a peerID
+  const [isRecording, setIsRecording] = useState(false);
   
   // Refs
   const wsRef = useRef(null);
@@ -182,6 +176,87 @@ const MeetingApp = () => {
   useEffect(() => { isMutedRef.current = !micOn; }, [micOn]);
   useEffect(() => { videoOnRef.current = videoOn; }, [videoOn]);
   
+  useEffect(() => {
+    const saved = localStorage.getItem('activeMeeting');
+    if (saved && appState === 'lobby' && streamRef.current) {
+       try {
+         const parsed = JSON.parse(saved);
+         if (parsed.roomId === (id || code || '').trim()) {
+            handleJoinCall();
+         }
+       } catch (e) {}
+    }
+  }, [appState, streamRef.current]);
+
+  const startLocalRecording = async () => {
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: "browser" }, audio: true });
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const dest = audioCtx.createMediaStreamDestination();
+      
+      if (displayStream.getAudioTracks().length > 0) {
+        const displayAudioSource = audioCtx.createMediaStreamSource(new MediaStream([displayStream.getAudioTracks()[0]]));
+        displayAudioSource.connect(dest);
+      } else {
+        peersRef.current.forEach(({ pc }) => {
+          if (!pc) return;
+          const receiver = pc.getReceivers().find(r => r.track?.kind === 'audio');
+          if (receiver && receiver.track) {
+            const remoteSource = audioCtx.createMediaStreamSource(new MediaStream([receiver.track]));
+            remoteSource.connect(dest);
+          }
+        });
+      }
+      
+      if (streamRef.current && streamRef.current.getAudioTracks().length > 0) {
+        const localSource = audioCtx.createMediaStreamSource(new MediaStream([streamRef.current.getAudioTracks()[0]]));
+        localSource.connect(dest);
+      }
+      
+      const tracks = [displayStream.getVideoTracks()[0], ...dest.stream.getAudioTracks()];
+      const mixedStream = new MediaStream(tracks);
+      
+      let mimeType = 'video/webm';
+      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) mimeType = 'video/webm;codecs=vp8,opus';
+      
+      const recorder = new MediaRecorder(mixedStream, { mimeType });
+      
+      recordedChunksRef.current = [];
+      recorder.ondataavailable = e => {
+        if (e.data && e.data.size > 0) recordedChunksRef.current.push(e.data);
+      };
+      
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `Meeting_Recording_${new Date().toISOString().replace(/:/g, '-')}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        setIsRecording(false);
+      };
+
+      displayStream.getVideoTracks()[0].onended = () => stopLocalRecording();
+      
+      mediaRecorderRef.current = recorder;
+      recorder.start(1000);
+      setIsRecording(true);
+    } catch (e) {
+      console.error("Failed to start recording", e);
+      alert("Failed to start recording. Please try again.");
+    }
+  };
+
+  const stopLocalRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
   const handleStartAI = async (meetingOverride = null) => {
      if (aiAssistantActive) return;
      try {
@@ -347,10 +422,14 @@ const MeetingApp = () => {
 
   // Fix: Ensure local video is attached to the video element whenever appState changes or stream is ready
   useEffect(() => {
-    if (userVideo.current && streamRef.current) {
-      userVideo.current.srcObject = streamRef.current;
+    if (userVideo.current) {
+      if (isScreenSharing && screenStreamRef.current) {
+        userVideo.current.srcObject = screenStreamRef.current;
+      } else if (streamRef.current) {
+        userVideo.current.srcObject = streamRef.current;
+      }
     }
-  }, [appState, videoOn]); // Re-run when appState changes to ensure new video element gets the stream
+  }, [appState, videoOn, pinnedUser, isScreenSharing]); // Re-run when appState/pin changes
 
   const isLocal = window.location.hostname === 'localhost' || 
                   window.location.hostname === '127.0.0.1' || 
@@ -429,7 +508,7 @@ const MeetingApp = () => {
             const existingStream = p.stream;
             if (existingStream) {
                existingStream.addTrack(event.track);
-               return p;
+               return { ...p };
             }
             return { ...p, stream: remoteStream };
          }
@@ -443,7 +522,6 @@ const MeetingApp = () => {
           try {
             const source = audioContextRef.current.createMediaStreamSource(new MediaStream([audioTrack]));
             source.connect(audioDestinationRef.current);
-            source.connect(audioContextRef.current.destination);
           } catch(e) {
             console.error("Audio routing error:", e);
           }
@@ -475,6 +553,7 @@ const MeetingApp = () => {
   const handleEndCall = async () => {
     setFinalStats({ duration, participants: peers.length + 1 });
     setAppState('ended');
+    localStorage.removeItem('activeMeeting');
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
@@ -516,9 +595,11 @@ const MeetingApp = () => {
           if (!pc) return;
           const sender = pc.getSenders().find(s => s.track?.kind === 'video');
           if (sender) sender.replaceTrack(screenTrack);
+          else pc.addTrack(screenTrack, stream);
         });
         if (userVideo.current) userVideo.current.srcObject = stream;
         setIsScreenSharing(true);
+        if (sendWsRef.current) sendWsRef.current('media-state', { audioEnabled: micOn, videoEnabled: videoOn, isScreenSharing: true });
         screenTrack.onended = () => stopScreenShare();
       } catch (err) {
         console.error(err);
@@ -534,10 +615,15 @@ const MeetingApp = () => {
         if (!pc) return;
         const videoTrack = streamRef.current?.getVideoTracks()[0];
         const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-        if (sender && videoTrack) sender.replaceTrack(videoTrack);
+        if (sender && videoTrack) {
+          sender.replaceTrack(videoTrack);
+        } else if (sender && !videoTrack) {
+          pc.removeTrack(sender);
+        }
       });
       if (userVideo.current) userVideo.current.srcObject = streamRef.current;
       setIsScreenSharing(false);
+      if (sendWsRef.current) sendWsRef.current('media-state', { audioEnabled: micOn, videoEnabled: videoOn, isScreenSharing: false });
     }
   };
 
@@ -744,7 +830,7 @@ const MeetingApp = () => {
         if (msg.type === 'peer-media-state') {
           setPeers(prev => prev.map(p => 
             p.peerID === msg.fromPeerId 
-              ? { ...p, audioEnabled: msg.audioEnabled, videoEnabled: msg.videoEnabled } 
+              ? { ...p, audioEnabled: msg.audioEnabled, videoEnabled: msg.videoEnabled, isScreenSharing: msg.isScreenSharing } 
               : p
           ));
         }
@@ -833,6 +919,19 @@ const MeetingApp = () => {
 
     try {
       let activePassword = password;
+      if (!activePassword) {
+         const saved = localStorage.getItem('activeMeeting');
+         if (saved) {
+           try {
+             const parsed = JSON.parse(saved);
+             if (parsed.roomId === (code || id || '').trim()) {
+                activePassword = parsed.password;
+                setPassword(activePassword);
+             }
+           } catch(e){}
+         }
+      }
+
       if (intent === 'create') {
         if (!activePassword) {
           activePassword = Math.random().toString(36).slice(-6).toUpperCase();
@@ -876,6 +975,7 @@ const MeetingApp = () => {
       }
       setMeetingMetadata(data);
       setIsHost(!!data.isHost);
+      localStorage.setItem('activeMeeting', JSON.stringify({ roomId: cleanCode, password: activePassword }));
 
       // Connect WebSocket signaling with the MongoDB _id
       connectSignaling(signalingRoomId, token);
@@ -925,14 +1025,49 @@ const MeetingApp = () => {
   }, [appState]);
 
   useEffect(() => {
-    if (streamRef.current) {
-      streamRef.current.getAudioTracks().forEach(track => track.enabled = micOn);
-      streamRef.current.getVideoTracks().forEach(track => track.enabled = videoOn);
-    }
-    if (sendWsRef.current) {
-      sendWsRef.current('media-state', { audioEnabled: micOn, videoEnabled: videoOn });
-    }
-  }, [micOn, videoOn]);
+    let mounted = true;
+    const toggleMedia = async () => {
+      if (streamRef.current) {
+        streamRef.current.getAudioTracks().forEach(track => track.enabled = micOn);
+        
+        if (!videoOn) {
+          streamRef.current.getVideoTracks().forEach(track => {
+            track.stop();
+            streamRef.current.removeTrack(track);
+          });
+        } else if (streamRef.current.getVideoTracks().length === 0) {
+          try {
+            const newStream = await navigator.mediaDevices.getUserMedia({ 
+              video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } 
+            });
+            if (!mounted) {
+              newStream.getTracks().forEach(t => t.stop());
+              return;
+            }
+            const newVideoTrack = newStream.getVideoTracks()[0];
+            streamRef.current.addTrack(newVideoTrack);
+            
+            if (!isScreenSharing) {
+              peersRef.current.forEach(({ pc }) => {
+                if (!pc) return;
+                const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+                if (sender) sender.replaceTrack(newVideoTrack).catch(e => console.warn("Failed to replace video track:", e));
+              });
+            }
+          } catch (err) {
+            console.error("Failed to re-acquire video track:", err);
+            if (mounted) setVideoOn(false);
+          }
+        }
+      }
+      if (sendWsRef.current) {
+        sendWsRef.current('media-state', { audioEnabled: micOn, videoEnabled: videoOn });
+      }
+    };
+    
+    toggleMedia();
+    return () => { mounted = false; };
+  }, [micOn, videoOn, isScreenSharing]);
 
   useEffect(() => {
     if ((appState === 'lobby' || appState === 'in-call') && !streamRef.current) {
@@ -950,7 +1085,14 @@ const MeetingApp = () => {
       })
         .then(stream => {
           streamRef.current = stream;
-          if (userVideo.current) userVideo.current.srcObject = stream;
+          stream.getAudioTracks().forEach(track => track.enabled = micOn);
+          if (!videoOn) {
+            stream.getVideoTracks().forEach(track => {
+              track.stop();
+              stream.removeTrack(track);
+            });
+          }
+          if (userVideo.current && !isScreenSharing) userVideo.current.srcObject = stream;
           setPermissionError(null);
         })
         .catch(err => {
@@ -1035,10 +1177,10 @@ const MeetingApp = () => {
 
       {/* 2. IN-CALL STATE */}
       {appState === 'in-call' && !roomError && (
-        <div className="h-screen w-screen flex flex-col bg-gray-50 font-sans">
+        <div className="h-screen w-screen flex flex-col bg-[#0a0b0d] font-sans">
           
           {/* TOP HEADER */}
-          <div className="h-[60px] px-3 md:px-4 flex items-center justify-between border-b border-gray-200 bg-white">
+          <div className="h-[60px] px-3 md:px-4 flex items-center justify-between border-b border-white/5 bg-[#0a0b0d]">
             <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
               <button onClick={handleEndCall} className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors">
                 <ChevronLeft size={20} className="text-gray-700" />
@@ -1055,33 +1197,33 @@ const MeetingApp = () => {
                 <div className="w-1 h-1 bg-rose-500 rounded-full animate-pulse" />
                 <span className="text-[8px] font-black tracking-widest text-rose-600 uppercase">Live</span>
               </div>
-              <h1 className="text-xs md:text-[15px] font-black text-gray-900 truncate max-w-[120px] sm:max-w-[200px] text-center w-full">{meetingMetadata?.title || 'Meeting Room'}</h1>
+              <h1 className="text-xs md:text-[15px] font-black text-white truncate max-w-[120px] sm:max-w-[200px] text-center w-full">{meetingMetadata?.title || 'Meeting Room'}</h1>
             </div>
             <div className="flex flex-col items-end justify-center min-w-[50px] md:min-w-[60px] shrink-0">
               <div className="flex items-center gap-0.5 md:gap-1 mb-0.5">
                 <Shield size={10} className="text-emerald-500" />
                 <span className="text-[8px] md:text-[9px] font-black tracking-widest text-emerald-600 uppercase hidden sm:inline">E2EE</span>
               </div>
-              <span className="text-xs md:text-[13px] font-bold text-gray-600 font-mono">{formatTime(duration)}</span>
+              <span className="text-xs md:text-[13px] font-bold text-zinc-400 font-mono">{formatTime(duration)}</span>
             </div>
           </div>
 
           {/* ROOM ID STRIP */}
-          <div className="flex flex-wrap items-center justify-center gap-1.5 md:gap-2 py-2 bg-white border-b border-gray-200 px-4 text-center">
-            <Copy size={11} className="text-gray-400" />
-            <span className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-widest">ID:</span>
-            <span className="text-[10px] md:text-xs font-bold text-gray-700 select-all">{code}</span>
+          <div className="flex flex-wrap items-center justify-center gap-1.5 md:gap-2 py-2 bg-[#0f1115] border-b border-white/5 px-4 text-center">
+            <Copy size={11} className="text-zinc-500" />
+            <span className="text-[10px] md:text-xs font-black text-zinc-500 uppercase tracking-widest">ID:</span>
+            <span className="text-[10px] md:text-xs font-bold text-zinc-300 select-all">{code}</span>
             {password && (
               <>
-                <Lock size={11} className="text-gray-400 ml-2 md:ml-3" />
-                <span className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-widest">Pass:</span>
-                <span className="text-[10px] md:text-xs font-bold text-gray-700">{password}</span>
+                <Lock size={11} className="text-zinc-500 ml-2 md:ml-3" />
+                <span className="text-[10px] md:text-xs font-black text-zinc-500 uppercase tracking-widest">Pass:</span>
+                <span className="text-[10px] md:text-xs font-bold text-zinc-300">{password}</span>
               </>
             )}
           </div>
 
           {/* MAIN BODY */}
-          <div className="flex-1 flex overflow-hidden bg-gray-50 relative">
+          <div className="flex-1 flex overflow-hidden bg-[#0a0b0d] relative">
             
             {/* VIDEO GRID */}
             <div className={`flex-1 pb-28 md:pb-24 overflow-hidden ${
@@ -1122,7 +1264,13 @@ const MeetingApp = () => {
                           <RemoteVideo peer={pinnedPeer} isSpeaking={speakingUser === pinnedPeer.peerID || activeSpeakers.includes(pinnedPeer.peerID)} mobileStyle={false} />
                           <div className="absolute bottom-4 left-4 right-4 z-20">
                             <div className="bg-slate-900/80 backdrop-blur-md px-4 py-2.5 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
-                              <span className="text-sm font-bold text-white truncate">{pinnedPeer.name}</span>
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                 <span className="text-sm font-bold text-white truncate">{pinnedPeer.name}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                 {pinnedPeer.audioEnabled === false && <MicOff size={14} className="text-rose-500" />}
+                                 {pinnedPeer.videoEnabled === false && <VideoOff size={14} className="text-rose-500" />}
+                              </div>
                             </div>
                           </div>
                         </>
@@ -1139,15 +1287,19 @@ const MeetingApp = () => {
                     {/* Local tile in strip (if not pinned) */}
                     {pinnedUser !== 'local' && (
                       <div className="relative rounded-2xl overflow-hidden bg-slate-800 w-[140px] md:w-full aspect-video shrink-0 cursor-pointer group" onClick={() => setPinnedUser('local')}>
-                        <video playsInline muted ref={pinnedUser !== 'local' ? undefined : userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn && !isScreenSharing) ? 'hidden' : ''} ${!isScreenSharing ? 'mirror' : ''}`} />
+                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn && !isScreenSharing) ? 'hidden' : ''} ${!isScreenSharing ? 'mirror' : ''}`} />
                         {(!videoOn && !isScreenSharing) && (
                           <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
                             <span className="text-xl font-black text-white">{auth.user?.charAt(0).toUpperCase()}</span>
                           </div>
                         )}
                         <div className="absolute bottom-1.5 left-1.5 right-1.5 z-20">
-                          <div className="bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded-lg flex items-center gap-1.5 border border-white/10">
+                          <div className="bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded-lg flex items-center justify-between border border-white/10">
                             <span className="text-[10px] font-bold text-white truncate">{auth.user} (You)</span>
+                            <div className="flex items-center gap-1 shrink-0 ml-1">
+                               {!micOn && <MicOff size={10} className="text-rose-500" />}
+                               {!videoOn && <VideoOff size={10} className="text-rose-500" />}
+                            </div>
                           </div>
                         </div>
                         <div className="absolute top-1.5 right-1.5 z-30 w-6 h-6 rounded-lg bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1160,8 +1312,12 @@ const MeetingApp = () => {
                       <div key={peer.peerID} className="relative rounded-2xl overflow-hidden bg-violet-600 w-[140px] md:w-full aspect-video shrink-0 cursor-pointer group" onClick={() => setPinnedUser(peer.peerID)}>
                         <RemoteVideo peer={peer} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} mobileStyle={true} />
                         <div className="absolute bottom-1.5 left-1.5 right-1.5 z-20">
-                          <div className="bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded-lg flex items-center gap-1.5 border border-white/10">
+                          <div className="bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded-lg flex items-center justify-between border border-white/10">
                             <span className="text-[10px] font-bold text-white truncate">{peer.name}</span>
+                            <div className="flex items-center gap-1 shrink-0 ml-1">
+                               {peer.audioEnabled === false && <MicOff size={10} className="text-rose-500" />}
+                               {peer.videoEnabled === false && <VideoOff size={10} className="text-rose-500" />}
+                            </div>
                           </div>
                         </div>
                         <div className="absolute top-1.5 right-1.5 z-30 w-6 h-6 rounded-lg bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1177,11 +1333,11 @@ const MeetingApp = () => {
               {/* LOCAL CAMERA TILE */}
               {(() => {
                  const totalTiles = peers.length + 1;
-                 let tileClass = 'w-full h-full max-w-[800px] aspect-video';
-                 if (totalTiles === 2) tileClass = 'w-[calc(50%-0.25rem)] aspect-[3/4] md:aspect-video';
-                 else if (totalTiles === 3 || totalTiles === 4) tileClass = 'w-[calc(50%-0.25rem)] aspect-video';
-                 else if (totalTiles >= 5 && totalTiles <= 6) tileClass = 'w-[calc(33.333%-0.33rem)] aspect-video';
-                 else if (totalTiles > 6) tileClass = 'w-[calc(25%-0.375rem)] aspect-video';
+                 let tileClass = 'w-full max-w-[1000px] aspect-[4/3] md:aspect-video';
+                 if (totalTiles === 2) tileClass = 'w-full aspect-[4/3] md:w-[calc(50%-0.25rem)] md:aspect-video';
+                 else if (totalTiles === 3 || totalTiles === 4) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:aspect-video';
+                 else if (totalTiles >= 5 && totalTiles <= 6) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:w-[calc(33.333%-0.33rem)] md:aspect-video';
+                 else if (totalTiles > 6) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:w-[calc(25%-0.375rem)] md:aspect-video';
                  
                  return (
                      <div className={`relative rounded-3xl overflow-hidden bg-slate-800 ${tileClass} cursor-pointer group`}>
@@ -1214,17 +1370,24 @@ const MeetingApp = () => {
               {/* REMOTE PEER TILES */}
               {peers.map((peer) => {
                  const totalTiles = peers.length + 1;
-                 let tileClass = 'w-[calc(50%-0.25rem)] aspect-[3/4] md:aspect-video';
-                 if (totalTiles === 3 || totalTiles === 4) tileClass = 'w-[calc(50%-0.25rem)] aspect-video';
-                 else if (totalTiles >= 5 && totalTiles <= 6) tileClass = 'w-[calc(33.333%-0.33rem)] aspect-video';
-                 else if (totalTiles > 6) tileClass = 'w-[calc(25%-0.375rem)] aspect-video';
+                 let tileClass = 'w-full max-w-[1000px] aspect-[4/3] md:aspect-video';
+                 if (totalTiles === 2) tileClass = 'w-full aspect-[4/3] md:w-[calc(50%-0.25rem)] md:aspect-video';
+                 else if (totalTiles === 3 || totalTiles === 4) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:aspect-video';
+                 else if (totalTiles >= 5 && totalTiles <= 6) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:w-[calc(33.333%-0.33rem)] md:aspect-video';
+                 else if (totalTiles > 6) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:w-[calc(25%-0.375rem)] md:aspect-video';
 
                  return (
                  <div key={peer.peerID} className={`relative rounded-3xl overflow-hidden bg-violet-600 ${tileClass} cursor-pointer group`}>
                     <RemoteVideo peer={peer} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} mobileStyle={true} />
                     <div className="absolute bottom-3 left-3 right-3 z-20">
                        <div className="bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
-                          <span className="text-xs font-bold text-white truncate">{peer.name}</span>
+                          <div className="flex items-center gap-2 overflow-hidden">
+                             <span className="text-xs font-bold text-white truncate">{peer.name}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                             {peer.audioEnabled === false && <MicOff size={12} className="text-rose-500" />}
+                             {peer.videoEnabled === false && <VideoOff size={12} className="text-rose-500" />}
+                          </div>
                        </div>
                     </div>
                     {/* Pin button overlay */}
@@ -1290,12 +1453,12 @@ const MeetingApp = () => {
                            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">{auth.user?.charAt(0).toUpperCase()}</div>
                            <div className="flex-1">
                               <p className="text-sm font-bold text-white">{auth.user} (You)</p>
-                              <p className="text-[10px] font-black uppercase text-blue-400">Host</p>
+                              <p className="text-[10px] font-black uppercase text-blue-400">{isHost ? 'Host' : 'Attendee'}</p>
                            </div>
                         </div>
                         {peers.map(p => (
-                           <div key={p.peerID} className="flex items-center gap-3 p-3 hover:bg-slate-800/50 rounded-xl transition-colors">
-                              <div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold">{p.name?.charAt(0).toUpperCase()}</div>
+                           <div key={p.peerID} className="flex items-center gap-3 p-3 hover:bg-slate-900 rounded-xl transition-colors">
+                              <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold">{p.name?.charAt(0).toUpperCase()}</div>
                               <div className="flex-1">
                                  <p className="text-sm font-bold text-white">{p.name}</p>
                                  <p className="text-[10px] font-black uppercase text-slate-500">{p.name === 'Forge India Connect AI' ? 'AI Bot' : 'Attendee'}</p>
@@ -1334,6 +1497,13 @@ const MeetingApp = () => {
                      <Monitor size={18} />
                   </div>
                   <span className={`text-[9px] md:text-[10px] font-black tracking-widest uppercase hidden md:block ${isScreenSharing ? 'text-blue-400' : 'text-slate-400'}`}>Share</span>
+               </button>
+
+               <button onClick={isRecording ? stopLocalRecording : startLocalRecording} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0">
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-600 text-white shadow-lg shadow-red-600/30 animate-pulse' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+                     <Circle size={18} className={isRecording ? 'fill-current' : ''} />
+                  </div>
+                  <span className={`text-[9px] md:text-[10px] font-black tracking-widest uppercase hidden md:block ${isRecording ? 'text-red-400' : 'text-slate-400'}`}>{isRecording ? 'Stop Rec' : 'Record'}</span>
                </button>
 
                <button onClick={handleStartAI} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0">

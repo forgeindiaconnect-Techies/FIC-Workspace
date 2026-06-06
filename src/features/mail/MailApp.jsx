@@ -76,7 +76,7 @@ const MailApp = () => {
   }, [setComposeOpen, setSearchOpen, setFolder]);
 
   useEffect(() => {
-    const wsUrl = getApiUrl('').replace('http', 'ws') + '/ws/mail';
+    const wsUrl = getSocketUrl().replace('http', 'ws') + '/ws/mail';
     const ws = new WebSocket(wsUrl);
     const auth = JSON.parse(localStorage.getItem('auth') || '{}');
     
