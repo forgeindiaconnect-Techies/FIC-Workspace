@@ -517,13 +517,18 @@ const MeetingApp = () => {
       if (event.candidate) sendWs('ice-candidate', { targetPeerId, candidate: event.candidate });
     };
 
+    pc.makingOffer = false;
     pc.onnegotiationneeded = async () => {
       try {
+        pc.makingOffer = true;
         const offer = await pc.createOffer();
+        if (pc.signalingState !== 'stable') return;
         await pc.setLocalDescription(offer);
         sendWs('offer', { targetPeerId, sdp: pc.localDescription });
       } catch (err) {
         console.warn(`[WebRTC] Renegotiation failed for ${targetPeerId}:`, err);
+      } finally {
+        pc.makingOffer = false;
       }
     };
 
@@ -560,21 +565,26 @@ const MeetingApp = () => {
       setPeers(prev => prev.map(p => {
          if (p.peerID === targetPeerId) {
             const existingStream = p.stream;
-            if (existingStream) {
-               if (event.track.kind === 'video' && remoteStream.id !== existingStream.id) {
-                 // This is a new video stream (likely screen share)
-                 if (!p.screenStream) {
-                   setTimeout(() => setPinnedUser(`${targetPeerId}_screen`), 100);
-                   return { ...p, screenStream: remoteStream };
-                 }
-               }
-               if (p.screenStream && p.screenStream.id === remoteStream.id) {
-                 p.screenStream.addTrack(event.track);
-                 return { ...p };
-               }
-               existingStream.addTrack(event.track);
-               return { ...p };
-            }
+             if (existingStream) {
+                const isDiffStream = remoteStream.id !== existingStream.id;
+                const hasExistingVideo = existingStream.getVideoTracks().length > 0;
+                const isScreenShare = event.track.kind === 'video' && (isDiffStream || p.isScreenSharing || hasExistingVideo);
+
+                if (isScreenShare) {
+                  if (!p.screenStream) {
+                    setTimeout(() => setPinnedUser(`${targetPeerId}_screen`), 100);
+                    return { ...p, screenStream: new MediaStream([event.track]) };
+                  } else {
+                    if (p.screenStream.id !== remoteStream.id) {
+                      p.screenStream.addTrack(event.track);
+                    }
+                    return { ...p };
+                  }
+                }
+                
+                existingStream.addTrack(event.track);
+                return { ...p };
+             }
             return { ...p, stream: remoteStream };
          }
          return p;
@@ -852,7 +862,16 @@ const MeetingApp = () => {
                return [...prev, { peerID: fromPeerId, pc, stream: null, name: 'Participant' }];
             });
           }
+          const polite = !shouldInitiateOfferRef.current(fromPeerId);
+          const offerCollision = pc.makingOffer || pc.signalingState !== 'stable';
+          const ignoreOffer = !polite && offerCollision;
+          
+          if (ignoreOffer) return;
+
           try {
+            if (offerCollision) {
+               await pc.setLocalDescription({ type: 'rollback' });
+            }
             await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
           } catch (err) {
             console.warn('[WebRTC] setRemoteDescription (offer) failed:', err);
@@ -1170,7 +1189,11 @@ const MeetingApp = () => {
               peersRef.current.forEach(({ pc }) => {
                 if (!pc) return;
                 const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-                if (sender) sender.replaceTrack(newVideoTrack).catch(e => console.warn("Failed to replace video track:", e));
+                if (sender) {
+                  sender.replaceTrack(newVideoTrack).catch(e => console.warn("Failed to replace video track:", e));
+                } else {
+                  pc.addTrack(newVideoTrack, streamRef.current);
+                }
               });
             }
           } catch (err) {
