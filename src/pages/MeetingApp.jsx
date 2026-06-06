@@ -147,6 +147,7 @@ const MeetingApp = () => {
   const [waitingRoomEnabled, setWaitingRoomEnabled] = useState(false);
   const [pinnedUser, setPinnedUser] = useState(null); // 'local' or a peerID
   const [isRecording, setIsRecording] = useState(false);
+  const [endedReason, setEndedReason] = useState(null);
   
   // Refs
   const wsRef = useRef(null);
@@ -618,7 +619,24 @@ const MeetingApp = () => {
          }).catch(err => console.warn('[Meeting] Failed to generate summary:', err));
       }
     }
-    if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => { try { track.stop() } catch(e){} });
+      streamRef.current = null;
+    }
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => { try { track.stop() } catch(e){} });
+      screenStreamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try { audioContextRef.current.close(); } catch(e){}
+      audioContextRef.current = null;
+    }
+    if (peersRef.current) {
+      peersRef.current.forEach(p => {
+        if (p.pc) { try { p.pc.close(); } catch (err) {} }
+      });
+      peersRef.current = [];
+    }
   };
 
   const toggleScreenShare = async () => {
@@ -878,8 +896,8 @@ const MeetingApp = () => {
         if (msg.type === 'error') {
           console.warn('[Signaling] Server error:', msg.message);
           if (msg.message === 'Room is locked by host') {
-            alert('The host has locked this meeting.');
-            setAppState('lobby');
+            setEndedReason('Room is locked by host.');
+            setAppState('ended');
             ws.close();
             return;
           }
@@ -887,11 +905,11 @@ const MeetingApp = () => {
           setIsVerifying(false);
         }
         if (msg.type === 'meeting-ended') {
-          alert('The host has ended this meeting for all participants.');
+          setEndedReason('The host has ended this meeting for all participants.');
           handleEndCall();
         }
         if (msg.type === 'kicked') {
-          alert('You have been removed from the meeting by the host.');
+          setEndedReason('You have been removed from the meeting by the host.');
           handleEndCall();
         }
         if (msg.type === 'chat-message') {
@@ -938,22 +956,42 @@ const MeetingApp = () => {
   }, [appState]);
 
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const cleanupMeeting = () => {
       if (peersRef.current) {
         peersRef.current.forEach(p => {
           if (p.pc) {
             try { p.pc.close(); } catch (err) {}
           }
         });
+        peersRef.current = [];
       }
       if (wsRef.current) {
         intentionalCloseRef.current = true;
         wsRef.current.close();
       }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+           try { track.stop(); } catch(e){}
+        });
+        streamRef.current = null;
+      }
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach(track => {
+           try { track.stop(); } catch(e){}
+        });
+        screenStreamRef.current = null;
+      }
+      if (audioContextRef.current) {
+        try { audioContextRef.current.close(); } catch(e){}
+        audioContextRef.current = null;
+      }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('beforeunload', cleanupMeeting);
+    return () => {
+      window.removeEventListener('beforeunload', cleanupMeeting);
+      cleanupMeeting();
+    };
   }, []);
 
 
@@ -1086,26 +1124,6 @@ const MeetingApp = () => {
     let interval;
     if (appState === 'in-call') {
       interval = setInterval(() => setDuration(prev => prev + 1), 1000);
-      
-      // Fetch chat history
-      const roomID = `${workspaceId}-${code}`.toUpperCase();
-      fetch(getApiUrl(`/api/chat/${workspaceId}/${roomID}`), {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            const history = data.map(m => ({
-              user: m.sender,
-              text: m.content,
-              time: new Date(m.timestamp).toLocaleTimeString()
-            }));
-            setMeetingMessages(history);
-          } else {
-            console.warn("Chat history not an array:", data);
-          }
-        })
-        .catch(err => console.error("Failed to fetch chat history:", err));
     }
     return () => clearInterval(interval);
   }, [appState]);
@@ -1851,6 +1869,9 @@ const MeetingApp = () => {
            <div className="max-w-md w-full space-y-6 md:space-y-8 py-8">
               <div className="w-16 h-16 md:w-20 md:h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center text-emerald-500 mx-auto"><Check size={32} md:size={40} /></div>
               <h1 className="text-2xl md:text-3xl font-black">Meeting Ended</h1>
+              {endedReason && (
+                 <p className="text-sm md:text-base font-bold text-rose-500 bg-rose-500/10 py-3 px-4 rounded-xl border border-rose-500/20">{endedReason}</p>
+              )}
               <div className="bg-white/5 p-6 md:p-8 rounded-[24px] md:rounded-[32px] border border-white/5 grid grid-cols-2 gap-4">
                  <div><p className="text-[10px] font-black uppercase text-zinc-400">Duration</p><p className="font-black text-sm md:text-base">{Math.floor(finalStats.duration / 60)}m</p></div>
                  <div><p className="text-[10px] font-black uppercase text-zinc-400">Attendees</p><p className="font-black text-sm md:text-base">{finalStats.participants}</p></div>
