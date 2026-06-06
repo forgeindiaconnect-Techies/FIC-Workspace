@@ -909,6 +909,26 @@ const MeetingApp = () => {
     };
   }, [appState]);
 
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (peersRef.current) {
+        peersRef.current.forEach(p => {
+          if (p.pc) {
+            try { p.pc.close(); } catch (err) {}
+          }
+        });
+      }
+      if (wsRef.current) {
+        intentionalCloseRef.current = true;
+        wsRef.current.close();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+
   const handleJoinCall = async () => {
     if (isJoiningRef.current) return;
     isJoiningRef.current = true;
