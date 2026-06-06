@@ -187,6 +187,16 @@ const MeetingApp = () => {
       }
     };
   };
+
+  const applyContentHints = (stream) => {
+    if (!stream) return;
+    stream.getVideoTracks().forEach(track => {
+      if ('contentHint' in track) track.contentHint = 'motion';
+    });
+    stream.getAudioTracks().forEach(track => {
+      if ('contentHint' in track) track.contentHint = 'speech';
+    });
+  };
   const iceServersRef = useRef(null);
   const isJoiningRef = useRef(false);
   
@@ -542,17 +552,7 @@ const MeetingApp = () => {
       }
     };
     
-    pc.ontrack = (event) => {
-      // Minimize delay for incoming tracks
-      if (event.receiver) {
-        try {
-          if ('playoutDelayHint' in event.receiver) {
-            event.receiver.playoutDelayHint = 0;
-          }
-        } catch (e) {}
-      }
-
-      let remoteStream = event.streams && event.streams[0];
+    pc.ontrack = (event) => {      let remoteStream = event.streams && event.streams[0];
       if (!remoteStream && event.track) {
          remoteStream = new MediaStream([event.track]);
       }
@@ -1042,6 +1042,7 @@ const MeetingApp = () => {
     if (!streamRef.current && !permissionError) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia(getMediaConstraints());
+        applyContentHints(stream);
         streamRef.current = stream;
         if (userVideo.current) userVideo.current.srcObject = stream;
         setPermissionError(null);
@@ -1161,6 +1162,7 @@ const MeetingApp = () => {
               newStream.getTracks().forEach(t => t.stop());
               return;
             }
+            applyContentHints(newStream);
             const newVideoTrack = newStream.getVideoTracks()[0];
             streamRef.current.addTrack(newVideoTrack);
             
@@ -1190,6 +1192,7 @@ const MeetingApp = () => {
     if ((appState === 'lobby' || appState === 'in-call') && !streamRef.current) {
       navigator.mediaDevices.getUserMedia(getMediaConstraints())
         .then(stream => {
+          applyContentHints(stream);
           streamRef.current = stream;
           stream.getAudioTracks().forEach(track => track.enabled = micOn);
           if (!videoOn) {
