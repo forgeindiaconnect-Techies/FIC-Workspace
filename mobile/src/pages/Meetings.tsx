@@ -100,20 +100,7 @@ export default function Meetings() {
     api.meetings.getRooms().then(setRooms).catch(() => {});
   }, []);
 
-  React.useEffect(() => {
-    if (!activeRoom) {
-      AsyncStorage.getItem('activeMeeting').then(saved => {
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            if (parsed && parsed.id) {
-              enterPersistentRoom(parsed);
-            }
-          } catch(e){}
-        }
-      });
-    }
-  }, []);
+
 
   // In-call state
   const [isMuted, setIsMuted] = React.useState(false);

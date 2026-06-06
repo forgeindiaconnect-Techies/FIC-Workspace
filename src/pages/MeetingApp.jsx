@@ -33,28 +33,29 @@ const UserAvatar = ({ name, profilePic, size = 'xl' }) => {
   );
 };
 
-const RemoteVideo = ({ peer, isSpeaking, mobileStyle }) => {
+const RemoteVideo = ({ peer, stream, isSpeaking, mobileStyle, isScreen }) => {
   const videoRef = useRef();
   const [hasVideo, setHasVideo] = useState(false);
+  const currentStream = stream || peer.stream;
   
   useEffect(() => { 
-    if (peer.stream && videoRef.current) { 
-      videoRef.current.srcObject = peer.stream;
+    if (currentStream && videoRef.current) { 
+      videoRef.current.srcObject = currentStream;
       
       const checkTracks = () => {
-        const videoTrack = peer.stream.getVideoTracks()[0];
+        const videoTrack = currentStream.getVideoTracks()[0];
         if (videoTrack) {
           setHasVideo(videoTrack.enabled && videoTrack.readyState === 'live');
         }
       };
 
-      peer.stream.onaddtrack = checkTracks;
-      peer.stream.onremovetrack = checkTracks;
+      currentStream.onaddtrack = checkTracks;
+      currentStream.onremovetrack = checkTracks;
       checkTracks();
 
       videoRef.current.play().catch(e => console.error("Remote video play error:", e));
     } 
-  }, [peer.stream]);
+  }, [currentStream]);
 
   const actualHasVideo = (peer.videoEnabled !== false || peer.isScreenSharing) && hasVideo;
 
@@ -65,9 +66,9 @@ const RemoteVideo = ({ peer, isSpeaking, mobileStyle }) => {
   }, [actualHasVideo]);
 
   return (
-    <div className={`absolute inset-0 w-full h-full bg-[#1a1b1e] transition-all duration-500 overflow-hidden flex items-center justify-center
+    <div className={`absolute inset-0 w-full h-full ${isScreen ? 'bg-black' : 'bg-[#1a1b1e]'} transition-all duration-500 overflow-hidden flex items-center justify-center
       ${isSpeaking ? 'ring-2 ring-inset ring-[#5244e1] shadow-[inset_0_0_30px_rgba(82,68,225,0.2)]' : ''}`}>
-       <video playsInline ref={videoRef} autoPlay className={`w-full h-full ${peer.isScreenSharing ? 'object-contain' : 'object-cover'} ${!actualHasVideo ? 'hidden' : ''}`} />
+       <video playsInline ref={videoRef} autoPlay className={`w-full h-full ${isScreen ? 'object-contain' : 'object-cover'} ${!actualHasVideo ? 'hidden' : ''}`} />
        {!actualHasVideo && (
          mobileStyle ? (
             <div className="absolute inset-0 bg-violet-600 flex flex-col items-center justify-center">
@@ -166,6 +167,7 @@ const MeetingApp = () => {
   
   const audioContextRef = useRef();
   const audioDestinationRef = useRef();
+  const mixingRemoteAudioRef = useRef(false);
   const mediaRecorderRef = useRef();
   const recordedChunksRef = useRef([]);
 
@@ -177,17 +179,7 @@ const MeetingApp = () => {
   useEffect(() => { isMutedRef.current = !micOn; }, [micOn]);
   useEffect(() => { videoOnRef.current = videoOn; }, [videoOn]);
   
-  useEffect(() => {
-    const saved = localStorage.getItem('activeMeeting');
-    if (saved && appState === 'lobby' && streamRef.current) {
-       try {
-         const parsed = JSON.parse(saved);
-         if (parsed.roomId === (id || code || '').trim()) {
-            handleJoinCall();
-         }
-       } catch (e) {}
-    }
-  }, [appState, streamRef.current]);
+
 
   const startLocalRecording = async () => {
     try {
@@ -195,23 +187,34 @@ const MeetingApp = () => {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const dest = audioCtx.createMediaStreamDestination();
       
-      if (displayStream.getAudioTracks().length > 0) {
+      audioContextRef.current = audioCtx;
+      audioDestinationRef.current = dest;
+      
+      const hasTabAudio = displayStream.getAudioTracks().length > 0;
+      
+      if (hasTabAudio) {
+        mixingRemoteAudioRef.current = false;
         const displayAudioSource = audioCtx.createMediaStreamSource(new MediaStream([displayStream.getAudioTracks()[0]]));
         displayAudioSource.connect(dest);
       } else {
+        mixingRemoteAudioRef.current = true;
         peersRef.current.forEach(({ pc }) => {
           if (!pc) return;
           const receiver = pc.getReceivers().find(r => r.track?.kind === 'audio');
-          if (receiver && receiver.track) {
-            const remoteSource = audioCtx.createMediaStreamSource(new MediaStream([receiver.track]));
-            remoteSource.connect(dest);
+          if (receiver && receiver.track && receiver.track.readyState === 'live') {
+            try {
+               const remoteSource = audioCtx.createMediaStreamSource(new MediaStream([receiver.track]));
+               remoteSource.connect(dest);
+            } catch(e) {}
           }
         });
       }
       
       if (streamRef.current && streamRef.current.getAudioTracks().length > 0) {
-        const localSource = audioCtx.createMediaStreamSource(new MediaStream([streamRef.current.getAudioTracks()[0]]));
-        localSource.connect(dest);
+         try {
+            const localSource = audioCtx.createMediaStreamSource(new MediaStream([streamRef.current.getAudioTracks()[0]]));
+            localSource.connect(dest);
+         } catch(e) {}
       }
       
       const tracks = [displayStream.getVideoTracks()[0], ...dest.stream.getAudioTracks()];
@@ -256,6 +259,9 @@ const MeetingApp = () => {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
     }
+    mixingRemoteAudioRef.current = false;
+    audioContextRef.current = null;
+    audioDestinationRef.current = null;
   };
 
   const handleStartAI = async (meetingOverride = null) => {
@@ -423,10 +429,8 @@ const MeetingApp = () => {
 
   // Fix: Ensure local video is attached to the video element whenever appState changes or stream is ready
   useEffect(() => {
-    if (userVideo.current) {
-      if (isScreenSharing && screenStreamRef.current) {
-        userVideo.current.srcObject = screenStreamRef.current;
-      } else if (streamRef.current) {
+    if (userVideo.current && streamRef.current) {
+      if (userVideo.current.srcObject !== streamRef.current) {
         userVideo.current.srcObject = streamRef.current;
       }
     }
@@ -469,10 +473,25 @@ const MeetingApp = () => {
   };
 
   const createPeerConnection = async (targetPeerId, stream, name) => {
-    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current || iceServers });
+    const pc = new RTCPeerConnection({ 
+      iceServers: iceServersRef.current || iceServers,
+      bundlePolicy: 'max-bundle'
+    });
+    
     pc.onicecandidate = (event) => {
       if (event.candidate) sendWs('ice-candidate', { targetPeerId, candidate: event.candidate });
     };
+
+    pc.onnegotiationneeded = async () => {
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendWs('offer', { targetPeerId, sdp: pc.localDescription });
+      } catch (err) {
+        console.warn(`[WebRTC] Renegotiation failed for ${targetPeerId}:`, err);
+      }
+    };
+
 
     pc.oniceconnectionstatechange = () => {
       console.log(`[ICE] state for ${targetPeerId}: ${pc.iceConnectionState}`);
@@ -517,6 +536,17 @@ const MeetingApp = () => {
          if (p.peerID === targetPeerId) {
             const existingStream = p.stream;
             if (existingStream) {
+               if (event.track.kind === 'video' && remoteStream.id !== existingStream.id) {
+                 // This is a new video stream (likely screen share)
+                 if (!p.screenStream) {
+                   setTimeout(() => setPinnedUser(`${targetPeerId}_screen`), 100);
+                   return { ...p, screenStream: remoteStream };
+                 }
+               }
+               if (p.screenStream && p.screenStream.id === remoteStream.id) {
+                 p.screenStream.addTrack(event.track);
+                 return { ...p };
+               }
                existingStream.addTrack(event.track);
                return { ...p };
             }
@@ -526,9 +556,9 @@ const MeetingApp = () => {
       }));
       
       // Setup Audio Routing
-      if (audioContextRef.current && audioDestinationRef.current && remoteStream) {
+      if (mixingRemoteAudioRef.current && audioContextRef.current && audioDestinationRef.current && remoteStream) {
         const audioTrack = remoteStream.getAudioTracks()[0];
-        if (audioTrack) {
+        if (audioTrack && audioTrack.readyState === 'live') {
           try {
             const source = audioContextRef.current.createMediaStreamSource(new MediaStream([audioTrack]));
             source.connect(audioDestinationRef.current);
@@ -603,12 +633,10 @@ const MeetingApp = () => {
         const screenTrack = stream.getVideoTracks()[0];
         peersRef.current.forEach(({ pc }) => {
           if (!pc) return;
-          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-          if (sender) sender.replaceTrack(screenTrack);
-          else pc.addTrack(screenTrack, stream);
+          pc.addTrack(screenTrack, stream);
         });
-        if (userVideo.current) userVideo.current.srcObject = stream;
         setIsScreenSharing(true);
+        setPinnedUser('local_screen');
         if (sendWsRef.current) sendWsRef.current('media-state', { audioEnabled: micOn, videoEnabled: videoOn, isScreenSharing: true });
         screenTrack.onended = () => stopScreenShare();
       } catch (err) {
@@ -620,19 +648,16 @@ const MeetingApp = () => {
 
   const stopScreenShare = () => {
     if (screenStreamRef.current) {
+      const screenTrack = screenStreamRef.current.getVideoTracks()[0];
       screenStreamRef.current.getTracks().forEach(track => track.stop());
       peersRef.current.forEach(({ pc }) => {
         if (!pc) return;
-        const videoTrack = streamRef.current?.getVideoTracks()[0];
-        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-        if (sender && videoTrack) {
-          sender.replaceTrack(videoTrack);
-        } else if (sender && !videoTrack) {
-          pc.removeTrack(sender);
-        }
+        const sender = pc.getSenders().find(s => s.track === screenTrack);
+        if (sender) pc.removeTrack(sender);
       });
-      if (userVideo.current) userVideo.current.srcObject = streamRef.current;
+      screenStreamRef.current = null;
       setIsScreenSharing(false);
+      setPinnedUser(prev => prev === 'local_screen' ? null : prev);
       if (sendWsRef.current) sendWsRef.current('media-state', { audioEnabled: micOn, videoEnabled: videoOn, isScreenSharing: false });
     }
   };
@@ -838,7 +863,7 @@ const MeetingApp = () => {
           peersRef.current = peersRef.current.filter(p => p.peerID !== pid);
           setPeers(prev => prev.filter(p => p.peerID !== pid));
           // Auto-unpin if pinned user left
-          setPinnedUser(prev => prev === pid ? null : prev);
+          setPinnedUser(prev => (prev === pid || prev === `${pid}_screen`) ? null : prev);
         }
         if (msg.type === 'peer-media-state') {
           setPeers(prev => prev.map(p => 
@@ -846,6 +871,9 @@ const MeetingApp = () => {
               ? { ...p, audioEnabled: msg.audioEnabled, videoEnabled: msg.videoEnabled, isScreenSharing: msg.isScreenSharing } 
               : p
           ));
+          if (msg.isScreenSharing === false) {
+             setPinnedUser(prev => prev === `${msg.fromPeerId}_screen` ? null : prev);
+          }
         }
         if (msg.type === 'error') {
           console.warn('[Signaling] Server error:', msg.message);
@@ -1289,8 +1317,8 @@ const MeetingApp = () => {
             
             {/* VIDEO GRID */}
             <div className={`flex-1 pb-28 md:pb-24 overflow-hidden ${
-              pinnedUser ? 'flex flex-col md:flex-row p-2 md:p-3 gap-2' : 'p-2 md:p-4 flex flex-wrap gap-2 overflow-y-auto content-start justify-center'
-            }`}>
+              pinnedUser ? 'flex flex-col md:flex-row p-2 md:p-3 gap-2' : 'p-2 md:p-4 grid gap-3 overflow-y-auto content-start'
+            }`} style={!pinnedUser ? { gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' } : {}}>
 
               {/* ---- PINNED VIEW: Focus + Strip ---- */}
               {pinnedUser ? (
@@ -1299,8 +1327,8 @@ const MeetingApp = () => {
                   <div className="flex-1 min-h-0 min-w-0 relative rounded-3xl overflow-hidden bg-slate-800">
                     {pinnedUser === 'local' ? (
                       <>
-                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn && !isScreenSharing) ? 'hidden' : ''} ${!isScreenSharing ? 'mirror' : ''}`} />
-                        {(!videoOn && !isScreenSharing) && (
+                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn) ? 'hidden' : ''} mirror`} />
+                        {(!videoOn) && (
                           <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
                             <span className="text-6xl md:text-8xl font-black text-white">{auth.user?.charAt(0).toUpperCase()}</span>
                           </div>
@@ -1318,21 +1346,53 @@ const MeetingApp = () => {
                           </div>
                         </div>
                       </>
+                    ) : pinnedUser === 'local_screen' ? (
+                      <>
+                        <video playsInline muted ref={el => { if(el && el.srcObject !== screenStreamRef.current) el.srcObject = screenStreamRef.current }} autoPlay className={`w-full h-full object-contain bg-black`} />
+                        <div className="absolute bottom-4 left-4 right-4 z-20">
+                          <div className="bg-slate-900/80 backdrop-blur-md px-4 py-2.5 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
+                            <span className="text-sm font-bold text-white truncate">Your Screen</span>
+                          </div>
+                        </div>
+                        <button onClick={(e) => {
+                           e.stopPropagation();
+                           const elem = e.currentTarget.parentElement;
+                           if(elem.requestFullscreen) elem.requestFullscreen();
+                           else if(elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+                        }} className="absolute top-3 right-14 z-30 w-9 h-9 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-black/80 transition-all group" title="Fullscreen">
+                           <Maximize2 size={16} className="text-white/70 group-hover:text-white" />
+                        </button>
+                      </>
                     ) : (() => {
-                      const pinnedPeer = peers.find(p => p.peerID === pinnedUser);
+                      const isScreenPin = pinnedUser.endsWith('_screen');
+                      const basePeerId = isScreenPin ? pinnedUser.replace('_screen', '') : pinnedUser;
+                      const pinnedPeer = peers.find(p => p.peerID === basePeerId);
                       if (!pinnedPeer) { setPinnedUser(null); return null; }
+                      const streamToRender = isScreenPin ? pinnedPeer.screenStream : pinnedPeer.stream;
                       return (
                         <>
-                          <RemoteVideo peer={pinnedPeer} isSpeaking={speakingUser === pinnedPeer.peerID || activeSpeakers.includes(pinnedPeer.peerID)} mobileStyle={false} />
+                          <RemoteVideo peer={pinnedPeer} stream={streamToRender} isSpeaking={speakingUser === pinnedPeer.peerID || activeSpeakers.includes(pinnedPeer.peerID)} mobileStyle={false} isScreen={isScreenPin} />
+                          {isScreenPin && (
+                            <button onClick={(e) => {
+                               e.stopPropagation();
+                               const elem = e.currentTarget.parentElement;
+                               if(elem.requestFullscreen) elem.requestFullscreen();
+                               else if(elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+                            }} className="absolute top-3 right-14 z-30 w-9 h-9 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-black/80 transition-all group" title="Fullscreen">
+                               <Maximize2 size={16} className="text-white/70 group-hover:text-white" />
+                            </button>
+                          )}
                           <div className="absolute bottom-4 left-4 right-4 z-20">
                             <div className="bg-slate-900/80 backdrop-blur-md px-4 py-2.5 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
                               <div className="flex items-center gap-2 overflow-hidden">
-                                 <span className="text-sm font-bold text-white truncate">{pinnedPeer.name}</span>
+                                 <span className="text-sm font-bold text-white truncate">{pinnedPeer.name}{isScreenPin ? "'s Screen" : ""}</span>
                               </div>
-                              <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                                 {pinnedPeer.audioEnabled === false && <MicOff size={14} className="text-rose-500" />}
-                                 {pinnedPeer.videoEnabled === false && <VideoOff size={14} className="text-rose-500" />}
-                              </div>
+                              {!isScreenPin && (
+                                <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                   {pinnedPeer.audioEnabled === false && <MicOff size={14} className="text-rose-500" />}
+                                   {pinnedPeer.videoEnabled === false && <VideoOff size={14} className="text-rose-500" />}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </>
@@ -1349,8 +1409,8 @@ const MeetingApp = () => {
                     {/* Local tile in strip (if not pinned) */}
                     {pinnedUser !== 'local' && (
                       <div className="relative rounded-2xl overflow-hidden bg-slate-800 w-[140px] md:w-full aspect-video shrink-0 cursor-pointer group" onClick={() => setPinnedUser('local')}>
-                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn && !isScreenSharing) ? 'hidden' : ''} ${!isScreenSharing ? 'mirror' : ''}`} />
-                        {(!videoOn && !isScreenSharing) && (
+                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn) ? 'hidden' : ''} mirror`} />
+                        {(!videoOn) && (
                           <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
                             <span className="text-xl font-black text-white">{auth.user?.charAt(0).toUpperCase()}</span>
                           </div>
@@ -1394,17 +1454,30 @@ const MeetingApp = () => {
                 <>
               {/* LOCAL CAMERA TILE */}
               {(() => {
-                 const totalTiles = peers.length + 1;
-                 let tileClass = 'w-full max-w-[1000px] aspect-[4/3] md:aspect-video';
-                 if (totalTiles === 2) tileClass = 'w-full aspect-[4/3] md:w-[calc(50%-0.25rem)] md:aspect-video';
-                 else if (totalTiles === 3 || totalTiles === 4) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:aspect-video';
-                 else if (totalTiles >= 5 && totalTiles <= 6) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:w-[calc(33.333%-0.33rem)] md:aspect-video';
-                 else if (totalTiles > 6) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:w-[calc(25%-0.375rem)] md:aspect-video';
-                 
+                 const tileClass = 'w-full aspect-[4/3] md:aspect-video';
                  return (
+                  <React.Fragment>
+                     {isScreenSharing && screenStreamRef.current && (
+                        <div className={`relative rounded-3xl overflow-hidden bg-black ${tileClass} cursor-pointer group`}>
+                          <video playsInline muted ref={el => { if(el && el.srcObject !== screenStreamRef.current) el.srcObject = screenStreamRef.current }} autoPlay className={`w-full h-full object-contain`} />
+                          <div className="absolute bottom-3 left-3 right-3 z-20">
+                             <div className="bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
+                                <span className="text-xs font-bold text-white truncate">Your Screen</span>
+                             </div>
+                          </div>
+                          <button onClick={(e) => {
+                             e.stopPropagation();
+                             const elem = e.currentTarget.parentElement;
+                             if(elem.requestFullscreen) elem.requestFullscreen();
+                             else if(elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+                          }} className="absolute top-3 right-3 z-30 w-8 h-8 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-all" title="Fullscreen">
+                            <Maximize2 size={14} className="text-white/80" />
+                          </button>
+                        </div>
+                     )}
                      <div className={`relative rounded-3xl overflow-hidden bg-slate-800 ${tileClass} cursor-pointer group`}>
-                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn && !isScreenSharing) ? 'hidden' : ''} ${!isScreenSharing ? 'mirror' : ''}`} />
-                        {(!videoOn && !isScreenSharing) && (
+                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn) ? 'hidden' : ''} mirror`} />
+                        {(!videoOn) && (
                            <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
                               <span className="text-4xl md:text-6xl font-black text-white">{auth.user?.charAt(0).toUpperCase()}</span>
                            </div>
@@ -1426,37 +1499,57 @@ const MeetingApp = () => {
                          <Maximize2 size={14} className="text-white/80" />
                        </button>
                     </div>
+                  </React.Fragment>
                  );
               })()}
 
               {/* REMOTE PEER TILES */}
               {peers.map((peer) => {
-                 const totalTiles = peers.length + 1;
-                 let tileClass = 'w-full max-w-[1000px] aspect-[4/3] md:aspect-video';
-                 if (totalTiles === 2) tileClass = 'w-full aspect-[4/3] md:w-[calc(50%-0.25rem)] md:aspect-video';
-                 else if (totalTiles === 3 || totalTiles === 4) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:aspect-video';
-                 else if (totalTiles >= 5 && totalTiles <= 6) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:w-[calc(33.333%-0.33rem)] md:aspect-video';
-                 else if (totalTiles > 6) tileClass = 'w-[calc(50%-0.25rem)] aspect-square md:w-[calc(25%-0.375rem)] md:aspect-video';
+                 const tileClass = 'w-full aspect-[4/3] md:aspect-video';
 
                  return (
-                 <div key={peer.peerID} className={`relative rounded-3xl overflow-hidden bg-violet-600 ${tileClass} cursor-pointer group`}>
-                    <RemoteVideo peer={peer} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} mobileStyle={true} />
-                    <div className="absolute bottom-3 left-3 right-3 z-20">
-                       <div className="bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
-                          <div className="flex items-center gap-2 overflow-hidden">
-                             <span className="text-xs font-bold text-white truncate">{peer.name}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                             {peer.audioEnabled === false && <MicOff size={12} className="text-rose-500" />}
-                             {peer.videoEnabled === false && <VideoOff size={12} className="text-rose-500" />}
-                          </div>
-                       </div>
-                    </div>
-                    {/* Pin button overlay */}
-                    <button onClick={() => setPinnedUser(peer.peerID)} className="absolute top-3 right-3 z-30 w-8 h-8 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-all" title="Pin to fullscreen">
-                      <Maximize2 size={14} className="text-white/80" />
-                    </button>
-                 </div>
+                 <React.Fragment key={peer.peerID}>
+                   <div className={`relative rounded-3xl overflow-hidden bg-violet-600 ${tileClass} cursor-pointer group`}>
+                      <RemoteVideo peer={peer} stream={peer.stream} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} mobileStyle={true} />
+                      <div className="absolute bottom-3 left-3 right-3 z-20">
+                         <div className="bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                               <span className="text-xs font-bold text-white truncate">{peer.name}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                               {peer.audioEnabled === false && <MicOff size={12} className="text-rose-500" />}
+                               {peer.videoEnabled === false && <VideoOff size={12} className="text-rose-500" />}
+                            </div>
+                         </div>
+                      </div>
+                      {/* Pin button overlay */}
+                      <button onClick={() => setPinnedUser(peer.peerID)} className="absolute top-3 right-3 z-30 w-8 h-8 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-all" title="Pin to fullscreen">
+                        <Maximize2 size={14} className="text-white/80" />
+                      </button>
+                   </div>
+                   
+                   {peer.isScreenSharing && peer.screenStream && (
+                     <div className={`relative rounded-3xl overflow-hidden bg-violet-800 ${tileClass} cursor-pointer group`}>
+                        <RemoteVideo peer={peer} stream={peer.screenStream} isSpeaking={false} mobileStyle={true} />
+                        <div className="absolute bottom-3 left-3 right-3 z-20">
+                           <div className="bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
+                              <span className="text-xs font-bold text-white truncate">{peer.name}'s Screen</span>
+                           </div>
+                        </div>
+                        <button onClick={(e) => {
+                           e.stopPropagation();
+                           const elem = e.currentTarget.parentElement;
+                           if(elem.requestFullscreen) elem.requestFullscreen();
+                           else if(elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+                        }} className="absolute top-3 right-12 z-30 w-8 h-8 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-all" title="Fullscreen">
+                          <Maximize2 size={14} className="text-white/80" />
+                        </button>
+                        <button onClick={() => setPinnedUser(`${peer.peerID}_screen`)} className="absolute top-3 right-3 z-30 w-8 h-8 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-all" title="Pin to fullscreen">
+                          <Pin size={14} className="text-white/80" />
+                        </button>
+                     </div>
+                   )}
+                 </React.Fragment>
                  );
               })}
 
