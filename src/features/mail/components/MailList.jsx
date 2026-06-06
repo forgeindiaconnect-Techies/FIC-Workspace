@@ -69,7 +69,7 @@ const MailList = () => {
       if (folder === 'Trash') return m.isDeleted;
       
       // Default Inbox
-      return m.recipient === email && !m.isDeleted && !m.isDraft;
+      return m.recipientEmails?.includes(email) && !m.isDeleted && !m.isDraft;
     });
 
     // Tab filtering
