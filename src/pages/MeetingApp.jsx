@@ -163,6 +163,30 @@ const MeetingApp = () => {
   const createPeerConnectionRef = useRef(null);
   const shouldInitiateOfferRef = useRef(null);
   const sendWsRef = useRef(null);
+
+  const getMediaConstraints = (isVideoOnly = false) => {
+    const isMobile = window.innerWidth <= 768;
+    const videoConstraints = {
+      width: { ideal: isMobile ? 640 : 1280 },
+      height: { ideal: isMobile ? 480 : 720 },
+      frameRate: { ideal: isMobile ? 24 : 30 }
+    };
+    if (isVideoOnly) return { video: videoConstraints };
+    return {
+      video: videoConstraints,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        latency: 0,
+        googCpuOveruseDetection: true,
+        channelCount: 1,
+        googHighpassFilter: false,
+        googTypingNoiseDetection: false,
+        advanced: [{ googCpuOveruseDetection: true }]
+      }
+    };
+  };
   const iceServersRef = useRef(null);
   const isJoiningRef = useRef(false);
   
@@ -642,7 +666,8 @@ const MeetingApp = () => {
   const toggleScreenShare = async () => {
     if (!isScreenSharing) {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-        alert("Screen sharing is not supported on this browser (e.g., mobile browsers). Please use a desktop browser.");
+        setRoomError("Screen sharing is not supported natively by this app or browser. Please ensure you granted the correct permissions.");
+        setTimeout(() => setRoomError(null), 5000);
         return;
       }
       try {
@@ -659,7 +684,8 @@ const MeetingApp = () => {
         screenTrack.onended = () => stopScreenShare();
       } catch (err) {
         console.error(err);
-        alert('Could not start screen sharing. Permission denied or unsupported.');
+        setRoomError('Could not start screen sharing. Permission denied or unsupported.');
+        setTimeout(() => setRoomError(null), 5000);
       }
     } else { stopScreenShare(); }
   };
@@ -1015,18 +1041,7 @@ const MeetingApp = () => {
 
     if (!streamRef.current && !permissionError) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, 
-          audio: { 
-            echoCancellation: true, 
-            noiseSuppression: true, 
-            autoGainControl: true,
-            latency: 0,
-            channelCount: 1,
-            googHighpassFilter: false,
-            googTypingNoiseDetection: false
-          } 
-        });
+        const stream = await navigator.mediaDevices.getUserMedia(getMediaConstraints());
         streamRef.current = stream;
         if (userVideo.current) userVideo.current.srcObject = stream;
         setPermissionError(null);
@@ -1141,9 +1156,7 @@ const MeetingApp = () => {
           });
         } else if (streamRef.current.getVideoTracks().length === 0) {
           try {
-            const newStream = await navigator.mediaDevices.getUserMedia({ 
-              video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } 
-            });
+            const newStream = await navigator.mediaDevices.getUserMedia(getMediaConstraints(true));
             if (!mounted) {
               newStream.getTracks().forEach(t => t.stop());
               return;
@@ -1175,22 +1188,7 @@ const MeetingApp = () => {
 
   useEffect(() => {
     if ((appState === 'lobby' || appState === 'in-call') && !streamRef.current) {
-      navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          width: { ideal: 1280 }, 
-          height: { ideal: 720 }, 
-          frameRate: { ideal: 30 } 
-        }, 
-        audio: { 
-          echoCancellation: true, 
-          noiseSuppression: true, 
-          autoGainControl: true,
-          latency: 0,
-          channelCount: 1,
-          googHighpassFilter: false,
-          googTypingNoiseDetection: false
-        } 
-      })
+      navigator.mediaDevices.getUserMedia(getMediaConstraints())
         .then(stream => {
           streamRef.current = stream;
           stream.getAudioTracks().forEach(track => track.enabled = micOn);
