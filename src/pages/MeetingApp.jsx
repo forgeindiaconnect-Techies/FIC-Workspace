@@ -101,10 +101,8 @@ const MeetingApp = () => {
         navigate('/login');
      }
   }, [auth.user, navigate]);
-
-  if (!auth.user) return null;
-
-
+  // The auth guard useEffect will handle redirection.
+  // We cannot return null here because it violates Rules of Hooks.
   const queryParams = new URLSearchParams(location.search);
   const urlPassword = queryParams.get('pwd');
   const urlIntent = location.state?.intent || queryParams.get('intent');
@@ -1193,6 +1191,13 @@ const MeetingApp = () => {
         });
     }
   }, [appState]);
+  if (!auth.user) {
+    return (
+      <div className="min-h-screen bg-[#0a0b0d] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-[#5244e1] animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-full bg-[#0a0b0d] text-white overflow-hidden font-sans">
