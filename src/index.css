@@ -188,6 +188,48 @@
   @apply rounded-full bg-text-3/20 hover:bg-text-3/40 transition-colors;
 }
 
+/* Horizontal Video Grid Layout */
+.horizontal-video-grid {
+  display: grid;
+  grid-auto-flow: column;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+}
+
+@media (min-width: 768px) {
+  .horizontal-video-grid {
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    /* Exactly 3 columns per view (minus gap space) = 6 users per screen */
+    grid-auto-columns: calc(33.333% - 8px); 
+  }
+}
+
+@media (max-width: 767px) {
+  .horizontal-video-grid {
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    /* Swipeable 1 column per view on Mobile */
+    grid-auto-columns: calc(100%); 
+  }
+}
+
+/* Custom Slide Bar for the Video Grid */
+.horizontal-video-grid::-webkit-scrollbar {
+  height: 12px;
+}
+.horizontal-video-grid::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  margin: 0 16px;
+}
+.horizontal-video-grid::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+}
+.horizontal-video-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }

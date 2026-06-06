@@ -1411,14 +1411,9 @@ const MeetingApp = () => {
             {/* VIDEO GRID */}
             <div className={[
               "flex-1 pb-28 md:pb-24 overflow-hidden",
-              pinnedUser ? "flex flex-col md:flex-row p-2 md:p-3 gap-2" : "p-2 md:p-4 grid gap-3 overflow-y-auto content-start",
-              !pinnedUser ? (
-                peers.length === 0 ? "grid-cols-1" :
-                peers.length === 1 ? "grid-cols-1 sm:grid-cols-2" :
-                peers.length === 2 ? "grid-cols-2 sm:grid-cols-3" :
-                peers.length === 3 ? "grid-cols-2 sm:grid-cols-2 lg:grid-cols-4" :
-                "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
-              ) : ""
+              pinnedUser ? "flex flex-col md:flex-row p-2 md:p-3 gap-2" : 
+              (!pinnedUser && peers.length >= 3) ? "p-2 md:p-4 gap-3 horizontal-video-grid" :
+              "p-2 md:p-4 grid gap-3 overflow-y-auto content-start grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
             ].filter(Boolean).join(" ")}>
 
               {/* ---- PINNED VIEW: Focus + Strip ---- */}
@@ -1555,7 +1550,7 @@ const MeetingApp = () => {
                 <>
               {/* LOCAL CAMERA TILE */}
               {(() => {
-                 const tileClass = 'w-full aspect-[4/3] md:aspect-video';
+                 const tileClass = 'w-full aspect-[4/3] md:aspect-video snap-start';
                  return (
                   <React.Fragment>
                      {isScreenSharing && screenStreamRef.current && (
@@ -1606,7 +1601,7 @@ const MeetingApp = () => {
 
               {/* REMOTE PEER TILES */}
               {peers.map((peer) => {
-                 const tileClass = 'w-full aspect-[4/3] md:aspect-video';
+                 const tileClass = 'w-full aspect-[4/3] md:aspect-video snap-start';
 
                  return (
                  <React.Fragment key={peer.peerID}>
