@@ -162,6 +162,7 @@ const MeetingApp = () => {
   const shouldInitiateOfferRef = useRef(null);
   const sendWsRef = useRef(null);
   const iceServersRef = useRef(null);
+  const isJoiningRef = useRef(false);
   
   const audioContextRef = useRef();
   const audioDestinationRef = useRef();
@@ -498,6 +499,15 @@ const MeetingApp = () => {
     };
     
     pc.ontrack = (event) => {
+      // Minimize delay for incoming tracks
+      if (event.receiver) {
+        try {
+          if ('playoutDelayHint' in event.receiver) {
+            event.receiver.playoutDelayHint = 0;
+          }
+        } catch (e) {}
+      }
+
       let remoteStream = event.streams && event.streams[0];
       if (!remoteStream && event.track) {
          remoteStream = new MediaStream([event.track]);
@@ -635,6 +645,7 @@ const MeetingApp = () => {
 
   const connectSignaling = useCallback((signalingRoomId, token) => {
     intentionalCloseRef.current = false;
+    meetingIdRef.current = signalingRoomId;
     const wsUrl = buildWsUrl();
     console.log('[Signaling] Connecting to:', wsUrl, 'room:', signalingRoomId);
     const ws = new WebSocket(wsUrl);
@@ -642,7 +653,6 @@ const MeetingApp = () => {
 
     ws.onopen = () => {
       console.log('[Signaling] Connected, joining room:', signalingRoomId);
-      meetingIdRef.current = signalingRoomId;
       ws.send(JSON.stringify({
         type: 'join',
         data: { 
@@ -682,7 +692,10 @@ const MeetingApp = () => {
           }
           // Initiate offers with peers whose ID sorts higher (avoid SDP glare)
           for (const peer of peers) {
-            peersRef.current.push({ peerID: peer.peerId, pc: null });
+            let existingPeer = peersRef.current.find(p => p.peerID === peer.peerId);
+            if (!existingPeer) {
+              peersRef.current.push({ peerID: peer.peerId, pc: null });
+            }
 
             if (shouldInitiateOfferRef.current(peer.peerId)) {
               const pc = await createPeerConnectionRef.current(peer.peerId, streamRef.current, peer.name);
@@ -876,6 +889,16 @@ const MeetingApp = () => {
       peerIdRef.current = null;
       if (!intentionalCloseRef.current && appState === 'in-call') {
         console.log('[Signaling] Unexpected close, will reconnect...');
+        
+        // Clean up old peer connections before reconnecting
+        peersRef.current.forEach(p => {
+          if (p.pc) {
+            try { p.pc.close(); } catch (err) {}
+          }
+        });
+        peersRef.current = [];
+        setPeers([]);
+
         setTimeout(() => {
           if (meetingIdRef.current) {
             const token = localStorage.getItem('token');
@@ -887,6 +910,9 @@ const MeetingApp = () => {
   }, [appState]);
 
   const handleJoinCall = async () => {
+    if (isJoiningRef.current) return;
+    isJoiningRef.current = true;
+    
     console.log(`📡 [CLIENT] Attempting to join call: ID=${id}`);
     setIsVerifying(true);
     setRoomError(null);
@@ -897,6 +923,7 @@ const MeetingApp = () => {
     if (!token) {
       setRoomError('Authentication token not found. Please log in again.');
       setIsVerifying(false);
+      isJoiningRef.current = false;
       return;
     }
 
@@ -904,7 +931,15 @@ const MeetingApp = () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, 
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
+          audio: { 
+            echoCancellation: true, 
+            noiseSuppression: true, 
+            autoGainControl: true,
+            latency: 0,
+            channelCount: 1,
+            googHighpassFilter: false,
+            googTypingNoiseDetection: false
+          } 
         });
         streamRef.current = stream;
         if (userVideo.current) userVideo.current.srcObject = stream;
@@ -913,6 +948,7 @@ const MeetingApp = () => {
         console.error("Media error during join:", err);
         setPermissionError(err.name);
         setIsVerifying(false);
+        isJoiningRef.current = false;
         return;
       }
     }
@@ -983,6 +1019,8 @@ const MeetingApp = () => {
       console.error('[Join] Failed:', err);
       setRoomError(err.message || 'Could not join meeting.');
       setIsVerifying(false);
+    } finally {
+      isJoiningRef.current = false;
     }
   };
 
@@ -1080,7 +1118,11 @@ const MeetingApp = () => {
         audio: { 
           echoCancellation: true, 
           noiseSuppression: true, 
-          autoGainControl: true 
+          autoGainControl: true,
+          latency: 0,
+          channelCount: 1,
+          googHighpassFilter: false,
+          googTypingNoiseDetection: false
         } 
       })
         .then(stream => {

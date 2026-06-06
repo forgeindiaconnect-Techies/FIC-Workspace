@@ -201,7 +201,17 @@ const ChatApp = () => {
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          echoCancellation: true, 
+          noiseSuppression: true, 
+          autoGainControl: true,
+          latency: 0,
+          channelCount: 1,
+          googHighpassFilter: false,
+          googTypingNoiseDetection: false
+        } 
+      });
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
       mediaRecorderRef.current.ondataavailable = (e) => audioChunksRef.current.push(e.data);
@@ -623,7 +633,18 @@ const ChatApp = () => {
     setCallTargetEmail(userToCall);
     setCallTargetName(targetName);
     
-    navigator.mediaDevices.getUserMedia({ video: isVideo, audio: true }).then((currentStream) => {
+    navigator.mediaDevices.getUserMedia({ 
+      video: isVideo, 
+      audio: { 
+        echoCancellation: true, 
+        noiseSuppression: true, 
+        autoGainControl: true,
+        latency: 0,
+        channelCount: 1,
+        googHighpassFilter: false,
+        googTypingNoiseDetection: false
+      } 
+    }).then((currentStream) => {
       setStream(currentStream);
       if (myVideo.current) myVideo.current.srcObject = currentStream;
 
@@ -660,7 +681,18 @@ const ChatApp = () => {
   const answerCall = () => {
     setCallAccepted(true);
     if (ringingAudio) ringingAudio.pause();
-    navigator.mediaDevices.getUserMedia({ video: isVideoCall, audio: true }).then((currentStream) => {
+    navigator.mediaDevices.getUserMedia({ 
+      video: isVideoCall, 
+      audio: { 
+        echoCancellation: true, 
+        noiseSuppression: true, 
+        autoGainControl: true,
+        latency: 0,
+        channelCount: 1,
+        googHighpassFilter: false,
+        googTypingNoiseDetection: false
+      } 
+    }).then((currentStream) => {
       setStream(currentStream);
       if (myVideo.current) myVideo.current.srcObject = currentStream;
 
@@ -1412,7 +1444,7 @@ const ChatApp = () => {
                 {/* Remote Video */}
                 {callAccepted && (
                   <div className="w-full h-full max-h-[70vh] bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl relative border border-white/10">
-                    <video playsInline ref={userVideo} autoPlay className={`w-full h-full object-cover ${!isVideoCall && 'hidden'}`} />
+                    <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover mirror ${!isVideoCall && 'hidden'}`} />
                     {!isVideoCall && (
                        <div className="absolute inset-0 flex items-center justify-center bg-zinc-900">
                           <div className="w-32 h-32 rounded-full bg-emerald-500/20 flex items-center justify-center">
