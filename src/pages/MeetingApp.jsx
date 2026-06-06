@@ -15,7 +15,7 @@ import LogoImage from '../assets/landing-logo.png';
 // --- SUB-COMPONENTS ---
 
 const UserAvatar = ({ name, profilePic, size = 'xl' }) => {
-  const initials = name?.charAt(0).toUpperCase() || 'U';
+  const initials = (name?.charAt(0) || 'U').toUpperCase();
   const colors = ['bg-blue-600', 'bg-emerald-600', 'bg-indigo-600', 'bg-rose-600', 'bg-amber-600'];
   const bgColor = colors[initials.charCodeAt(0) % colors.length];
   
@@ -101,6 +101,8 @@ const MeetingApp = () => {
         navigate('/login');
      }
   }, [auth.user, navigate]);
+
+  if (!auth.user) return null;
 
 
   const queryParams = new URLSearchParams(location.search);
@@ -1486,8 +1488,8 @@ const MeetingApp = () => {
                      <div className={`relative rounded-3xl overflow-hidden bg-slate-800 ${tileClass} cursor-pointer group`}>
                         <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn) ? 'hidden' : ''} mirror`} />
                         {(!videoOn) && (
-                           <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
-                              <span className="text-4xl md:text-6xl font-black text-white">{auth.user?.charAt(0).toUpperCase()}</span>
+                           <div className="absolute inset-0 flex items-center justify-center bg-[#1a1b1e]">
+                              <UserAvatar name={auth.user} />
                            </div>
                         )}
                         <div className="absolute bottom-3 left-3 right-3 z-20">
@@ -1518,7 +1520,7 @@ const MeetingApp = () => {
                  return (
                  <React.Fragment key={peer.peerID}>
                    <div className={`relative rounded-3xl overflow-hidden bg-violet-600 ${tileClass} cursor-pointer group`}>
-                      <RemoteVideo peer={peer} stream={peer.stream} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} mobileStyle={true} />
+                      <RemoteVideo peer={peer} stream={peer.stream} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} />
                       <div className="absolute bottom-3 left-3 right-3 z-20">
                          <div className="bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
                             <div className="flex items-center gap-2 overflow-hidden">
