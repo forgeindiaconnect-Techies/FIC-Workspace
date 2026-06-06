@@ -871,6 +871,12 @@ const MeetingApp = () => {
           if (msg.name === 'Forge India Connect AI') {
             setAiAssistantActive(true);
           }
+          
+          // CRITICAL: Ensure the new peer knows if we are already sharing our screen!
+          if (sendWsRef.current) {
+             sendWsRef.current('media-state', { audioEnabled: micOn, videoEnabled: videoOn, isScreenSharing: isScreenSharing });
+          }
+          
           if (shouldInitiateOfferRef.current(msg.peerId)) {
             const pc = await createPeerConnectionRef.current(msg.peerId, streamRef.current, msg.name || 'Participant');
             if (pc) {
@@ -1261,7 +1267,7 @@ const MeetingApp = () => {
         }
       }
       if (sendWsRef.current) {
-        sendWsRef.current('media-state', { audioEnabled: micOn, videoEnabled: videoOn });
+        sendWsRef.current('media-state', { audioEnabled: micOn, videoEnabled: videoOn, isScreenSharing });
       }
     };
     
