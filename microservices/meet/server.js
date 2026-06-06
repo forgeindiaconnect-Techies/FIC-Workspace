@@ -1,7 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
-import { connectMongo, Meeting, User, Mail } from '../shared/database.js';
+import { connectMongo, Meeting, User, Tenant, Mail } from '../shared/database.js';
 import { authenticate } from '../shared/auth.js';
 
 const app = express();
@@ -321,10 +321,14 @@ app.post('/api/meetings/:id/summarize', authenticate, async (req, res) => {
     
     if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
     
-    let participants = await User.find({ _id: { $in: meeting.participantIds } });
+    let users = await User.find({ _id: { $in: meeting.participantIds } });
+    let tenants = await Tenant.find({ _id: { $in: meeting.participantIds } });
+    let participants = [...users, ...tenants];
+
     if (participants.length === 0) {
-      const fallbackUser = await User.findById(req.user.id || meeting.hostId);
-      if (fallbackUser) participants = [fallbackUser];
+      let fallback = await User.findById(req.user.id || meeting.hostId);
+      if (!fallback) fallback = await Tenant.findById(req.user.id || meeting.hostId);
+      if (fallback) participants = [fallback];
     }
     
     if (participants.length === 0) return res.status(400).json({ error: 'No participants found to send summary.' });
@@ -447,13 +451,16 @@ ${fullText}`;
 
     // Send email to all participants
     for (const participant of participants) {
+      const pEmail = participant.email || participant.adminEmail;
+      if (!pEmail) continue;
+
       await Mail.create({
         workspaceId: meeting.workspaceId || 'antigraviity-hq',
-        ownerEmail: participant.email,
+        ownerEmail: pEmail,
         folder: 'inbox',
         senderName: 'Forge India Connect AI',
         senderEmail: 'ai-assistant@nexus.app',
-        recipientEmails: [participant.email],
+        recipientEmails: [pEmail],
         subject: `📋 Meeting Summary: ${meeting.title}`,
         body: summaryHtml,
         isRead: false
