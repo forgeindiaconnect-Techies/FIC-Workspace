@@ -1323,17 +1323,17 @@ const MeetingApp = () => {
           <div className="flex-1 flex overflow-hidden bg-[#0a0b0d] relative">
             
             {/* VIDEO GRID */}
-            <div className={cn(
+            <div className={[
               "flex-1 pb-28 md:pb-24 overflow-hidden",
               pinnedUser ? "flex flex-col md:flex-row p-2 md:p-3 gap-2" : "p-2 md:p-4 grid gap-3 overflow-y-auto content-start",
-              !pinnedUser && (
+              !pinnedUser ? (
                 peers.length === 0 ? "grid-cols-1" :
                 peers.length === 1 ? "grid-cols-1 sm:grid-cols-2" :
                 peers.length === 2 ? "grid-cols-1 sm:grid-cols-3" :
                 peers.length === 3 ? "grid-cols-2 sm:grid-cols-2 lg:grid-cols-4" :
                 "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
-              )
-            )}>
+              ) : ""
+            ].filter(Boolean).join(" ")}>
 
               {/* ---- PINNED VIEW: Focus + Strip ---- */}
               {pinnedUser ? (
