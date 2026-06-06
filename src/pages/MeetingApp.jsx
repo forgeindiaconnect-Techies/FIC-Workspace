@@ -754,7 +754,22 @@ const MeetingApp = () => {
           if (meetingMetadata?.aiEnabled) {
             setAiAssistantActive(true);
           }
-          const peers = (msg.existingPeers || []).map(p => ({
+          const rawPeers = msg.existingPeers || [];
+          const deduplicatedPeers = [];
+          for (const p of rawPeers) {
+             if (p.name && p.name !== 'Participant') {
+                const existingIdx = deduplicatedPeers.findIndex(dp => dp.name === p.name);
+                if (existingIdx !== -1) {
+                   deduplicatedPeers[existingIdx] = p; // Keep the latest connection
+                } else {
+                   deduplicatedPeers.push(p);
+                }
+             } else {
+                deduplicatedPeers.push(p);
+             }
+          }
+          
+          const peers = deduplicatedPeers.map(p => ({
             peerId: p.peerId,
             userId: p.userId,
             name: p.name,
@@ -772,7 +787,7 @@ const MeetingApp = () => {
           for (const peer of peers) {
             let existingPeer = peersRef.current.find(p => p.peerID === peer.peerId);
             if (!existingPeer) {
-              peersRef.current.push({ peerID: peer.peerId, pc: null });
+              peersRef.current.push({ peerID: peer.peerId, pc: null, name: peer.name });
             }
 
             if (shouldInitiateOfferRef.current(peer.peerId)) {
@@ -813,19 +828,30 @@ const MeetingApp = () => {
           if (msg.peerId === peerIdRef.current) return;
           if (peersRef.current.find(p => p.peerID === msg.peerId)) return;
           
-          peersRef.current.push({ peerID: msg.peerId, pc: null });
+          // Deduplicate ghost connections (user crashed and rejoined before timeout)
+          const oldPeerRefIndex = peersRef.current.findIndex(p => p.name === msg.name && msg.name && msg.name !== 'Participant');
+          if (oldPeerRefIndex !== -1) {
+             const oldPeer = peersRef.current[oldPeerRefIndex];
+             if (oldPeer.pc) { try { oldPeer.pc.close(); } catch(e){} }
+             peersRef.current.splice(oldPeerRefIndex, 1);
+          }
+          
+          peersRef.current.push({ peerID: msg.peerId, pc: null, name: msg.name });
           
           setPeers(prev => {
+             // Remove any ghost peers from the UI
+             const filteredPrev = prev.filter(p => !(p.name === msg.name && msg.name && msg.name !== 'Participant' && p.peerID !== msg.peerId));
+             
              if (msg.name === 'Forge India Connect AI') {
-                const existingBot = prev.find(p => p.name === 'Forge India Connect AI');
+                const existingBot = filteredPrev.find(p => p.name === 'Forge India Connect AI');
                 if (existingBot && existingBot.peerID === 'ai-assistant-bot') {
-                   return prev.map(p => p.peerID === 'ai-assistant-bot' ? { ...p, peerID: msg.peerId, name: msg.name } : p);
+                   return filteredPrev.map(p => p.peerID === 'ai-assistant-bot' ? { ...p, peerID: msg.peerId, name: msg.name } : p);
                 } else if (existingBot) {
-                   return prev;
+                   return filteredPrev;
                 }
              }
-             if (prev.find(p => p.peerID === msg.peerId)) return prev;
-             return [...prev, { peerID: msg.peerId, pc: null, stream: null, name: msg.name || 'Participant' }];
+             if (filteredPrev.find(p => p.peerID === msg.peerId)) return filteredPrev;
+             return [...filteredPrev, { peerID: msg.peerId, pc: null, stream: null, name: msg.name || 'Participant' }];
           });
           
           if (msg.name === 'Forge India Connect AI') {
