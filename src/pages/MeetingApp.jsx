@@ -929,11 +929,16 @@ const MeetingApp = () => {
           setPinnedUser(prev => (prev === pid || prev === `${pid}_screen`) ? null : prev);
         }
         if (msg.type === 'peer-media-state') {
-          setPeers(prev => prev.map(p => 
-            p.peerID === msg.fromPeerId 
-              ? { ...p, audioEnabled: msg.audioEnabled, videoEnabled: msg.videoEnabled, isScreenSharing: msg.isScreenSharing } 
-              : p
-          ));
+          setPeers(prev => prev.map(p => {
+            if (p.peerID === msg.fromPeerId) {
+               const updatedPeer = { ...p, audioEnabled: msg.audioEnabled, videoEnabled: msg.videoEnabled, isScreenSharing: msg.isScreenSharing };
+               if (msg.isScreenSharing === false) {
+                  updatedPeer.screenStream = null;
+               }
+               return updatedPeer;
+            }
+            return p;
+          }));
           if (msg.isScreenSharing === false) {
              setPinnedUser(prev => prev === `${msg.fromPeerId}_screen` ? null : prev);
           }
@@ -1371,7 +1376,7 @@ const MeetingApp = () => {
               !pinnedUser ? (
                 peers.length === 0 ? "grid-cols-1" :
                 peers.length === 1 ? "grid-cols-1 sm:grid-cols-2" :
-                peers.length === 2 ? "grid-cols-1 sm:grid-cols-3" :
+                peers.length === 2 ? "grid-cols-2 sm:grid-cols-3" :
                 peers.length === 3 ? "grid-cols-2 sm:grid-cols-2 lg:grid-cols-4" :
                 "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
               ) : ""
