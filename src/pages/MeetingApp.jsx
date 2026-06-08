@@ -947,6 +947,13 @@ const m = Math.floor((seconds % 3600) / 60);
           const pid = msg.peerId;
           const peerObj = peersRef.current.find(p => p.peerID === pid);
           if (peerObj?.pc) try { peerObj.pc.close(); } catch {}
+          
+          const audioEl = document.getElementById(`audio-${pid}`);
+          if (audioEl) {
+            audioEl.srcObject = null;
+            audioEl.remove();
+          }
+          
           peersRef.current = peersRef.current.filter(p => p.peerID !== pid);
           setPeers(prev => prev.filter(p => p.peerID !== pid));
           // Auto-unpin if pinned user left
@@ -1021,6 +1028,10 @@ const m = Math.floor((seconds % 3600) / 60);
             try { p.pc.close(); } catch (err) {}
           }
         });
+        document.querySelectorAll('audio[id^="audio-"]').forEach(el => {
+          el.srcObject = null;
+          el.remove();
+        });
         peersRef.current = [];
         iceCandidateBufferRef.current.clear();
         screenSendersRef.current.clear();
@@ -1053,6 +1064,10 @@ const m = Math.floor((seconds % 3600) / 60);
           if (p.pc) {
             try { p.pc.close(); } catch (err) {}
           }
+        });
+        document.querySelectorAll('audio[id^="audio-"]').forEach(el => {
+          el.srcObject = null;
+          el.remove();
         });
         peersRef.current = [];
       }

@@ -233,6 +233,22 @@ export const useWebRTC = ({
             }
         }
       }
+
+      // Ensure robust audio playback via dedicated audio element
+      if (event.track.kind === 'audio') {
+        let audioEl = document.getElementById(`audio-${peerId}`) as HTMLAudioElement;
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.id = `audio-${peerId}`;
+          audioEl.autoplay = true;
+          audioEl.setAttribute('playsinline', 'true');
+          document.body.appendChild(audioEl);
+        }
+        audioEl.srcObject = remoteStream;
+        audioEl.play().catch(err => {
+          if (err.name !== 'AbortError') console.error('Audio play error:', err);
+        });
+      }
       
       if (onPeerTrackAdded) onPeerTrackAdded(peerId);
     };
