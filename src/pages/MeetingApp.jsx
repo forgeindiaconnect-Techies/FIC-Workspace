@@ -231,6 +231,7 @@ const MeetingApp = () => {
   
   const peerIdRef = useRef(null);
   const meetingIdRef = useRef(null);
+  const shouldInitiateOfferRef = useRef(null);
   const intentionalCloseRef = useRef(false);
   const isMountedRef = useRef(true);
   const userVideo = useRef();
