@@ -1475,10 +1475,10 @@ const m = Math.floor((seconds % 3600) / 60);
                       const basePeerId = isScreenPin ? pinnedUser.replace('_screen', '') : pinnedUser;
                       const pinnedPeer = peers.find(p => p.peerID === basePeerId);
                       if (!pinnedPeer) { setPinnedUser(null); return null; }
-                      const streamToRender = isScreenPin ? pinnedPeer.screenStream : pinnedPeer.stream;
+                      const streamToRender = null; // Streams are grabbed via refs to prevent re-render issues
                       return (
                         <>
-                          <RemoteVideo peer={pinnedPeer} stream={streamToRender} isSpeaking={speakingUser === pinnedPeer.peerID || activeSpeakers.includes(pinnedPeer.peerID)} mobileStyle={false} isScreen={isScreenPin} />
+                          <RemoteVideo peer={pinnedPeer} stream={streamToRender} isSpeaking={speakingUser === pinnedPeer.peerID || activeSpeakers.includes(pinnedPeer.peerID)} mobileStyle={false} isScreen={isScreenPin} remoteStreamsRef={remoteStreamsRef} remoteScreenStreamsRef={remoteScreenStreamsRef} />
                           {isScreenPin && (
                             <button onClick={(e) => {
                                e.stopPropagation();
@@ -1539,7 +1539,7 @@ const m = Math.floor((seconds % 3600) / 60);
                     {/* Remote peers in strip (if not pinned) */}
                     {peers.filter(p => p.peerID !== pinnedUser).map(peer => (
                       <div key={peer.peerID} className="relative rounded-2xl overflow-hidden bg-violet-600 w-[140px] md:w-full aspect-video shrink-0 cursor-pointer group" onClick={() => setPinnedUser(peer.peerID)}>
-                        <RemoteVideo peer={peer} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} mobileStyle={true} />
+                        <RemoteVideo peer={peer} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} mobileStyle={true} remoteStreamsRef={remoteStreamsRef} remoteScreenStreamsRef={remoteScreenStreamsRef} />
                         <div className="absolute bottom-1.5 left-1.5 right-1.5 z-20">
                           <div className="bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded-lg flex items-center justify-between border border-white/10">
                             <span className="text-[10px] font-bold text-white truncate">{peer.name}</span>
@@ -1620,7 +1620,7 @@ const m = Math.floor((seconds % 3600) / 60);
                   return (
                  <React.Fragment key={peer.peerID}>
                    <div className={`relative rounded-3xl overflow-hidden bg-violet-600 ${tileClass} cursor-pointer group`}>
-                      <RemoteVideo peer={peer} stream={peer.stream} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} />
+                      <RemoteVideo peer={peer} stream={null} isSpeaking={speakingUser === peer.peerID || activeSpeakers.includes(peer.peerID)} remoteStreamsRef={remoteStreamsRef} remoteScreenStreamsRef={remoteScreenStreamsRef} />
                       <div className="absolute bottom-3 left-3 right-3 z-20">
                          <div className="bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
                             <div className="flex items-center gap-2 overflow-hidden">
@@ -1638,9 +1638,9 @@ const m = Math.floor((seconds % 3600) / 60);
                       </button>
                    </div>
 
-                   {peer.isScreenSharing && peer.screenStream && (
+                   {peer.isScreenSharing && (
                      <div className={`relative rounded-3xl overflow-hidden bg-violet-800 ${tileClass} cursor-pointer group`}>
-                        <RemoteVideo peer={peer} stream={peer.screenStream} isSpeaking={false} mobileStyle={true} />
+                        <RemoteVideo peer={peer} stream={null} isSpeaking={false} mobileStyle={true} isScreen={true} remoteStreamsRef={remoteStreamsRef} remoteScreenStreamsRef={remoteScreenStreamsRef} />
                         <div className="absolute bottom-3 left-3 right-3 z-20">
                            <div className="bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-xl flex items-center justify-between border border-white/10 shadow-lg">
                               <span className="text-xs font-bold text-white truncate">{peer.name}'s Screen</span>

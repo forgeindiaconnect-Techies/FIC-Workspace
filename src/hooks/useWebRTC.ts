@@ -91,14 +91,12 @@ export const useWebRTC = ({
       screenStreamRef.current = screenStream;
       const screenTrack = screenStream.getVideoTracks()[0];
 
-      // Replace video track in all peer connections
+      // Add screen track as a separate stream to all peer connections
       peerConnectionsRef.current.forEach(async (pc, peerId) => {
-        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-        if (sender) {
-          await sender.replaceTrack(screenTrack);
-        } else {
-          pc.addTrack(screenTrack, screenStream);
-        }
+        const sender = pc.addTrack(screenTrack, screenStreamRef.current!);
+        const transceiver = pc.getTransceivers().find(t => t.sender === sender);
+        if (transceiver) transceiver.direction = 'sendonly';
+
         // Renegotiate with each peer
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
@@ -157,8 +155,12 @@ export const useWebRTC = ({
          remoteStream = new MediaStream([event.track]);
       }
       
+      const existingCameraStream = remoteStreamsRef.current.get(peerId);
+      const hasCameraVideo = existingCameraStream && existingCameraStream.getVideoTracks().length > 0;
+      
       const isScreenShare = event.track.label?.toLowerCase().includes('screen') 
-        || event.transceiver?.mid === 'screen';
+        || event.transceiver?.mid === 'screen'
+        || (event.track.kind === 'video' && hasCameraVideo && existingCameraStream!.id !== remoteStream.id);
 
       if (isScreenShare) {
         if (!remoteScreenStreamsRef.current.has(peerId)) {
@@ -174,12 +176,14 @@ export const useWebRTC = ({
             remoteStreamsRef.current.set(peerId, remoteStream);
         } else {
             const existing = remoteStreamsRef.current.get(peerId);
-            const tracks = existing?.getTracks() || [];
-            const existingTrackOfKind = tracks.find(t => t.kind === event.track.kind);
-            if (existingTrackOfKind && existingTrackOfKind.id !== event.track.id) {
-                existing?.removeTrack(existingTrackOfKind);
+            if (existing) {
+              const tracks = existing.getTracks();
+              const existingTrackOfKind = tracks.find(t => t.kind === event.track.kind);
+              if (existingTrackOfKind && existingTrackOfKind.id !== event.track.id) {
+                  existing.removeTrack(existingTrackOfKind);
+              }
+              existing.addTrack(event.track);
             }
-            if (existing) existing.addTrack(event.track);
         }
       }
       
