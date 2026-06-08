@@ -470,7 +470,9 @@ const MeetingApp = () => {
   };
 
   const copyMeetingInvite = () => {
-    const inviteLink = `${window.location.origin}/w/${workspaceId}/meet/room/${code || id}?pwd=${password}&intent=join`;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const baseUrl = isLocal ? 'https://workspace-blue-theta-87.vercel.app' : window.location.origin;
+    const inviteLink = `${baseUrl}/w/${workspaceId}/meet/room/${code || id}?pwd=${password}&intent=join`;
     const inviteText = `Join my Forge India Connect Meeting:\nLink: ${inviteLink}\nMeeting ID: ${code}\nPassword: ${password}`;
     
     navigator.clipboard.writeText(inviteText);
