@@ -72,13 +72,16 @@ const RemoteVideo = ({ peer, stream, isSpeaking, mobileStyle, isScreen }) => {
     } 
   }, [currentStream]);
 
-  const actualHasVideo = isScreen ? hasVideo : ((peer.videoEnabled !== false || peer.isScreenSharing) && hasVideo);
+  const actualHasVideo = isScreen ? true : ((peer.videoEnabled !== false || peer.isScreenSharing) && hasVideo);
 
   useEffect(() => {
     if (actualHasVideo && videoRef.current) {
-      videoRef.current.play().catch(e => console.warn("Remote video play error:", e));
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+         playPromise.catch(e => console.warn("Remote video play error:", e));
+      }
     }
-  }, [actualHasVideo]);
+  }, [actualHasVideo, currentStream]);
 
   return (
     <div className={`absolute inset-0 w-full h-full ${isScreen ? 'bg-black' : 'bg-[#1a1b1e]'} transition-all duration-500 overflow-hidden flex items-center justify-center
@@ -174,6 +177,7 @@ const MeetingApp = () => {
   const streamRef = useRef();
   const screenStreamRef = useRef();
   const screenSendersRef = useRef(new Map());
+  const cameraSendersRef = useRef(new Map());
   const candidateQueue = useRef(new Map());
   const iceCandidateBufferRef = useRef(new Map());
   const createPeerConnectionRef = useRef(null);
@@ -585,15 +589,12 @@ const MeetingApp = () => {
          if (p.peerID === targetPeerId) {
             const existingStream = p.stream;
             if (existingStream) {
-               // Determine if this is a secondary stream (like a screen share)
-               // WebRTC passes the stream ID across the connection. 
-               const isDiffStream = remoteStream.id !== existingStream.id;
+               const hasExistingVideo = existingStream.getVideoTracks().length > 0;
+               const isDiffStream = remoteStream.id !== existingStream.id || (event.track.kind === 'video' && hasExistingVideo);
                
-               // If it's a new video stream and not the primary one, assign to screenStream
                if (event.track.kind === 'video' && isDiffStream) {
                  if (!p.screenStream) {
                     const newScreenStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
-                    // Only auto-pin if they explicitly declared they are screen sharing
                     if (p.isScreenSharing) {
                        setTimeout(() => setPinnedUser(`${targetPeerId}_screen`), 100);
                     }
@@ -604,7 +605,6 @@ const MeetingApp = () => {
                  }
                }
                
-               // Otherwise, it's a primary track (camera/mic). Update existing stream.
                const tracks = existingStream.getTracks();
                const existingTrackOfKind = tracks.find(t => t.kind === event.track.kind);
                if (existingTrackOfKind && existingTrackOfKind.id !== event.track.id) {
@@ -639,7 +639,8 @@ const MeetingApp = () => {
 
     if (stream) {
       stream.getTracks().forEach(track => {
-        pc.addTrack(track, stream);
+        const sender = pc.addTrack(track, stream);
+        if (track.kind === 'video') cameraSendersRef.current.set(targetPeerId, sender);
       });
     }
     
@@ -1281,8 +1282,7 @@ const MeetingApp = () => {
           });
           peersRef.current.forEach(({ pc, peerID }) => {
              if (!pc) return;
-             const screenSender = screenSendersRef.current.get(peerID);
-             const cameraSender = pc.getSenders().find(s => s.track?.kind === 'video' && s !== screenSender);
+             const cameraSender = cameraSendersRef.current.get(peerID);
              if (cameraSender) {
                 cameraSender.replaceTrack(null).catch(e => console.warn("Failed to nullify video track:", e));
              }
@@ -1300,12 +1300,12 @@ const MeetingApp = () => {
             
             peersRef.current.forEach(({ pc, peerID }) => {
               if (!pc) return;
-              const screenSender = screenSendersRef.current.get(peerID);
-              const cameraSender = pc.getSenders().find(s => s.track?.kind === 'video' && s !== screenSender);
+              const cameraSender = cameraSendersRef.current.get(peerID);
               if (cameraSender) {
                 cameraSender.replaceTrack(newVideoTrack).catch(e => console.warn("Failed to replace video track:", e));
               } else {
-                pc.addTrack(newVideoTrack, streamRef.current);
+                const newSender = pc.addTrack(newVideoTrack, streamRef.current);
+                cameraSendersRef.current.set(peerID, newSender);
               }
             });
           } catch (err) {
