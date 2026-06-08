@@ -524,16 +524,19 @@ const MeetingApp = () => {
 
   const formatTime = (seconds) => {
     const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
+const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const createPeerConnection = async (targetPeerId, stream, name) => {
+  const createPeerConnection = (targetPeerId, stream, name) => {
     const pc = new RTCPeerConnection({ 
       iceServers: iceServersRef.current || iceServers,
       bundlePolicy: 'max-bundle'
     });
+    
+    // Ensure onnegotiationneeded fires even if there are no media tracks
+    pc.createDataChannel('init');
     
     pc.onicecandidate = (event) => {
       if (event.candidate) sendWs('ice-candidate', { targetPeerId, candidate: event.candidate });
@@ -850,25 +853,21 @@ const MeetingApp = () => {
             if (!existingPeer) {
               peersRef.current.push({ peerID: peer.peerId, pc: null, name: peer.name });
             }
-
             if (shouldInitiateOfferRef.current(peer.peerId)) {
-              const pc = await createPeerConnectionRef.current(peer.peerId, streamRef.current, peer.name);
+              const pc = createPeerConnectionRef.current(peer.peerId, streamRef.current, peer.name);
               if (pc) {
                 const pRef = peersRef.current.find(p => p.peerID === peer.peerId);
                 if (pRef) pRef.pc = pc;
                 setPeers(prev => {
-                  if (peer.name === 'Forge India Connect AI') {
-                    const existingBot = prev.find(p => p.name === 'Forge India Connect AI');
-                    if (existingBot && existingBot.peerID === 'ai-assistant-bot') {
-                      return prev.map(p => p.peerID === 'ai-assistant-bot' ? { ...p, peerID: peer.peerId, name: peer.name, pc } : p);
-                    } else if (existingBot) return prev;
+                  const newPeers = [...prev];
+                  const idx = newPeers.findIndex(p => p.peerID === peer.peerId);
+                  if (idx !== -1) {
+                    newPeers[idx] = { ...newPeers[idx], pc };
+                  } else {
+                    newPeers.push({ peerID: peer.peerId, pc, stream: null, name: peer.name, audioEnabled: peer.audioEnabled, videoEnabled: peer.videoEnabled });
                   }
-                  if (prev.find(p => p.peerID === peer.peerId)) return prev;
-                  return [...prev, { peerID: peer.peerId, pc, stream: null, name: peer.name, audioEnabled: peer.audioEnabled, videoEnabled: peer.videoEnabled }];
+                  return newPeers;
                 });
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                sendWsRef.current('offer', { targetPeerId: peer.peerId, sdp: offer });
               }
             } else {
               // The other peer will send the offer — just register the peer
@@ -933,14 +932,11 @@ const MeetingApp = () => {
           }
           
           if (shouldInitiateOfferRef.current(msg.peerId)) {
-            const pc = await createPeerConnectionRef.current(msg.peerId, streamRef.current, msg.name || 'Participant');
+            const pc = createPeerConnectionRef.current(msg.peerId, streamRef.current, msg.name || 'Participant');
             if (pc) {
               const pRef = peersRef.current.find(p => p.peerID === msg.peerId);
               if (pRef) pRef.pc = pc;
               setPeers(prev => prev.map(p => p.peerID === msg.peerId ? { ...p, pc } : p));
-              const offer = await pc.createOffer();
-              await pc.setLocalDescription(offer);
-              sendWsRef.current('offer', { targetPeerId: msg.peerId, sdp: offer });
             }
           }
         }
@@ -948,7 +944,7 @@ const MeetingApp = () => {
           const fromPeerId = msg.fromPeerId;
           let pc = peersRef.current.find(p => p.peerID === fromPeerId)?.pc;
           if (!pc) {
-            pc = await createPeerConnectionRef.current(fromPeerId, streamRef.current, 'Participant');
+            pc = createPeerConnectionRef.current(fromPeerId, streamRef.current, 'Participant');
             let pRef = peersRef.current.find(p => p.peerID === fromPeerId);
             if (pRef) {
                pRef.pc = pc;
