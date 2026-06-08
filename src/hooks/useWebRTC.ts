@@ -221,7 +221,7 @@ export const useWebRTC = ({
     // Abstracting signaling connection for the user to integrate with their specific socket logic
     let API_URL = 'http://localhost:5000';
     try {
-        API_URL = import.meta.env.VITE_API_URL || API_URL;
+        API_URL = (import.meta as any).env.VITE_API_URL || API_URL;
     } catch(e){}
 
     let wsBase = API_URL;
@@ -268,7 +268,7 @@ export const useWebRTC = ({
     // Reliably notify backend of leave on tab close so AI summaries trigger
     if (token && roomId) {
       let API_URL = 'http://localhost:5000';
-      try { API_URL = import.meta.env.VITE_API_URL || API_URL; } catch(e){}
+      try { API_URL = (import.meta as any).env.VITE_API_URL || API_URL; } catch(e){}
       const leaveUrl = `${API_URL}/api/meetings/${encodeURIComponent(roomId)}/leave`;
       try {
         fetch(leaveUrl, {
@@ -297,7 +297,7 @@ export const useWebRTC = ({
     const fetchIce = async () => {
         try {
             let API_URL = 'http://localhost:5000';
-            try { API_URL = import.meta.env.VITE_API_URL || API_URL; } catch(e){}
+            try { API_URL = (import.meta as any).env.VITE_API_URL || API_URL; } catch(e){}
             const res = await fetch(`${API_URL}/api/meet/ice-servers`);
             const data = await res.json();
             if (Array.isArray(data) && data.length > 0) iceServersRef.current = data;
