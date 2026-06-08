@@ -257,18 +257,35 @@ export const useWebRTC = ({
   };
 
   // 3. Fix WebSocket 1006 abnormal closure — proper cleanup
-  const cleanup = () => {
+  const cleanup = useCallback(() => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current?.send(JSON.stringify({ type: 'leave', data: {} }));
-      socketRef.current?.close(1000, 'User left');
+      try {
+        socketRef.current.send(JSON.stringify({ type: 'leave', data: {} }));
+        socketRef.current.close(1000, 'User left');
+      } catch (e) {}
     }
+    
+    // Reliably notify backend of leave on tab close so AI summaries trigger
+    if (token && roomId) {
+      let API_URL = 'http://localhost:5000';
+      try { API_URL = import.meta.env.VITE_API_URL || API_URL; } catch(e){}
+      const leaveUrl = `${API_URL}/api/meetings/${encodeURIComponent(roomId)}/leave`;
+      try {
+        fetch(leaveUrl, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          keepalive: true
+        }).catch(() => {});
+      } catch (e) {}
+    }
+
     peerConnectionsRef.current.forEach(pc => pc.close());
     peerConnectionsRef.current.clear();
     remoteStreamsRef.current.clear();
     remoteScreenStreamsRef.current.clear();
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
-  };
+  }, []);
 
   // 2. Fix double WebSocket connection
   useEffect(() => {
