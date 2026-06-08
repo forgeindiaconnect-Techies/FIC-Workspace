@@ -25,6 +25,9 @@ export const useWebRTC = ({
   const socketRef = useRef<WebSocket | null>(null);
   const hasJoinedRef = useRef<boolean>(false);
   const isMountedRef = useRef<boolean>(true);
+  const isNegotiatingRef = useRef<Map<string, boolean>>(new Map());
+  const reconnectAttemptsRef = useRef<number>(0);
+  const MAX_RECONNECTS = 3;
 
   const iceServersRef = useRef<RTCIceServer[]>([{ urls: 'stun:stun.l.google.com:19302' }]);
 
@@ -139,6 +142,27 @@ export const useWebRTC = ({
       }
     };
 
+    pc.onnegotiationneeded = async () => {
+      // NOTE: shouldInitiateOfferRef logic is in MeetingApp, but here we just prevent tight loops
+      if (isNegotiatingRef.current.get(peerId)) return; // prevent loop
+      isNegotiatingRef.current.set(peerId, true);
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socketRef.current?.send(JSON.stringify({
+          type: 'offer',
+          data: {
+            targetPeerId: peerId,
+            sdp: offer
+          }
+        }));
+      } catch (e) {
+        console.error('Negotiation error:', e);
+      } finally {
+        isNegotiatingRef.current.set(peerId, false);
+      }
+    };
+
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
         peerConnectionsRef.current.delete(peerId);
@@ -222,6 +246,11 @@ export const useWebRTC = ({
   };
 
   const connectSignaling = () => {
+    if (reconnectAttemptsRef.current >= MAX_RECONNECTS) {
+      console.error('Max reconnect attempts reached for signaling server.');
+      return;
+    }
+
     // Abstracting signaling connection for the user to integrate with their specific socket logic
     let API_URL = 'http://localhost:5000';
     try {
@@ -238,6 +267,7 @@ export const useWebRTC = ({
     socketRef.current = new WebSocket(wsUrl);
 
     socketRef.current.onopen = () => {
+      reconnectAttemptsRef.current = 0; // Reset on successful connection
       socketRef.current?.send(JSON.stringify({ 
          type: 'join', 
          data: {
@@ -256,6 +286,15 @@ export const useWebRTC = ({
         if (onMessage) onMessage(msg);
       } catch (err) {
         console.error('Signaling error:', err);
+      }
+    };
+
+    socketRef.current.onclose = (event) => {
+      if (event.code === 1000 || !isMountedRef.current) return;
+      console.warn(`[useWebRTC] WS closed (${event.code}). Reconnecting...`);
+      if (reconnectAttemptsRef.current < MAX_RECONNECTS) {
+        reconnectAttemptsRef.current++;
+        setTimeout(() => connectSignaling(), 2000);
       }
     };
   };
