@@ -189,9 +189,9 @@ const MeetingApp = () => {
     token: auth.token || auth?.user?.token || localStorage.getItem('token'),
     isReady: appState === 'in-call',
     onMessage: (msg) => {
-      // Simulate ws.onmessage event to keep the old logic working
-      if (wsRef.current && wsRef.current.onmessage) {
-         wsRef.current.onmessage({ data: JSON.stringify(msg) });
+      // Directly pass to the local handler to prevent WS ref overwriting loop
+      if (messageHandlerRef.current) {
+         messageHandlerRef.current({ data: JSON.stringify(msg) });
       }
     },
     onPeerTrackAdded: (peerId) => {
@@ -234,6 +234,7 @@ const MeetingApp = () => {
   const shouldInitiateOfferRef = useRef(null);
   const intentionalCloseRef = useRef(false);
   const isMountedRef = useRef(true);
+  const messageHandlerRef = useRef(null);
   const userVideo = useRef();
   const peersRef = useRef([]);
   
@@ -726,7 +727,7 @@ const m = Math.floor((seconds % 3600) / 60);
       }));
     };
 
-    ws.onmessage = async (e) => {
+    const handleSignaling = async (e) => {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === 'joined') {
@@ -995,6 +996,9 @@ const m = Math.floor((seconds % 3600) / 60);
         console.warn('[Signaling] Parse error:', err);
       }
     };
+    
+    messageHandlerRef.current = handleSignaling;
+    ws.onmessage = handleSignaling;
 
     ws.onerror = (e) => {
       console.warn('[Signaling] WS error:', e?.message || e);
@@ -1017,7 +1021,6 @@ const m = Math.floor((seconds % 3600) / 60);
         });
         peersRef.current = [];
         iceCandidateBufferRef.current.clear();
-        candidateQueue.current.clear();
         screenSendersRef.current.clear();
         cameraSendersRef.current.clear();
         setPeers([]);
@@ -1053,7 +1056,6 @@ const m = Math.floor((seconds % 3600) / 60);
       }
       // Clear all signaling maps
       iceCandidateBufferRef.current.clear();
-      candidateQueue.current.clear();
       screenSendersRef.current.clear();
       cameraSendersRef.current.clear();
       // Close WebSocket with clean code 1000
