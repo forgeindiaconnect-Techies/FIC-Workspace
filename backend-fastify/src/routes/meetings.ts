@@ -678,6 +678,9 @@ export async function meetingRoutes(fastify: FastifyInstance) {
    fastify.post('/:id/summarize', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
      try {
        const { id } = request.params as any;
+       if (!id || !id.trim()) {
+         return reply.code(400).send({ error: 'Missing required field: meeting ID.' });
+       }
        if (!Types.ObjectId.isValid(id)) {
          return reply.code(400).send({ error: 'Invalid meeting ID format.' });
        }
@@ -688,12 +691,18 @@ export async function meetingRoutes(fastify: FastifyInstance) {
        }
 
        if (meeting.status !== 'ended') {
-         return reply.code(400).send({ error: 'Summaries can only be generated for completed meetings.' });
+         return reply.code(400).send({ error: 'Summaries can only be generated for completed meetings. Current status: ' + meeting.status });
        }
 
        // If summary already generated, return it from cache
        if (meeting.aiSummary) {
          return reply.code(200).send({ summary: meeting.aiSummary });
+       }
+
+       // Check if there are any transcripts before attempting summarization
+       const hasTranscripts = meeting.transcripts && Array.isArray(meeting.transcripts) && meeting.transcripts.length > 0;
+       if (!hasTranscripts) {
+         return reply.code(400).send({ error: 'No transcript data available for this meeting. Summary cannot be generated without transcripts.' });
        }
 
        const summaryHtml = await summarizeMeeting(meeting._id.toString());

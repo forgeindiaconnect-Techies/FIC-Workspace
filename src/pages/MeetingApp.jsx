@@ -172,6 +172,7 @@ const MeetingApp = () => {
   const peerIdRef = useRef(null);
   const meetingIdRef = useRef(null);
   const intentionalCloseRef = useRef(false);
+  const isMountedRef = useRef(true);
   const userVideo = useRef();
   const peersRef = useRef([]);
   const streamRef = useRef();
@@ -530,7 +531,23 @@ const m = Math.floor((seconds % 3600) / 60);
   };
 
   const createPeerConnection = (targetPeerId, stream, name) => {
-    const pc = new RTCPeerConnection({ 
+    // Close any existing connection for this peer before creating a new one
+    const existingPeerIdx = peersRef.current.findIndex(p => p.peerID === targetPeerId);
+    if (existingPeerIdx !== -1) {
+      const oldPeer = peersRef.current[existingPeerIdx];
+      if (oldPeer.pc) {
+        try { oldPeer.pc.close(); } catch (e) {}
+      }
+      peersRef.current.splice(existingPeerIdx, 1);
+    }
+    // Clear stale ICE candidates and signaling flags for this peer
+    iceCandidateBufferRef.current.delete(targetPeerId);
+    candidateQueue.current.delete(targetPeerId);
+    screenSendersRef.current.delete(targetPeerId);
+    cameraSendersRef.current.delete(targetPeerId);
+
+    const PeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
+    const pc = new PeerConnection({ 
       iceServers: iceServersRef.current || iceServers,
       bundlePolicy: 'max-bundle'
     });
@@ -671,8 +688,9 @@ const m = Math.floor((seconds % 3600) / 60);
     setAiAssistantActive(false);
     intentionalCloseRef.current = true;
     if (wsRef.current) {
-      sendWs('leave', {});
-      wsRef.current.close();
+      try { sendWs('leave', {}); } catch (e) {}
+      try { wsRef.current.close(1000, 'user-left'); } catch (e) {}
+      wsRef.current = null;
     }
     const token = localStorage.getItem('token');
     const meetingId = meetingMetadata?._id || meetingMetadata?.meetingId || meetingMetadata?.joinCode || id;
@@ -682,12 +700,8 @@ const m = Math.floor((seconds % 3600) / 60);
         headers: { Authorization: `Bearer ${token}` },
       }).catch(err => console.warn('[Meeting] Failed to notify backend leave:', err));
 
-      if (meetingMetadata?.aiEnabled || aiAssistantActive) {
-         fetch(getApiUrl(`/api/meetings/${encodeURIComponent(meetingId)}/summarize`), {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` }
-         }).catch(err => console.warn('[Meeting] Failed to generate summary:', err));
-      }
+      // Only summarize if the meeting has actually ended (not just a user leaving)
+      // The backend will reject with 400 if meeting.status !== 'ended'
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => { try { track.stop() } catch(e){} });
@@ -1080,7 +1094,8 @@ const m = Math.floor((seconds % 3600) / 60);
     ws.onclose = (e) => {
       console.log('[Signaling] WS closed. Code:', e?.code);
       peerIdRef.current = null;
-      if (!intentionalCloseRef.current && appState === 'in-call') {
+      // Only reconnect if: not intentional close, not a clean 1000 close, component still mounted, and in-call
+      if (!intentionalCloseRef.current && e?.code !== 1000 && isMountedRef.current && appState === 'in-call') {
         console.log('[Signaling] Unexpected close, will reconnect...');
         
         // Clean up old peer connections before reconnecting
@@ -1090,10 +1105,14 @@ const m = Math.floor((seconds % 3600) / 60);
           }
         });
         peersRef.current = [];
+        iceCandidateBufferRef.current.clear();
+        candidateQueue.current.clear();
+        screenSendersRef.current.clear();
+        cameraSendersRef.current.clear();
         setPeers([]);
 
         setTimeout(() => {
-          if (meetingIdRef.current) {
+          if (isMountedRef.current && meetingIdRef.current) {
             const token = localStorage.getItem('token');
             if (token) connectSignaling(meetingIdRef.current, token);
           }
@@ -1103,7 +1122,16 @@ const m = Math.floor((seconds % 3600) / 60);
   }, [appState]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     const cleanupMeeting = () => {
+      // Send leave signal before closing
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        try {
+          wsRef.current.send(JSON.stringify({ type: 'leave', data: {} }));
+        } catch (e) {}
+      }
+      // Close all peer connections
       if (peersRef.current) {
         peersRef.current.forEach(p => {
           if (p.pc) {
@@ -1112,10 +1140,18 @@ const m = Math.floor((seconds % 3600) / 60);
         });
         peersRef.current = [];
       }
+      // Clear all signaling maps
+      iceCandidateBufferRef.current.clear();
+      candidateQueue.current.clear();
+      screenSendersRef.current.clear();
+      cameraSendersRef.current.clear();
+      // Close WebSocket with clean code 1000
       if (wsRef.current) {
         intentionalCloseRef.current = true;
-        wsRef.current.close();
+        try { wsRef.current.close(1000, 'page-unload'); } catch (e) {}
+        wsRef.current = null;
       }
+      // Stop all media tracks
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => {
            try { track.stop(); } catch(e){}
@@ -1136,6 +1172,7 @@ const m = Math.floor((seconds % 3600) / 60);
 
     window.addEventListener('beforeunload', cleanupMeeting);
     return () => {
+      isMountedRef.current = false;
       window.removeEventListener('beforeunload', cleanupMeeting);
       cleanupMeeting();
     };
