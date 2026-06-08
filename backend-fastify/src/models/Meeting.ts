@@ -12,6 +12,7 @@ export interface IMeeting extends Document {
   participantIds: Types.ObjectId[];
   aiEnabled: boolean;
   aiSummary?: string;
+  summarySent: boolean;
   createdAt: Date;
 }
 
@@ -27,6 +28,7 @@ const MeetingSchema = new Schema<IMeeting>({
   participantIds: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   aiEnabled: { type: Boolean, default: false },
   aiSummary: { type: String },
+  summarySent: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 

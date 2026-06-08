@@ -60,8 +60,8 @@ const ComposeModal = () => {
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
-      LinkExtension.configure({ openOnClick: false }),
+      StarterKit.configure({ link: false }),
+      LinkExtension.configure({ openOnClick: false, autolink: true }),
       Placeholder.configure({ placeholder: 'Write your message...' }),
     ],
     content: '',

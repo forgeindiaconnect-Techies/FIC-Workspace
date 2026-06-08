@@ -551,20 +551,36 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   fastify.post('/:id/leave', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as any;
-      const meeting = await resolveMeetingIdentifier(id);
+      if (!id || !id.trim()) {
+        return reply.code(400).send({ error: 'Missing required field: meeting ID.' });
+      }
+
+      let meeting;
+      try {
+        meeting = await resolveMeetingIdentifier(id);
+      } catch (resolveErr: any) {
+        return reply.code(400).send({ error: 'Invalid meeting identifier.', details: resolveErr.message });
+      }
+
       if (!meeting) {
         return reply.code(404).send({ error: 'Meeting room not found.' });
       }
 
-      await Participant.findOneAndUpdate(
-        {
-          meetingId: meeting._id,
-          userId: new Types.ObjectId(request.user!.id),
-          leftAt: { $exists: false }
-        },
-        { leftAt: new Date() },
-        { new: true }
-      );
+      // Mark the participant as having left
+      try {
+        await Participant.findOneAndUpdate(
+          {
+            meetingId: meeting._id,
+            userId: new Types.ObjectId(request.user!.id),
+            leftAt: { $exists: false }
+          },
+          { leftAt: new Date() },
+          { new: true }
+        );
+      } catch (participantErr: any) {
+        console.warn('[Meeting] Failed to update participant leave status:', participantErr.message);
+        // Non-fatal: continue to check active participants
+      }
 
       const aiBotUser = await User.findOne({ email: 'ai-assistant@nexus.app' });
       const query: any = {
@@ -578,21 +594,24 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       const activeParticipantCount = await Participant.countDocuments(query);
 
       if (activeParticipantCount === 0) {
-        // Everyone (except possibly the bot) has left  end meeting and trigger summary
+        // Everyone (except possibly the bot) has left — end meeting and trigger summary
         meeting.status = 'ended';
         await meeting.save();
         await new Promise((resolve) => setTimeout(resolve, 2500));
         if (meeting.aiEnabled) {
           await stopAIBot(meeting._id.toString());
         } else {
-          // Even without AI bot, trigger summarization if there are any transcripts
-          summarizeMeeting(meeting._id.toString()).catch(() => {});
+          // Only summarize if not already sent (deduplication is in summarizeMeeting)
+          summarizeMeeting(meeting._id.toString()).catch((err) => {
+            console.warn('[Meeting] Summary generation failed:', err.message);
+          });
         }
       }
 
       return reply.code(200).send({ success: true, message: 'Left meeting successfully', activeParticipantCount });
     } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to leave meeting.', details: err.message });
+      console.error('[Meeting] Leave route error:', err);
+      return reply.code(500).send({ error: 'Failed to leave meeting.', details: err.message || 'Unknown server error' });
     }
   });
 

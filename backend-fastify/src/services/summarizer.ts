@@ -68,6 +68,23 @@ export async function summarizeMeeting(meetingId: string) {
     return meeting.aiSummary;
   }
 
+  // Deduplication guard: prevent sending summary email more than once
+  if (meeting.summarySent) {
+    console.log('[Summarizer] Summary email already sent for this meeting, skipping.');
+    return meeting.aiSummary || null;
+  }
+
+  // Atomically set summarySent to prevent race conditions (multiple leave events)
+  const lockResult = await Meeting.findOneAndUpdate(
+    { _id: meetingId, summarySent: { $ne: true } },
+    { $set: { summarySent: true } },
+    { new: true }
+  );
+  if (!lockResult) {
+    console.log('[Summarizer] Another process already claimed this summary, skipping.');
+    return null;
+  }
+
   const transcripts = await Transcript.find({ meetingId }).sort({ timestamp: 1 });
   const hasTranscripts = transcripts && transcripts.length > 0;
 
