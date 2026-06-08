@@ -67,7 +67,9 @@ async function transcribeChunk(meetingId, userId, speakerName, filePath) {
       language: "en"
     });
     const text = transcription.text.trim();
-    if (text) {
+    const lowerText = text.toLowerCase();
+    const isHallucination = lowerText.includes("meeting conversation. transcribe accurately") || lowerText === "thank you." || lowerText === "thank you" || lowerText === "thanks." || lowerText === "subscribe." || lowerText === "subscribe";
+    if (text && !isHallucination) {
       await Transcript.create({
         meetingId,
         userId,
@@ -291,7 +293,7 @@ var import_speakeasy = __toESM(require("speakeasy"));
 var import_qrcode = __toESM(require("qrcode"));
 async function generateMfaSecret(email) {
   const secret = import_speakeasy.default.generateSecret({
-    name: `NexusZoom:${email}`,
+    name: `ForgeIndiaConnect:${email}`,
     length: 20
   });
   const otpauthUrl = secret.otpauth_url || "";
@@ -850,7 +852,7 @@ async function dispatchSummaryMail(meeting, summaryHtml) {
     const recipientEmails = users.map((u) => u.email);
     const mailDoc = {
       workspaceId: "antigraviity-hq",
-      senderName: "Nexus AI Assistant",
+      senderName: "Forge India Connect AI",
       senderEmail: "ai-assistant@nexus.app",
       recipientEmails,
       subject: ` Meeting Summary: ${meeting.title}`,
@@ -906,7 +908,7 @@ async function summarizeMeeting(meetingId) {
       </p>
     </div>
   </div>
-  <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:16px">Sent by Nexus AI Assistant</p>
+  <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:16px">Sent by Forge India Connect AI</p>
 </div>`;
   } else {
     const fullText = transcripts.map((t) => `[${t.timestamp.toISOString()}] ${t.speakerName}: ${t.text}`).join("\n");
@@ -956,7 +958,7 @@ ${fullText}`;
 // src/services/aiBot.ts
 var JWT_SECRET = process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var AI_BOT_EMAIL = "ai-assistant@nexus.app";
-var AI_BOT_NAME = "Nexus AI Assistant";
+var AI_BOT_NAME = "Forge India Connect AI";
 var activeBots = /* @__PURE__ */ new Map();
 async function mintAIBotToken() {
   try {
@@ -967,11 +969,16 @@ async function mintAIBotToken() {
         name: AI_BOT_NAME,
         email: AI_BOT_EMAIL,
         passwordHash,
-        avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=nexusai`,
+        avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=forgeai`,
         mfaEnabled: false,
         role: "company-admin",
         workspaceId: "antigraviity-hq"
       });
+    } else if (aiUser.name !== AI_BOT_NAME) {
+      aiUser.name = AI_BOT_NAME;
+      aiUser.avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=forgeai`;
+      await aiUser.save();
+      console.log(`[AIBot] Updated bot name to '${AI_BOT_NAME}' in database.`);
     }
     const token = import_jsonwebtoken3.default.sign(
       { userId: aiUser._id, email: aiUser.email, name: aiUser.name, role: "ai-bot", workspaceId: "antigraviity-hq" },
@@ -1245,11 +1252,14 @@ async function meetingRoutes(fastify2) {
         const targetEmails = allUsers.map((u) => u.email).filter((e) => e !== request.user.email);
         if (targetEmails.length > 0) {
           const timeStr = scheduledAt || startTime ? new Date(scheduledAt || startTime).toLocaleString() : "Now";
+          const origin = request.headers.origin || process.env.CLIENT_URL || "http://localhost:5173";
+          const webLink = `${origin}/w/${workspaceId}/meet/room/${joinCode}${plainPasscode ? `?pwd=${encodeURIComponent(plainPasscode)}&intent=join` : "?intent=join"}`;
+          const mobileLink = `nexus-workspace://meet/room/${joinCode}${plainPasscode ? `?pwd=${encodeURIComponent(plainPasscode)}&intent=join` : "?intent=join"}`;
           const mailBody = `
   <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b;">
     <h2 style="color: #2563eb;">Meeting Invitation: ${meeting.title}</h2>
     <p>Hi there,</p>
-    <p>You have been invited by <strong>${request.user.name}</strong> to join a Nexus Workspace meeting.</p>
+    <p>You have been invited by <strong>${request.user.name}</strong> to join a Forge India Connect meeting.</p>
     
     <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0;">
       <p style="margin: 0 0 10px 0;"><strong>Date & Time:</strong> ${timeStr}</p>
@@ -1258,9 +1268,14 @@ async function meetingRoutes(fastify2) {
       ${plainPasscode ? `<p style="margin: 0;"><strong>Passcode:</strong> ${plainPasscode}</p>` : ""}
     </div>
 
-    <p>To join the meeting, open the <strong>Meetings</strong> app in your workspace and enter the Room Code above.</p>
+    <div style="margin: 24px 0;">
+      <a href="${webLink}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; margin-right: 12px; margin-bottom: 12px;">Join on Web</a>
+      <a href="${mobileLink}" style="display: inline-block; padding: 12px 24px; background-color: #0f172a; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold;">Join on Mobile</a>
+    </div>
+
+    <p>You can also join by opening the <strong>Meetings</strong> app in your workspace and entering the Room Code above.</p>
     <br/>
-    <p>Best regards,<br/><strong>Nexus AI</strong></p>
+    <p>Best regards,<br/><strong>Forge India Connect AI</strong></p>
   </div>
           `;
           for (const email of targetEmails) {
@@ -1268,7 +1283,7 @@ async function meetingRoutes(fastify2) {
               workspaceId,
               ownerEmail: email,
               folder: "inbox",
-              senderName: "Nexus AI",
+              senderName: "Forge India Connect AI",
               senderEmail: "nexus-ai@workspace.app",
               recipientEmails: [email],
               subject: `Invitation: ${meeting.title}`,
@@ -1319,9 +1334,14 @@ async function meetingRoutes(fastify2) {
         return reply.code(410).send({ error: "This meeting has already ended." });
       }
       if (meeting.passcodeHash) {
-        const isPasscodeValid = passcode && await import_bcrypt3.default.compare(String(passcode), meeting.passcodeHash);
-        if (!isPasscodeValid) {
-          return reply.code(401).send({ error: "Invalid meeting passcode." });
+        const hostIdStr = meeting.hostId._id?.toString?.() || meeting.hostId.toString();
+        const isHost = hostIdStr === request.user.id;
+        const isParticipant = meeting.participantIds && meeting.participantIds.some((id) => id.toString() === request.user.id);
+        if (!isHost && !isParticipant) {
+          const isPasscodeValid = passcode && await import_bcrypt3.default.compare(String(passcode), meeting.passcodeHash);
+          if (!isPasscodeValid) {
+            return reply.code(401).send({ error: "Invalid meeting passcode." });
+          }
         }
       }
       const userId = new import_mongoose11.Types.ObjectId(request.user.id);
@@ -3003,8 +3023,19 @@ async function docsRoutes(fastify2) {
 }
 
 // src/routes/show.ts
+var fs4 = __toESM(require("fs"));
+var path3 = __toESM(require("path"));
+var cachedExamples = "";
+try {
+  const examplesPath = path3.join(__dirname, "../ppt_examples.json");
+  if (fs4.existsSync(examplesPath)) {
+    cachedExamples = fs4.readFileSync(examplesPath, "utf8");
+  }
+} catch (e) {
+  console.error("Failed to load ppt_examples.json", e);
+}
 async function showRoutes(fastify2) {
-  fastify2.addHook("preValidation", authenticate);
+  fastify2.get("/ping", async () => ({ pong: true }));
   fastify2.post("/generate", async (request, reply) => {
     try {
       const { prompt } = request.body;
@@ -3025,7 +3056,21 @@ async function showRoutes(fastify2) {
           messages: [
             {
               role: "system",
-              content: 'You are an expert presentation creator. Generate a presentation based on the user prompt. You must strictly reply with a JSON object containing a single key "slides", which is an array of objects. Each object must have a "title" string and a "content" string (which contains HTML formatting like <ul>, <li>, <strong>, <p>). Produce 5 to 7 slides.'
+              content: `You are an expert presentation creator. Generate a professional presentation based on the user prompt. 
+You must strictly reply with a JSON object containing two keys: "theme" and "slides".
+1. "theme": Choose one from ["modern", "corporate", "playful", "dark", "elegant"] based on the topic.
+2. "slides": An array of slide objects.
+
+Each slide object MUST have:
+- "layout": Choose ONE from ["title", "bullets", "split", "quote", "default"].
+- "title": The slide title string.
+- "subtitle": (Optional) The slide subtitle string, mostly used for "title" layout.
+- "content": An array of strings representing bullet points, paragraphs, or split content. Do NOT use HTML tags.
+
+Here are some training examples showing the PROFESSIONAL STRUCTURE and FLOW of a presentation (note: map their layouts to our supported layouts ["title", "bullets", "split", "quote", "default"]):
+${cachedExamples}
+
+Generate 5 to 7 slides with rich, professional content following the flow in the training examples. Provide the JSON object.`
             },
             { role: "user", content: prompt }
           ],
@@ -3040,15 +3085,22 @@ async function showRoutes(fastify2) {
       let generatedJsonText = data.choices?.[0]?.message?.content || '{"slides":[]}';
       console.log("Raw AI Output:", generatedJsonText);
       let slides = [];
+      let theme = "modern";
       try {
-        const parsed = JSON.parse(generatedJsonText);
+        const cleanedText = generatedJsonText.replace(/```json\\n?/g, "").replace(/```\\n?/g, "").trim();
+        const parsed = JSON.parse(cleanedText);
         slides = parsed.slides || [];
+        theme = parsed.theme || "modern";
       } catch (parseError) {
         throw new Error(`Failed to parse AI output as JSON. Output: ${generatedJsonText}. Error: ${parseError.message}`);
       }
-      return reply.code(200).send({ slides });
+      return reply.code(200).send({ slides, theme });
     } catch (err) {
       console.error("AI GENERATION ERROR:", err);
+      try {
+        fs4.writeFileSync(path3.join(__dirname, "../groq_error_debug.log"), err.message + "\\n" + err.stack);
+      } catch (e) {
+      }
       return reply.code(500).send({ error: err.message || "Failed to generate presentation" });
     }
   });
@@ -3279,6 +3331,7 @@ async function statusRoutes(fastify2) {
 // src/services/webrtc.ts
 var import_ws2 = require("ws");
 var import_jsonwebtoken4 = __toESM(require("jsonwebtoken"));
+var import_mongoose21 = require("mongoose");
 var JWT_SECRET2 = process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var rooms = /* @__PURE__ */ new Map();
 function send(ws, payload) {
@@ -3299,6 +3352,10 @@ function broadcastToRoom(meetingId, excludePeerId, payload) {
 function handleWebRtcSignalling(ws) {
   let peerId = null;
   let meetingId = null;
+  ws.isAlive = true;
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
   ws.on("message", async (raw) => {
     let msg;
     try {
@@ -3326,11 +3383,20 @@ function handleWebRtcSignalling(ws) {
       meetingId = String(roomKey);
       if (!rooms.has(meetingId)) rooms.set(meetingId, /* @__PURE__ */ new Map());
       const room = rooms.get(meetingId);
+      if (room.has(peerId)) {
+        const oldPeer = room.get(peerId);
+        try {
+          oldPeer.socket.terminate();
+        } catch (e) {
+        }
+      }
       room.set(peerId, {
         socket: ws,
         userId: peerId,
         name: user.name,
-        avatarUrl: user.avatarUrl
+        avatarUrl: user.avatarUrl,
+        isAlive: true,
+        joinedAt: /* @__PURE__ */ new Date()
       });
       await Participant.findOneAndUpdate(
         { meetingId, userId: peerId },
@@ -3382,14 +3448,37 @@ function handleWebRtcSignalling(ws) {
       return;
     }
     if (type === "media-state") {
-      const { audioEnabled, videoEnabled } = data;
+      const { audioEnabled, videoEnabled, isScreenSharing } = data;
       broadcastToRoom(meetingId, peerId, {
         type: "peer-media-state",
         fromPeerId: peerId,
         peerId,
         audioEnabled,
-        videoEnabled
+        videoEnabled,
+        isScreenSharing
       });
+      return;
+    }
+    if (type === "chat-message") {
+      broadcastToRoom(meetingId, peerId, {
+        type: "chat-message",
+        fromPeerId: peerId,
+        ...data
+      });
+      return;
+    }
+    if (type === "end-meeting-all") {
+      broadcastToRoom(meetingId, peerId, { type: "meeting-ended" });
+      const query = import_mongoose21.Types.ObjectId.isValid(meetingId) ? { _id: meetingId } : { joinCode: meetingId };
+      Meeting.updateOne(query, { status: "ended" }).catch((err) => console.error("[WebRTC] Failed to update meeting status:", err));
+      return;
+    }
+    if (type === "kick-peer") {
+      const { targetPeerId } = data;
+      const target = rooms.get(meetingId)?.get(targetPeerId);
+      if (target) {
+        send(target.socket, { type: "kicked" });
+      }
       return;
     }
     if (type === "leave") {
@@ -3401,13 +3490,19 @@ function handleWebRtcSignalling(ws) {
   });
   ws.on("close", async () => {
     if (meetingId && peerId) {
-      await cleanupPeer(meetingId, peerId);
+      const room = rooms.get(meetingId);
+      if (room && room.get(peerId)?.socket === ws) {
+        await cleanupPeer(meetingId, peerId);
+      }
     }
   });
   ws.on("error", () => {
     if (meetingId && peerId) {
-      cleanupPeer(meetingId, peerId).catch(() => {
-      });
+      const room = rooms.get(meetingId);
+      if (room && room.get(peerId)?.socket === ws) {
+        cleanupPeer(meetingId, peerId).catch(() => {
+        });
+      }
     }
   });
 }
@@ -3420,9 +3515,30 @@ async function cleanupPeer(roomId, pid) {
   await Participant.findOneAndUpdate(
     { meetingId: roomId, userId: pid },
     { leftAt: /* @__PURE__ */ new Date() }
-  ).catch(() => {
+  ).catch((e) => {
+    console.error("[WebRTC] cleanupPeer DB update error:", e);
   });
 }
+setInterval(() => {
+  for (const [roomId, room] of rooms.entries()) {
+    for (const [peerId, peer] of room.entries()) {
+      const ws = peer.socket;
+      if (ws.isAlive === false) {
+        try {
+          ws.terminate();
+        } catch (e) {
+        }
+        cleanupPeer(roomId, peerId);
+        continue;
+      }
+      ws.isAlive = false;
+      try {
+        peer.socket.ping();
+      } catch (e) {
+      }
+    }
+  }
+}, 3e4);
 
 // src/services/callSignaling.ts
 var import_ws3 = require("ws");
@@ -3563,28 +3679,36 @@ async function ensureDefaultUser() {
   if (!existing) {
     const passwordHash = await import_bcrypt5.default.hash(DEFAULT_PASSWORD, salt);
     await User.create({
-      name: "Nexus Administrator",
+      name: "Forge India Administrator",
       email: DEFAULT_EMAIL,
       passwordHash,
-      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent("Nexus Administrator")}`,
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent("Forge India Administrator")}`,
       mfaEnabled: false,
       role: "company-admin",
       workspaceId: "antigraviity-hq"
     });
+  } else if (existing.name === "Nexus Administrator") {
+    existing.name = "Forge India Administrator";
+    existing.avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent("Forge India Administrator")}`;
+    await existing.save();
   }
   const AI_EMAIL = "ai-assistant@nexus.app";
   const aiExisting = await User.findOne({ email: AI_EMAIL });
   if (!aiExisting) {
     const aiPasswordHash = await import_bcrypt5.default.hash("AI_SECURE_PASSWORD_123!@#", salt);
     await User.create({
-      name: "Nexus AI Assistant",
+      name: "Forge India Connect AI",
       email: AI_EMAIL,
       passwordHash: aiPasswordHash,
-      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=nexusai`,
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=forgeai`,
       mfaEnabled: false,
       role: "company-admin",
       workspaceId: "antigraviity-hq"
     });
+  } else if (aiExisting.name !== "Forge India Connect AI") {
+    aiExisting.name = "Forge India Connect AI";
+    aiExisting.avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=forgeai`;
+    await aiExisting.save();
   }
   const SUPERADMIN_EMAIL = "superadmin@fic.com";
   const superAdminExisting = await User.findOne({ email: SUPERADMIN_EMAIL });

@@ -12,6 +12,8 @@ interface PeerInfo {
   userId: string;
   name: string;
   avatarUrl?: string;
+  isAlive: boolean;
+  joinedAt: Date;
 }
 
 const rooms = new Map<string, Map<string, PeerInfo>>();
@@ -40,6 +42,9 @@ function broadcastToRoom(meetingId: string, excludePeerId: string, payload: obje
 export function handleWebRtcSignalling(ws: WebSocket) {
   let peerId: string | null = null;
   let meetingId: string | null = null;
+
+  (ws as any).isAlive = true;
+  ws.on('pong', () => { (ws as any).isAlive = true; });
 
   ws.on('message', async (raw: Buffer | string) => {
     let msg: any;
@@ -75,11 +80,19 @@ export function handleWebRtcSignalling(ws: WebSocket) {
       if (!rooms.has(meetingId)) rooms.set(meetingId, new Map());
       const room = rooms.get(meetingId)!;
 
+      // Duplicate prevention: If user already in room, terminate old socket
+      if (room.has(peerId)) {
+        const oldPeer = room.get(peerId)!;
+        try { oldPeer.socket.terminate(); } catch (e) {}
+      }
+
       room.set(peerId, {
         socket: ws,
         userId: peerId,
         name: user.name,
         avatarUrl: user.avatarUrl,
+        isAlive: true,
+        joinedAt: new Date()
       });
 
       await Participant.findOneAndUpdate(
@@ -196,13 +209,20 @@ export function handleWebRtcSignalling(ws: WebSocket) {
 
   ws.on('close', async () => {
     if (meetingId && peerId) {
-      await cleanupPeer(meetingId, peerId);
+      const room = rooms.get(meetingId);
+      // Only cleanup if the closing socket is the currently active one
+      if (room && room.get(peerId)?.socket === ws) {
+        await cleanupPeer(meetingId, peerId);
+      }
     }
   });
 
   ws.on('error', () => {
     if (meetingId && peerId) {
-      cleanupPeer(meetingId, peerId).catch(() => {});
+      const room = rooms.get(meetingId);
+      if (room && room.get(peerId)?.socket === ws) {
+        cleanupPeer(meetingId, peerId).catch(() => {});
+      }
     }
   });
 }
@@ -223,3 +243,19 @@ async function cleanupPeer(roomId: string, pid: string) {
     console.error('[WebRTC] cleanupPeer DB update error:', e);
   });
 }
+
+// Heartbeat mechanism to reap dead sockets
+setInterval(() => {
+  for (const [roomId, room] of rooms.entries()) {
+    for (const [peerId, peer] of room.entries()) {
+      const ws = peer.socket as any;
+      if (ws.isAlive === false) {
+        try { ws.terminate(); } catch (e) {}
+        cleanupPeer(roomId, peerId);
+        continue;
+      }
+      ws.isAlive = false;
+      try { peer.socket.ping(); } catch (e) {}
+    }
+  }
+}, 30000);
