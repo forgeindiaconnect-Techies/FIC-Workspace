@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { getApiUrl } from '../api';
+import { useWebRTC } from '../hooks/useWebRTC';
 import MeetingLayout from '../components/MeetingLayout';
 import StarRating from '../components/StarRating';
 import { 
@@ -33,14 +34,27 @@ const UserAvatar = ({ name, profilePic, size = 'xl' }) => {
   );
 };
 
-const RemoteVideo = ({ peer, stream, isSpeaking, mobileStyle, isScreen }) => {
+const RemoteVideo = ({ peer, stream, isSpeaking, mobileStyle, isScreen, remoteStreamsRef, remoteScreenStreamsRef }) => {
   const videoRef = useRef();
   const [hasVideo, setHasVideo] = useState(false);
-  const currentStream = stream || peer.stream;
+  
+  // Use the stream passed in OR look it up from the refs if using the new hook
+  let currentStream = stream;
+  if (!currentStream && peer) {
+    if (isScreen && remoteScreenStreamsRef?.current) {
+      currentStream = remoteScreenStreamsRef.current.get(peer.peerID || peer.peerId);
+    } else if (!isScreen && remoteStreamsRef?.current) {
+      currentStream = remoteStreamsRef.current.get(peer.peerID || peer.peerId);
+    } else {
+      currentStream = peer.stream;
+    }
+  }
   
   useEffect(() => { 
     if (currentStream && videoRef.current) { 
-      videoRef.current.srcObject = currentStream;
+      if (videoRef.current.srcObject !== currentStream) {
+        videoRef.current.srcObject = currentStream;
+      }
       
       const checkTracks = () => {
         const videoTrack = currentStream.getVideoTracks()[0];
@@ -59,7 +73,9 @@ const RemoteVideo = ({ peer, stream, isSpeaking, mobileStyle, isScreen }) => {
       
       checkTracks();
 
-      videoRef.current.play().catch(e => console.error("Remote video play error:", e));
+      videoRef.current.play().catch(e => {
+         if (e.name !== 'AbortError') console.error("Remote video play error:", e);
+      });
       
       // Recheck periodically for 5 seconds after stream assignment to catch late-arriving frames
       const intervalId = setInterval(checkTracks, 500);
@@ -78,7 +94,9 @@ const RemoteVideo = ({ peer, stream, isSpeaking, mobileStyle, isScreen }) => {
     if (actualHasVideo && videoRef.current) {
       const playPromise = videoRef.current.play();
       if (playPromise !== undefined) {
-         playPromise.catch(e => console.warn("Remote video play error:", e));
+         playPromise.catch(e => {
+            if (e.name !== 'AbortError') console.warn("Remote video play error:", e);
+         });
       }
     }
   }, [actualHasVideo, currentStream]);
@@ -150,6 +168,48 @@ const MeetingApp = () => {
   const [finalStats, setFinalStats] = useState({ duration: 0, participants: 0 });
   const [activeSpeakers, setActiveSpeakers] = useState([]); // Track recent speakers for SFU-style optimization
   const [performanceMode, setPerformanceMode] = useState(false);
+
+  const {
+    localStreamRef: streamRef,
+    screenStreamRef,
+    remoteStreamsRef,
+    remoteScreenStreamsRef,
+    peerConnectionsRef,
+    socketRef: wsRef,
+    startScreenShare: hookStartScreenShare,
+    stopScreenShare: hookStopScreenShare,
+    rejoinWithNewStream,
+    createPeerConnection,
+    handleNewPeer,
+    cleanup,
+    safePlay,
+    sendWs
+  } = useWebRTC({
+    roomId: meetingMetadata ? (meetingMetadata._id || meetingMetadata.meetingId) : code,
+    token: auth.token || auth?.user?.token || localStorage.getItem('token'),
+    isReady: appState === 'in-call',
+    onMessage: (msg) => {
+      // Simulate ws.onmessage event to keep the old logic working
+      if (wsRef.current && wsRef.current.onmessage) {
+         wsRef.current.onmessage({ data: JSON.stringify(msg) });
+      }
+    },
+    onPeerTrackAdded: (peerId) => {
+       setPeers(prev => [...prev]); 
+    },
+    onPeerLeft: (peerId) => {
+       setPeers(prev => prev.filter(p => p.peerID !== peerId && p.peerId !== peerId));
+       setPinnedUser(prev => (prev === peerId || prev === `${peerId}_screen`) ? null : prev);
+    }
+  });
+
+  const sendWsRef = useRef(sendWs);
+  const createPeerConnectionRef = useRef(createPeerConnection);
+  useEffect(() => {
+    sendWsRef.current = sendWs;
+    createPeerConnectionRef.current = createPeerConnection;
+  }, [sendWs, createPeerConnection]);
+
   const [peers, setPeers] = useState([]);
   const [meetingMessages, setMeetingMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -168,22 +228,22 @@ const MeetingApp = () => {
   const [endedReason, setEndedReason] = useState(null);
   
   // Refs
-  const wsRef = useRef(null);
+  
   const peerIdRef = useRef(null);
   const meetingIdRef = useRef(null);
   const intentionalCloseRef = useRef(false);
   const isMountedRef = useRef(true);
   const userVideo = useRef();
   const peersRef = useRef([]);
-  const streamRef = useRef();
-  const screenStreamRef = useRef();
-  const screenSendersRef = useRef(new Map());
-  const cameraSendersRef = useRef(new Map());
-  const candidateQueue = useRef(new Map());
-  const iceCandidateBufferRef = useRef(new Map());
-  const createPeerConnectionRef = useRef(null);
-  const shouldInitiateOfferRef = useRef(null);
-  const sendWsRef = useRef(null);
+  
+  
+  
+  
+  
+  
+  
+  
+  
 
   const getMediaConstraints = (isVideoOnly = false) => {
     const isMobile = window.innerWidth <= 768;
@@ -452,11 +512,7 @@ const MeetingApp = () => {
     }
   }, [aiAssistantActive, streamRef.current]);
 
-  const sendWs = useCallback((type, data) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type, data }));
-    }
-  }, []);
+  
 
   const shouldInitiateOffer = useCallback((remotePeerId) => {
     const myId = peerIdRef.current;
@@ -530,153 +586,7 @@ const m = Math.floor((seconds % 3600) / 60);
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const createPeerConnection = (targetPeerId, stream, name) => {
-    // Close any existing connection for this peer before creating a new one
-    const existingPeerIdx = peersRef.current.findIndex(p => p.peerID === targetPeerId);
-    if (existingPeerIdx !== -1) {
-      const oldPeer = peersRef.current[existingPeerIdx];
-      if (oldPeer.pc) {
-        try { oldPeer.pc.close(); } catch (e) {}
-      }
-      peersRef.current.splice(existingPeerIdx, 1);
-    }
-    // Clear stale ICE candidates and signaling flags for this peer
-    iceCandidateBufferRef.current.delete(targetPeerId);
-    candidateQueue.current.delete(targetPeerId);
-    screenSendersRef.current.delete(targetPeerId);
-    cameraSendersRef.current.delete(targetPeerId);
-
-    const PeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
-    const pc = new PeerConnection({ 
-      iceServers: iceServersRef.current || iceServers,
-      bundlePolicy: 'max-bundle'
-    });
-    
-    // Ensure onnegotiationneeded fires even if there are no media tracks
-    pc.createDataChannel('init');
-    
-    pc.onicecandidate = (event) => {
-      if (event.candidate) sendWs('ice-candidate', { targetPeerId, candidate: event.candidate });
-    };
-
-    pc.makingOffer = false;
-    pc.onnegotiationneeded = async () => {
-      try {
-        pc.makingOffer = true;
-        await pc.setLocalDescription();
-        if (pc.localDescription && pc.localDescription.type === 'offer') {
-          sendWs('offer', { targetPeerId, sdp: pc.localDescription });
-        }
-      } catch (err) {
-        console.warn(`[WebRTC] Renegotiation failed for ${targetPeerId}:`, err);
-      } finally {
-        pc.makingOffer = false;
-      }
-    };
-
-
-    pc.oniceconnectionstatechange = () => {
-      console.log(`[ICE] state for ${targetPeerId}: ${pc.iceConnectionState}`);
-      if (pc.iceConnectionState === 'failed') {
-        console.warn(`[ICE] Connection failed for ${targetPeerId}, attempting ICE restart...`);
-        setTimeout(async () => {
-          try {
-            const newOffer = await pc.createOffer({ iceRestart: true });
-            await pc.setLocalDescription(newOffer);
-            sendWs('offer', { targetPeerId, sdp: newOffer });
-          } catch (err) {
-            console.warn(`[ICE] Restart failed for ${targetPeerId}:`, err);
-          }
-        }, 1000);
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      const state = pc.connectionState;
-      console.log(`[PC] connection state for ${targetPeerId}: ${state}`);
-      if (state === 'connected' || state === 'disconnected' || state === 'failed') {
-        setPeers(prev => prev.map(p => p.peerID === targetPeerId ? { ...p, connectionState: state } : p));
-      }
-    };
-    
-    pc.ontrack = (event) => {
-      let remoteStream = event.streams && event.streams[0];
-      if (!remoteStream && event.track) {
-         remoteStream = new MediaStream([event.track]);
-      }
-      
-      setPeers(prev => prev.map(p => {
-         if (p.peerID === targetPeerId) {
-            const existingStream = p.stream;
-            if (existingStream) {
-               const hasExistingVideo = existingStream.getVideoTracks().length > 0;
-               const isDiffStream = remoteStream.id !== existingStream.id || (event.track.kind === 'video' && hasExistingVideo);
-               
-               if (event.track.kind === 'video' && isDiffStream) {
-                 if (!p.screenStream) {
-                    const newScreenStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
-                    if (p.isScreenSharing) {
-                       setTimeout(() => setPinnedUser(`${targetPeerId}_screen`), 100);
-                    }
-                    return { ...p, screenStream: newScreenStream };
-                 } else {
-                    p.screenStream.addTrack(event.track);
-                    return { ...p };
-                 }
-               }
-               
-               const tracks = existingStream.getTracks();
-               const existingTrackOfKind = tracks.find(t => t.kind === event.track.kind);
-               if (existingTrackOfKind && existingTrackOfKind.id !== event.track.id) {
-                   existingStream.removeTrack(existingTrackOfKind);
-               }
-               existingStream.addTrack(event.track);
-               return { ...p };
-            }
-            return { ...p, stream: remoteStream };
-         }
-         return p;
-      }));
-      
-      // Setup Audio Routing
-      if (mixingRemoteAudioRef.current && audioContextRef.current && audioDestinationRef.current && remoteStream) {
-        const audioTrack = remoteStream.getAudioTracks()[0];
-        if (audioTrack && audioTrack.readyState === 'live') {
-          try {
-            const source = audioContextRef.current.createMediaStreamSource(new MediaStream([audioTrack]));
-            source.connect(audioDestinationRef.current);
-          } catch(e) {
-            console.error("Audio routing error:", e);
-          }
-        }
-      }
-
-      // Auto-add to active speakers if they are sending audio
-      if (remoteStream && remoteStream.getAudioTracks().length > 0) {
-         setActiveSpeakers(prev => [...new Set([...prev, targetPeerId])].slice(-4));
-      }
-    };
-
-    if (stream) {
-      stream.getTracks().forEach(track => {
-        const sender = pc.addTrack(track, stream);
-        if (track.kind === 'video') cameraSendersRef.current.set(targetPeerId, sender);
-      });
-    }
-    
-    // Explicitly add screen track on a separate stream if sharing
-    if (isScreenSharing && screenStreamRef.current) {
-      const screenTrack = screenStreamRef.current.getVideoTracks()[0];
-      if (screenTrack) {
-        const sender = pc.addTrack(screenTrack, screenStreamRef.current);
-        const transceiver = pc.getTransceivers().find(t => t.sender === sender);
-        if (transceiver) transceiver.direction = 'sendonly';
-        screenSendersRef.current.set(targetPeerId, sender);
-      }
-    }
-    
-    return pc;
-  };
+  
 
   const handleEndCall = async () => {
     setFinalStats({ duration, participants: peers.length + 1 });
