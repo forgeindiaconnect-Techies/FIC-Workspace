@@ -138,6 +138,20 @@ export const useWebRTC = ({
       iceServers: iceServersRef.current
     });
 
+    // Add local camera and microphone tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStreamRef.current!);
+      });
+    }
+
+    // Add screen share tracks if currently active
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, screenStreamRef.current!);
+      });
+    }
+
     pc.onicecandidate = (e) => {
       if (e.candidate) {
         sendWs('ice-candidate', {
