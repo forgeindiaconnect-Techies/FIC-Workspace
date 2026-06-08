@@ -1,4 +1,4 @@
-
+"use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { getApiUrl } from '../api';
@@ -228,7 +228,7 @@ const MeetingApp = () => {
   const [endedReason, setEndedReason] = useState(null);
   
   // Refs
-  
+  const iceCandidateBufferRef = useRef(new Map());
   const peerIdRef = useRef(null);
   const meetingIdRef = useRef(null);
   const shouldInitiateOfferRef = useRef(null);

@@ -1,3 +1,4 @@
+"use client";
 import { useEffect, useRef, useCallback } from 'react';
 
 export const useWebRTC = ({
@@ -121,6 +122,10 @@ export const useWebRTC = ({
 
   // 9. Fix createPeerConnection with stale connection guard
   const createPeerConnection = (peerId: string): RTCPeerConnection => {
+    if (typeof window === 'undefined' || !window.RTCPeerConnection) {
+      throw new Error('RTCPeerConnection not available');
+    }
+
     // Close stale connection if exists
     if (peerConnectionsRef.current.has(peerId)) {
       peerConnectionsRef.current.get(peerId)?.close();
