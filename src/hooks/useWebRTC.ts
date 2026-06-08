@@ -150,9 +150,13 @@ export const useWebRTC = ({
     pc.onnegotiationneeded = async () => {
       // NOTE: shouldInitiateOfferRef logic is in MeetingApp, but here we just prevent tight loops
       if (isNegotiatingRef.current.get(peerId)) return; // prevent loop
+      if (pc.signalingState !== 'stable') return; // critical guard against loop
+      
       isNegotiatingRef.current.set(peerId, true);
       try {
         const offer = await pc.createOffer();
+        if (pc.signalingState !== 'stable') return; // check again after await
+        
         await pc.setLocalDescription(offer);
         socketRef.current?.send(JSON.stringify({
           type: 'offer',

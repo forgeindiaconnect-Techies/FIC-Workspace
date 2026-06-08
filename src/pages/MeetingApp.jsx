@@ -235,6 +235,8 @@ const MeetingApp = () => {
   const intentionalCloseRef = useRef(false);
   const isMountedRef = useRef(true);
   const messageHandlerRef = useRef(null);
+  const screenSendersRef = useRef(new Map());
+  const cameraSendersRef = useRef(new Map());
   const userVideo = useRef();
   const peersRef = useRef([]);
   
