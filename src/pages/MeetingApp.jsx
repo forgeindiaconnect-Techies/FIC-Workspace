@@ -1399,9 +1399,6 @@ const m = Math.floor((seconds % 3600) / 60);
               <button onClick={handleEndCall} className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors">
                 <ChevronLeft size={20} className="text-gray-700" />
               </button>
-              <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors">
-                <Home size={16} className="text-gray-700" />
-              </button>
             </div>
             <div className="hidden md:flex items-center gap-4 ml-4 shrink-0">
                <img src={LogoImage} alt="Forge India" className="h-6 w-auto object-contain" />

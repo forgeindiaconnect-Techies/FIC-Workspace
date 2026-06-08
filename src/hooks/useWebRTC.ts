@@ -138,10 +138,17 @@ export const useWebRTC = ({
       iceServers: iceServersRef.current
     });
 
-    // Add local camera and microphone tracks
+    // Add local camera and microphone tracks safely
     if (localStreamRef.current) {
+      const existingSenderKinds = pc.getSenders()
+        .map(s => s.track?.kind)
+        .filter(Boolean);
+
       localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current!);
+        // Only add if not already added
+        if (!existingSenderKinds.includes(track.kind)) {
+          pc.addTrack(track, localStreamRef.current!);
+        }
       });
     }
 
@@ -261,10 +268,18 @@ export const useWebRTC = ({
   const handleNewPeer = async (peerId: string, polite: boolean) => {
     const pc = createPeerConnection(peerId);
 
-    // Add local tracks
-    localStreamRef.current?.getTracks().forEach(track => {
-      pc.addTrack(track, localStreamRef.current!);
-    });
+    // Add local tracks safely
+    if (localStreamRef.current) {
+      const existingSenderKinds = pc.getSenders()
+        .map(s => s.track?.kind)
+        .filter(Boolean);
+
+      localStreamRef.current.getTracks().forEach(track => {
+        if (!existingSenderKinds.includes(track.kind)) {
+          pc.addTrack(track, localStreamRef.current!);
+        }
+      });
+    }
 
     // If screen share is active, also add screen track
     if (screenStreamRef.current) {
@@ -295,47 +310,8 @@ export const useWebRTC = ({
     try {
         API_URL = (import.meta as any).env.VITE_API_URL || API_URL;
     } catch(e){}
-
-    let wsBase = API_URL;
-    if (wsBase.startsWith('https://')) wsBase = wsBase.replace('https://', 'wss://');
-    else if (wsBase.startsWith('http://')) wsBase = wsBase.replace('http://', 'ws://');
-    else wsBase = `wss://${wsBase}`;
-    wsBase = wsBase.replace(/\/+$/, '');
-
-    const wsUrl = `${wsBase}/ws/webrtc`;
-    socketRef.current = new WebSocket(wsUrl);
-
-    socketRef.current.onopen = () => {
-      reconnectAttemptsRef.current = 0; // Reset on successful connection
-      socketRef.current?.send(JSON.stringify({ 
-         type: 'join', 
-         data: {
-             token,
-             roomId,
-             meetingId: roomId,
-             joinCode: roomId
-         }
-      }));
-    };
-
-    socketRef.current.onmessage = async (event) => {
-      if (!isMountedRef.current) return;
-      try {
-        const msg = JSON.parse(event.data);
-        if (onMessage) onMessage(msg);
-      } catch (err) {
-        console.error('Signaling error:', err);
-      }
-    };
-
-    socketRef.current.onclose = (event) => {
-      if (event.code === 1000 || !isMountedRef.current) return;
-      console.warn(`[useWebRTC] WS closed (${event.code}). Reconnecting...`);
-      if (reconnectAttemptsRef.current < MAX_RECONNECTS) {
-        reconnectAttemptsRef.current++;
-        setTimeout(() => connectSignaling(), 2000);
-      }
-    };
+    // NOTE: WebSocket connection logic was moved back to MeetingApp to prevent double-socket duplicate sessions
+    // and infinite signaling loops. MeetingApp.jsx populates socketRef.current and manages the lifecycle.
   };
 
   // 3. Fix WebSocket 1006 abnormal closure — proper cleanup
