@@ -1277,6 +1277,14 @@ const MeetingApp = () => {
             track.stop();
             streamRef.current.removeTrack(track);
           });
+          peersRef.current.forEach(({ pc, peerID }) => {
+             if (!pc) return;
+             const screenSender = screenSendersRef.current.get(peerID);
+             const cameraSender = pc.getSenders().find(s => s.track?.kind === 'video' && s !== screenSender);
+             if (cameraSender) {
+                cameraSender.replaceTrack(null).catch(e => console.warn("Failed to nullify video track:", e));
+             }
+          });
         } else if (streamRef.current.getVideoTracks().length === 0) {
           try {
             const newStream = await navigator.mediaDevices.getUserMedia(getMediaConstraints(true));
@@ -1288,17 +1296,16 @@ const MeetingApp = () => {
             const newVideoTrack = newStream.getVideoTracks()[0];
             streamRef.current.addTrack(newVideoTrack);
             
-            if (!isScreenSharing) {
-              peersRef.current.forEach(({ pc }) => {
-                if (!pc) return;
-                const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-                if (sender) {
-                  sender.replaceTrack(newVideoTrack).catch(e => console.warn("Failed to replace video track:", e));
-                } else {
-                  pc.addTrack(newVideoTrack, streamRef.current);
-                }
-              });
-            }
+            peersRef.current.forEach(({ pc, peerID }) => {
+              if (!pc) return;
+              const screenSender = screenSendersRef.current.get(peerID);
+              const cameraSender = pc.getSenders().find(s => s.track?.kind === 'video' && s !== screenSender);
+              if (cameraSender) {
+                cameraSender.replaceTrack(newVideoTrack).catch(e => console.warn("Failed to replace video track:", e));
+              } else {
+                pc.addTrack(newVideoTrack, streamRef.current);
+              }
+            });
           } catch (err) {
             console.error("Failed to re-acquire video track:", err);
             if (mounted) setVideoOn(false);
