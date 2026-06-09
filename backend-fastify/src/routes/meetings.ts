@@ -297,6 +297,98 @@ export async function meetingRoutes(fastify: FastifyInstance) {
     }
   });
 
+   // 7. MEETING HISTORY (Paginated list of hosted or attended meetings)
+   fastify.get('/history', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+     try {
+       const { page = 1, limit = 10 } = request.query as any;
+       const skip = (parseInt(page) - 1) * parseInt(limit);
+
+       const userId = new Types.ObjectId(request.user!.id);
+
+       // Find all meetings where the user was either the host or registered as participant
+       const meetings = await Meeting.find({
+         $or: [
+           { hostId: userId },
+           { participantIds: userId }
+         ]
+       })
+         .sort({ createdAt: -1 })
+         .skip(skip)
+         .limit(parseInt(limit))
+         .populate('hostId', 'name email avatarUrl');
+
+       const total = await Meeting.countDocuments({
+         $or: [
+           { hostId: userId },
+           { participantIds: userId }
+         ]
+       });
+
+       return reply.code(200).send({
+         meetings,
+         pagination: {
+           total,
+           page: parseInt(page),
+           limit: parseInt(limit),
+           totalPages: Math.ceil(total / parseInt(limit))
+         }
+       });
+     } catch (err: any) {
+       return reply.code(500).send({ error: 'Failed to retrieve history logs.', details: err.message });
+     }
+   });
+
+
+  // 10. GET WORKSPACE ROOMS
+  fastify.get('/rooms', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+      const rooms = await Room.find({ workspaceId }).sort({ createdAt: -1 });
+      return reply.code(200).send(rooms);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to fetch rooms', details: err.message });
+    }
+  });
+
+  // 11. CREATE ROOM
+  fastify.post('/rooms', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { title, tag, color } = request.body as any;
+      const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+      if (!title || !tag) return reply.code(400).send({ error: 'Title and Tag are required.' });
+
+      const room = await Room.create({
+        workspaceId,
+        creatorId: request.user!.id,
+        title,
+        tag,
+        color: color || '#7c3aed'
+      });
+      return reply.code(201).send(room);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to create room', details: err.message });
+    }
+  });
+
+  // 12. DELETE ROOM
+  fastify.delete('/rooms/:id', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as any;
+      const room = await Room.findById(id);
+      if (!room) return reply.code(404).send({ error: 'Room not found.' });
+
+      // Ensure user is creator or an admin
+      if (room.creatorId.toString() !== request.user!.id && request.user!.role !== 'company-admin') {
+        return reply.code(403).send({ error: 'Unauthorized to delete this room.' });
+      }
+
+      await Room.findByIdAndDelete(id);
+      return reply.code(200).send({ success: true });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to delete room', details: err.message });
+    }
+  });
+
   // 3. FETCH SINGLE MEETING WITH PARTICIPANT COUNT
   fastify.get('/:id', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -615,47 +707,6 @@ export async function meetingRoutes(fastify: FastifyInstance) {
     }
   });
 
-   // 7. MEETING HISTORY (Paginated list of hosted or attended meetings)
-   fastify.get('/history', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
-     try {
-       const { page = 1, limit = 10 } = request.query as any;
-       const skip = (parseInt(page) - 1) * parseInt(limit);
-
-       const userId = new Types.ObjectId(request.user!.id);
-
-       // Find all meetings where the user was either the host or registered as participant
-       const meetings = await Meeting.find({
-         $or: [
-           { hostId: userId },
-           { participantIds: userId }
-         ]
-       })
-         .sort({ createdAt: -1 })
-         .skip(skip)
-         .limit(parseInt(limit))
-         .populate('hostId', 'name email avatarUrl');
-
-       const total = await Meeting.countDocuments({
-         $or: [
-           { hostId: userId },
-           { participantIds: userId }
-         ]
-       });
-
-       return reply.code(200).send({
-         meetings,
-         pagination: {
-           total,
-           page: parseInt(page),
-           limit: parseInt(limit),
-           totalPages: Math.ceil(total / parseInt(limit))
-         }
-       });
-     } catch (err: any) {
-       return reply.code(500).send({ error: 'Failed to retrieve history logs.', details: err.message });
-     }
-   });
-
    // 8. GET ACTIVE PARTICIPANTS
    fastify.get('/:id/participants', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
      try {
@@ -732,53 +783,4 @@ export async function meetingRoutes(fastify: FastifyInstance) {
      }
    });
 
-  // 10. GET WORKSPACE ROOMS
-  fastify.get('/rooms', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
-      const rooms = await Room.find({ workspaceId }).sort({ createdAt: -1 });
-      return reply.code(200).send(rooms);
-    } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to fetch rooms', details: err.message });
-    }
-  });
-
-  // 11. CREATE ROOM
-  fastify.post('/rooms', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { title, tag, color } = request.body as any;
-      const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
-      if (!title || !tag) return reply.code(400).send({ error: 'Title and Tag are required.' });
-
-      const room = await Room.create({
-        workspaceId,
-        creatorId: request.user!.id,
-        title,
-        tag,
-        color: color || '#7c3aed'
-      });
-      return reply.code(201).send(room);
-    } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to create room', details: err.message });
-    }
-  });
-
-  // 12. DELETE ROOM
-  fastify.delete('/rooms/:id', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { id } = request.params as any;
-      const room = await Room.findById(id);
-      if (!room) return reply.code(404).send({ error: 'Room not found.' });
-
-      // Ensure user is creator or an admin
-      if (room.creatorId.toString() !== request.user!.id && request.user!.role !== 'company-admin') {
-        return reply.code(403).send({ error: 'Unauthorized to delete this room.' });
-      }
-
-      await Room.findByIdAndDelete(id);
-      return reply.code(200).send({ success: true });
-    } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to delete room', details: err.message });
-    }
-  });
 }
