@@ -775,8 +775,7 @@ export default function Meetings() {
     if (!activeRoom) return;
 
     syncRoomParticipants(activeRoom);
-    const t = setInterval(() => syncRoomParticipants(activeRoom), 3000);
-    return () => clearInterval(t);
+    // Removed setInterval to prevent OOM and ERR_INSUFFICIENT_RESOURCES; WS handles peer-joined/left
   }, [activeRoom, syncRoomParticipants]);
 
   React.useEffect(() => {

@@ -96,7 +96,13 @@ const MailApp = () => {
         mailSocketRef.current = null;
       }
 
-      const wsUrl = getSocketUrl().replace('http', 'ws') + '/ws/mail';
+      const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+      const email = auth.email || auth.user?.email || '';
+      if (!email) {
+        console.warn('[Mail] No email found in auth, skipping WebSocket connection');
+        return;
+      }
+      const wsUrl = getSocketUrl().replace('http', 'ws') + `/ws/mail?email=${encodeURIComponent(email)}`;
       const socket = new WebSocket(wsUrl);
       mailSocketRef.current = socket;
       const auth = JSON.parse(localStorage.getItem('auth') || '{}');

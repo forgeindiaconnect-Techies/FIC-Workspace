@@ -379,7 +379,7 @@ export const useWebRTC = ({
     // Fetch ICE Servers (optional, matching existing implementation)
     const fetchIce = async () => {
         try {
-            let API_URL = 'http://localhost:5000';
+            let API_URL = 'http://localhost:3001';
             try { API_URL = (import.meta as any).env.VITE_API_URL || API_URL; } catch(e){}
             const res = await fetch(`${API_URL}/api/meet/ice-servers`);
             const data = await res.json();
