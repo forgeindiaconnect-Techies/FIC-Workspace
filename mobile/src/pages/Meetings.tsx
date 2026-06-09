@@ -641,6 +641,7 @@ export default function Meetings() {
             incomingStream.getTracks().forEach((t: any) => {
               try { existingScreen.addTrack(t); } catch {}
             });
+            setRemoteScreenStreams(prev => ({ ...prev }));
           } else {
             remoteScreenStreamsRef.current[peerKey] = incomingStream;
             setRemoteScreenStreams(prev => ({ ...prev, [peerKey]: incomingStream }));
@@ -651,6 +652,7 @@ export default function Meetings() {
             incomingStream.getTracks().forEach((t: any) => {
               try { existing.addTrack(t); } catch {}
             });
+            setRemoteStreams(prev => ({ ...prev }));
           } else {
             remoteStreamsRef.current[peerKey] = incomingStream;
             setRemoteStreams(prev => ({ ...prev, [peerKey]: incomingStream }));

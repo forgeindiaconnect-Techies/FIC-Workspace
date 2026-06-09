@@ -243,6 +243,7 @@ export const useWebRTC = ({
                existing.addTrack(event.track);
             }
         }
+        setRemoteScreenStreams(new Map(remoteScreenStreamsRef.current));
       } else {
         if (!remoteStreamsRef.current.has(peerId)) {
             remoteStreamsRef.current.set(peerId, remoteStream);
@@ -257,6 +258,7 @@ export const useWebRTC = ({
               existing.addTrack(event.track);
             }
         }
+        setRemoteStreams(new Map(remoteStreamsRef.current));
       }
 
       // Ensure robust audio playback via dedicated audio element

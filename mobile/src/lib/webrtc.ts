@@ -212,6 +212,8 @@ function BrowserRTCView(props: any) {
         ? props.streamURL
         : null;
 
+  const streamTracksCount = stream?.getTracks?.()?.length || 0;
+
   React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -233,7 +235,7 @@ function BrowserRTCView(props: any) {
 
     stream.addEventListener?.('addtrack', handleAddTrack);
     return () => stream.removeEventListener?.('addtrack', handleAddTrack);
-  }, [stream]);
+  }, [stream, streamTracksCount]);
 
   const flattened = StyleSheet.flatten(props.style) || {};
   const fit = props.objectFit === 'contain' ? 'contain' : 'cover';
