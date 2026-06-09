@@ -762,12 +762,6 @@ const m = Math.floor((seconds % 3600) / 60);
           const rawPeers = msg.existingPeers || [];
           const deduplicatedPeers = [];
           for (const p of rawPeers) {
-             // 🚨 CRITICAL FIX: Prevent connecting to our own ghost!
-             // If the server hasn't timed out our old connection yet, it will send it to us in existingPeers.
-             // We must explicitly filter out any peer that matches our own userId or exact Name.
-             if (p.userId && auth.userId && p.userId === auth.userId) continue;
-             if (!p.userId && p.name && auth.user && p.name === auth.user && p.name !== 'Participant') continue;
-
              if (p.name && p.name !== 'Participant') {
                 const existingIdx = deduplicatedPeers.findIndex(dp => dp.name === p.name);
                 if (existingIdx !== -1) {
@@ -835,12 +829,9 @@ const m = Math.floor((seconds % 3600) / 60);
           if (msg.peerId === peerIdRef.current) return;
           if (peersRef.current.find(p => p.peerID === msg.peerId)) return;
           
-          // Deduplicate ghost connections (user crashed and rejoined before timeout)
-          // We check userId first (if available), then fallback to exact name match
-          const oldPeerRefIndex = peersRef.current.findIndex(p => 
-            (msg.userId && p.userId === msg.userId) || 
-            (!msg.userId && p.name === msg.name && msg.name && msg.name !== 'Participant')
-          );
+          // Deduplicate ghost connections based on exact ID.
+          // Since the backend now uses unique session IDs, we don't aggressively filter out same-user connections
+          const oldPeerRefIndex = peersRef.current.findIndex(p => p.peerID === msg.peerId);
           
           if (oldPeerRefIndex !== -1) {
              const oldPeer = peersRef.current[oldPeerRefIndex];
@@ -851,11 +842,7 @@ const m = Math.floor((seconds % 3600) / 60);
           peersRef.current.push({ peerID: msg.peerId, pc: null, name: msg.name, userId: msg.userId });
           
           setPeers(prev => {
-             // Remove any ghost peers from the UI
-             const filteredPrev = prev.filter(p => !(
-               (msg.userId && p.userId === msg.userId) || 
-               (!msg.userId && p.name === msg.name && msg.name && msg.name !== 'Participant')
-             ));
+             const filteredPrev = prev.filter(p => p.peerID !== msg.peerId);
              
              if (msg.name === 'Forge India Connect AI') {
                 const existingBot = filteredPrev.find(p => p.name === 'Forge India Connect AI');

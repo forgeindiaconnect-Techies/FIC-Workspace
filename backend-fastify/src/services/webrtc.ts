@@ -74,13 +74,14 @@ export function handleWebRtcSignalling(ws: WebSocket) {
       const user = await User.findById(userId).catch(() => null);
       if (!user) return send(ws, { type: 'error', message: 'User not found' });
 
-      peerId = user._id.toString();
+      const baseUserId = user._id.toString();
+      peerId = `${baseUserId}_${Math.random().toString(36).substring(2, 10)}`;
       meetingId = String(roomKey);
 
       if (!rooms.has(meetingId)) rooms.set(meetingId, new Map());
       const room = rooms.get(meetingId)!;
 
-      // Duplicate prevention: If user already in room, terminate old socket
+      // Duplicate prevention: if this exact random peerId exists, terminate it (virtually impossible but safe)
       if (room.has(peerId)) {
         const oldPeer = room.get(peerId)!;
         try { oldPeer.socket.terminate(); } catch (e) {}
@@ -88,7 +89,7 @@ export function handleWebRtcSignalling(ws: WebSocket) {
 
       room.set(peerId, {
         socket: ws,
-        userId: peerId,
+        userId: baseUserId,
         name: user.name,
         avatarUrl: user.avatarUrl,
         isAlive: true,
@@ -96,7 +97,7 @@ export function handleWebRtcSignalling(ws: WebSocket) {
       });
 
       await Participant.findOneAndUpdate(
-        { meetingId, userId: peerId },
+        { meetingId, userId: baseUserId },
         { joinedAt: new Date(), $unset: { leftAt: '' } },
         { upsert: true }
       ).catch(() => {});
@@ -115,7 +116,7 @@ export function handleWebRtcSignalling(ws: WebSocket) {
       broadcastToRoom(meetingId, peerId, {
         type: 'peer-joined',
         peerId,
-        userId: peerId,
+        userId: baseUserId,
         name: user.name,
         avatarUrl: user.avatarUrl,
       });
