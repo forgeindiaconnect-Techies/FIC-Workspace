@@ -621,6 +621,9 @@ export default function Meetings() {
         const screenMid = screenMidsRef.current.get(targetPeerId) || screenMidsRef.current.get(peerKey);
         const screenStreamId = screenStreamIdsRef.current.get(targetPeerId) || screenStreamIdsRef.current.get(peerKey);
         
+        console.log(`[WebRTC ontrack] ${peerKey} - trackId: ${event.track?.id}, kind: ${event.track?.kind}, streamId: ${incomingStream.id}`);
+        console.log(`[WebRTC ontrack] Match data -> screenTrackId: ${screenTrackId}, screenMid: ${screenMid}, screenStreamId: ${screenStreamId}`);
+        
         const isScreenShare = event.track?.id === screenTrackId
           || (screenMid && event.transceiver?.mid === screenMid)
           || (screenStreamId && incomingStream.id === screenStreamId)
@@ -629,6 +632,8 @@ export default function Meetings() {
           || (event.track?.kind === 'video' && hasCameraVideo && existingCameraStream.id !== incomingStream.id)
           || pendingScreenShareRef.current.has(targetPeerId)
           || pendingScreenShareRef.current.has(peerKey);
+
+        console.log(`[WebRTC ontrack] isScreenShare evaluated to: ${isScreenShare}`);
 
         if (isScreenShare) {
           const existingScreen = remoteScreenStreamsRef.current[peerKey];
@@ -966,7 +971,7 @@ export default function Meetings() {
               peerConnectionsRef.current.delete(fromPeerId);
               iceCandidateBufferRef.current.delete(fromPeerId);
             }
-            if (msg.isScreenShare) {
+            if (msg.isScreenShare || msg.screenTrackId || msg.screenMid || msg.screenStreamId) {
               pendingScreenShareRef.current.add(fromPeerId);
             }
             if (msg.screenTrackId) {
