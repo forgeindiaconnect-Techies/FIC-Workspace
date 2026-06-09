@@ -1821,7 +1821,7 @@ export default function Meetings() {
                           : (remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null)));
                         return (
                           <TouchableOpacity key={peer.id} style={s.unpinnedTile} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
-                            {rtcAvailableNow && remoteStream && (!peer.videoOff || isScreen || isLocalScreen) ? (
+                            {rtcAvailableNow && remoteStream && (!(peer as any).videoOff || isScreen || isLocalScreen) ? (
                               <RTCView style={s.cameraView} stream={remoteStream} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                             ) : (
                               <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
@@ -1878,7 +1878,7 @@ export default function Meetings() {
                       : (remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null)));
                     return (
                       <TouchableOpacity activeOpacity={0.85} key={peer.id} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
-                        {rtcAvailableNow && remoteStream && (!peer.videoOff || isScreen || isLocalScreen) ? (
+                        {rtcAvailableNow && remoteStream && (!(peer as any).videoOff || isScreen || isLocalScreen) ? (
                           <RTCView style={s.cameraView} stream={remoteStream} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                         ) : (
                           <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
