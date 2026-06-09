@@ -2043,11 +2043,28 @@ export default function Meetings() {
                 
                 const screenTrack = displayStream.getVideoTracks()[0];
                 if (screenTrack) {
+                  // Notify peers that screen sharing started
+                  if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({
+                      type: 'media-state',
+                      data: { isScreenSharing: true }
+                    }));
+                  }
+                  
                   peerConnectionsRef.current.forEach((pc: any, peerId: string) => {
                     pc.addTrack(screenTrack, displayStream);
                     pc.createOffer().then((offer: any) => {
                       return pc.setLocalDescription(offer).then(() => {
-                        sendSignalRef.current('offer', { targetPeerId: peerId, sdp: offer, isScreenShare: true });
+                        const screenSender = pc.getSenders().find((s: any) => s.track === screenTrack);
+                        const screenTransceiver = screenSender ? pc.getTransceivers().find((t: any) => t.sender === screenSender) : null;
+                        sendSignalRef.current('offer', { 
+                          targetPeerId: peerId, 
+                          sdp: offer, 
+                          isScreenShare: true,
+                          screenTrackId: screenTrack.id,
+                          screenMid: screenTransceiver?.mid,
+                          screenStreamId: displayStream.id
+                        });
                       });
                     }).catch((e: any) => console.warn('Renegotiation failed', e));
                   });
@@ -2055,6 +2072,12 @@ export default function Meetings() {
                   screenTrack.onended = () => {
                      setIsSharing(false);
                      setLocalScreenStream(null);
+                     if (wsRef.current?.readyState === WebSocket.OPEN) {
+                       wsRef.current.send(JSON.stringify({
+                         type: 'media-state',
+                         data: { isScreenSharing: false }
+                       }));
+                     }
                      peerConnectionsRef.current.forEach((pc: any, peerId: string) => {
                         const senders = pc.getSenders();
                         const screenSender = senders.find((s: any) => s.track === screenTrack);
@@ -2082,6 +2105,12 @@ export default function Meetings() {
                  const screenTrack = localScreenStream.getVideoTracks()[0];
                  localScreenStream.getTracks().forEach((t: any) => t.stop());
                  setLocalScreenStream(null);
+                 if (wsRef.current?.readyState === WebSocket.OPEN) {
+                   wsRef.current.send(JSON.stringify({
+                     type: 'media-state',
+                     data: { isScreenSharing: false }
+                   }));
+                 }
                  
                  peerConnectionsRef.current.forEach((pc: any, peerId: string) => {
                     const senders = pc.getSenders();
