@@ -42,7 +42,7 @@ const fmtDur = (s: number) =>
 const avatarFor = (name: string) =>
   String(name || 'U').trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'U';
 
-type RemotePeer = { id: string; name: string; peerId?: string; userId?: string };
+type RemotePeer = { id: string; name: string; peerId?: string; userId?: string; isScreenSharing?: boolean; videoOff?: boolean; audioMuted?: boolean; isBot?: boolean; isScreen?: boolean; isLocalScreen?: boolean; };
 
 export default function Meetings() {
   const { width, height } = useWindowDimensions();
