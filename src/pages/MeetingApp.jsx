@@ -1352,7 +1352,7 @@ const m = Math.floor((seconds % 3600) / 60);
       {appState === 'lobby' && (
         <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 md:p-8 bg-[#0a0b0d] overflow-y-auto">
            <div className="absolute top-6 left-6 z-10">
-             <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-zinc-400 hover:text-white hover:bg-white/10 transition-all">
+             <button onClick={() => navigate(`/w/${workspaceId}/meet`)} className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-zinc-400 hover:text-white hover:bg-white/10 transition-all">
                <Home size={14} /> Home
              </button>
            </div>
