@@ -105,7 +105,6 @@ const MailApp = () => {
       const wsUrl = getSocketUrl().replace('http', 'ws') + `/ws/mail?email=${encodeURIComponent(email)}`;
       const socket = new WebSocket(wsUrl);
       mailSocketRef.current = socket;
-      const auth = JSON.parse(localStorage.getItem('auth') || '{}');
 
       socket.onopen = () => {
         console.log('[Mail] WebSocket connected');
