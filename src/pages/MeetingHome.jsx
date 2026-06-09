@@ -294,8 +294,8 @@ const MeetingHome = () => {
                                </div>
                                <div className="flex items-center gap-3 text-xs text-slate-500">
                                   <span className="flex items-center gap-1"><Clock size={12} /> {new Date(m.scheduledAt || m.startTime || m.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                  <span className="flex items-center gap-1"><Users size={12} /> {m.attendees || 0} participants</span>
-                                  <span>{m.duration} min</span>
+                                  <span className="flex items-center gap-1"><Users size={12} /> {(m.participants?.length || m.participantIds?.length || 0)} participants</span>
+                                  <span>{m.durationMinutes || m.duration || 60} min</span>
                                </div>
                             </div>
                           </div>
@@ -330,7 +330,7 @@ const MeetingHome = () => {
                               <p className="text-sm font-medium text-slate-800">{m.title}</p>
                               <div className="flex items-center gap-3 mt-1">
                                  <span className="text-xs text-slate-500 flex items-center gap-1"><Calendar size={12} /> {new Date(m.scheduledAt || m.startTime || m.createdAt).toLocaleDateString()}</span>
-                                 <span className="text-xs text-slate-500 flex items-center gap-1"><Users size={12} /> {m.attendees || 0}</span>
+                                 <span className="text-xs text-slate-500 flex items-center gap-1"><Users size={12} /> {(m.participants?.length || m.participantIds?.length || 0)}</span>
                               </div>
                             </div>
                           </div>
@@ -541,7 +541,7 @@ const MeetingHome = () => {
                        <div className="p-6 bg-slate-50 rounded-lg border border-slate-100 space-y-6">
                           <div>
                              <p className="text-xs font-semibold text-slate-500 mb-1">Duration</p>
-                             <p className="text-xl font-bold text-slate-900">{selectedMeeting.duration} Min</p>
+                             <p className="text-xl font-bold text-slate-900">{selectedMeeting.durationMinutes || selectedMeeting.duration || 60} Min</p>
                           </div>
                           <div className="h-px bg-slate-200" />
                           <div>

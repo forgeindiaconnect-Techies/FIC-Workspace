@@ -808,7 +808,7 @@ export default function Meetings() {
           id: m._id || m.joinCode, title: m.title,
           time: new Date(m.scheduledAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           duration: `${m.durationMinutes || 60}m`,
-          attendees: m.participantIds?.length || 1,
+          attendees: m.participants?.length || m.participantIds?.length || 0,
           color: m.status === 'live' ? '#10b981' : '#2563eb',
           status: m.status || 'scheduled',
         })));
