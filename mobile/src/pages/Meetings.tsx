@@ -780,9 +780,9 @@ export default function Meetings() {
 
   React.useEffect(() => {
     localStreamRef.current?.getVideoTracks?.().forEach((track: any) => {
-      track.enabled = !isVideoOff && !isSharing;
+      track.enabled = !isVideoOff;
     });
-  }, [isVideoOff, isSharing]);
+  }, [isVideoOff]);
 
   // Fetch meetings
   React.useEffect(() => {
