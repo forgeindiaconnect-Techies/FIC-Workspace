@@ -16,7 +16,9 @@ export const useMailStore = create((set) => ({
   setMobileMenuOpen: (open) => set({ isMobileMenuOpen: open }),
   
   isComposeOpen: false,
+  composeData: null,
   setComposeOpen: (open) => set({ isComposeOpen: open }),
+  openCompose: (data = null) => set({ isComposeOpen: true, composeData: data }),
   
   isSearchOpen: false,
   setSearchOpen: (open) => set({ isSearchOpen: open }),

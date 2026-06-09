@@ -64,12 +64,12 @@ const MailList = () => {
         return m.label === folder;
       }
       if (folder === 'Starred') return m.isStarred;
-      if (folder === 'Sent') return m.senderEmail === email;
+      if (folder === 'Sent') return m.folder === 'sent';
       if (folder === 'Drafts') return m.isDraft;
       if (folder === 'Trash') return m.isDeleted;
       
       // Default Inbox
-      return m.recipientEmails?.includes(email) && !m.isDeleted && !m.isDraft;
+      return m.folder === 'inbox';
     });
 
     // Tab filtering

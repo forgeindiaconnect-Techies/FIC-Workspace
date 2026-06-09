@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Settings, User, Bell, Palette, Keyboard, Shield, Mail } from 'lucide-react';
 import { useMailStore } from '../store';
+import { useTheme } from '../../../context/ThemeContext';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -9,8 +10,43 @@ const cn = (...inputs) => twMerge(clsx(inputs));
 
 const SettingsPanel = () => {
   const { isSettingsOpen, setSettingsOpen } = useMailStore();
+  const { isDark, setIsDark } = useTheme();
+
+  const [prefs, setPrefs] = useState(() => {
+    return JSON.parse(localStorage.getItem('mailPrefs') || '{"desktopNotifications":true,"smartCompose":true,"priorityInbox":true,"offlineAccess":false}');
+  });
+
+  const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+  const userName = auth.user || auth.name || 'Admin Account';
+  const userEmail = auth.email || 'admin@forgeindia.com';
+  const [avatarPreview, setAvatarPreview] = useState(auth.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userName}`);
 
   if (!isSettingsOpen) return null;
+
+  const togglePref = (key) => {
+    const newPrefs = { ...prefs, [key]: !prefs[key] };
+    setPrefs(newPrefs);
+    localStorage.setItem('mailPrefs', JSON.stringify(newPrefs));
+  };
+
+  const handleAvatarChange = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setAvatarPreview(event.target.result);
+          const updatedAuth = { ...auth, avatarUrl: event.target.result };
+          localStorage.setItem('auth', JSON.stringify(updatedAuth));
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    input.click();
+  };
 
   const sections = [
     { icon: Settings, label: 'General', active: true },
@@ -70,30 +106,23 @@ const SettingsPanel = () => {
                <div className="space-y-6">
                  <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--text-secondary)]">Profile Configuration</h3>
                  <div className="flex items-center gap-6 p-6 bg-[var(--surface-1)] border border-[var(--border)] rounded-[24px]">
-                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Admin" className="w-16 h-16 rounded-full border-2 border-white shadow-xl" alt="Admin" />
+                    <img src={avatarPreview} className="w-16 h-16 rounded-full border-2 border-white shadow-xl object-cover" alt={userName} />
                     <div>
-                      <p className="text-sm font-black text-[var(--text-primary)]">Admin Account</p>
-                      <p className="text-xs font-medium text-[var(--text-secondary)] mb-3">admin@forgeindia.com</p>
-                      <button className="text-[10px] font-black uppercase tracking-widest text-[var(--brand-primary)] hover:underline">Change Avatar</button>
+                      <p className="text-sm font-black text-[var(--text-primary)]">{userName}</p>
+                      <p className="text-xs font-medium text-[var(--text-secondary)] mb-3">{userEmail}</p>
+                      <button onClick={handleAvatarChange} className="text-[10px] font-black uppercase tracking-widest text-[var(--brand-primary)] hover:underline">Change Avatar</button>
                     </div>
                  </div>
                </div>
 
-               <div className="space-y-6">
-                 <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--text-secondary)]">Appearance</h3>
-                 <div className="grid grid-cols-2 gap-4">
-                    <ThemeCard label="Light Mode" active />
-                    <ThemeCard label="Dark Mode" />
-                 </div>
-               </div>
 
                <div className="space-y-6">
                  <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--text-secondary)]">General Preferences</h3>
                  <div className="space-y-4">
-                    <ToggleItem label="Desktop Notifications" active />
-                    <ToggleItem label="Smart Compose (AI)" active />
-                    <ToggleItem label="Priority Inbox" active />
-                    <ToggleItem label="Offline Access" />
+                    <ToggleItem label="Desktop Notifications" active={prefs.desktopNotifications} onClick={() => togglePref('desktopNotifications')} />
+                    <ToggleItem label="Smart Compose (AI)" active={prefs.smartCompose} onClick={() => togglePref('smartCompose')} />
+                    <ToggleItem label="Priority Inbox" active={prefs.priorityInbox} onClick={() => togglePref('priorityInbox')} />
+                    <ToggleItem label="Offline Access" active={prefs.offlineAccess} onClick={() => togglePref('offlineAccess')} />
                  </div>
                </div>
 
@@ -114,8 +143,8 @@ const SettingsPanel = () => {
   );
 };
 
-const ThemeCard = ({ label, active }) => (
-  <button className={cn(
+const ThemeCard = ({ label, active, onClick }) => (
+  <button onClick={onClick} className={cn(
     "p-4 rounded-2xl border-2 transition-all flex flex-col gap-3 text-left",
     active ? "bg-[var(--brand-light)] border-[var(--brand-primary)]" : "bg-[var(--surface-1)] border-[var(--border)] hover:border-[var(--text-secondary)]"
   )}>
@@ -124,8 +153,8 @@ const ThemeCard = ({ label, active }) => (
   </button>
 );
 
-const ToggleItem = ({ label, active }) => (
-  <div className="flex items-center justify-between p-4 bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl">
+const ToggleItem = ({ label, active, onClick }) => (
+  <div className="flex items-center justify-between p-4 bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl cursor-pointer" onClick={onClick}>
     <span className="text-xs font-bold text-[var(--text-primary)]">{label}</span>
     <button className={cn(
       "w-10 h-5 rounded-full relative transition-all",

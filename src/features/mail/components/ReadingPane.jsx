@@ -17,7 +17,7 @@ const cn = (...inputs) => twMerge(clsx(inputs));
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const ReadingPane = () => {
-  const { selectedId, setSelectedId, getAuth } = useMailStore();
+  const { selectedId, setSelectedId, getAuth, openCompose } = useMailStore();
   const [showAIPanel, setShowAIPanel] = useState(false);
   const queryClient = useQueryClient();
   const auth = getAuth();
@@ -127,6 +127,22 @@ const ReadingPane = () => {
     setSelectedId(null);
   };
 
+  const handleReply = () => {
+    openCompose({
+      to: mail.senderEmail,
+      subject: mail.subject.startsWith('Re:') ? mail.subject : `Re: ${mail.subject}`,
+      body: `<br><br><br><blockquote><p>On ${new Date(mail.timestamp).toLocaleString()}, ${mail.sender} wrote:</p>${mail.content}</blockquote>`
+    });
+  };
+
+  const handleForward = () => {
+    openCompose({
+      to: '',
+      subject: mail.subject.startsWith('Fwd:') ? mail.subject : `Fwd: ${mail.subject}`,
+      body: `<br><br><br><blockquote><p>---------- Forwarded message ---------</p><p>From: ${mail.sender} &lt;${mail.senderEmail}&gt;</p><p>Date: ${new Date(mail.timestamp).toLocaleString()}</p><p>Subject: ${mail.subject}</p><br>${mail.content}</blockquote>`
+    });
+  };
+
   useEffect(() => {
     if (showAIPanel && mail) {
       summaryMutation.mutate(mail.content);
@@ -171,8 +187,8 @@ const ReadingPane = () => {
               <ArrowLeft size={18} />
             </button>
             <div className="flex items-center gap-1">
-              <ToolbarButton icon={Reply} label="Reply" />
-              <ToolbarButton icon={Forward} label="Forward" />
+              <ToolbarButton icon={Reply} label="Reply" onClick={handleReply} />
+              <ToolbarButton icon={Forward} label="Forward" onClick={handleForward} />
               <div className="w-px h-6 bg-[var(--border)] mx-2" />
               <ToolbarButton icon={Archive} label="Archive" onClick={handleArchive} />
               <ToolbarButton icon={Trash2} label="Delete" onClick={handleDelete} />

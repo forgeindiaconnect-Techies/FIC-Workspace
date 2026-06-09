@@ -147,6 +147,31 @@ const ComposeModal = () => {
     };
   }, []);
 
+  const composeData = useMailStore(state => state.composeData);
+
+  useEffect(() => {
+    if (isComposeOpen && composeData) {
+      if (composeData.to) {
+        const toInput = document.getElementById('compose-to');
+        if (toInput) toInput.value = composeData.to;
+      }
+      if (composeData.subject) {
+        const subjectInput = document.getElementById('compose-subject');
+        if (subjectInput) subjectInput.value = composeData.subject;
+      }
+      if (composeData.body && editor) {
+        editor.commands.setContent(composeData.body);
+      }
+    } else if (isComposeOpen && !composeData) {
+      // Clear fields if opened without data
+      const toInput = document.getElementById('compose-to');
+      if (toInput) toInput.value = '';
+      const subjectInput = document.getElementById('compose-subject');
+      if (subjectInput) subjectInput.value = '';
+      if (editor) editor.commands.setContent('');
+    }
+  }, [isComposeOpen, composeData, editor]);
+
   const sendMutation = useMutation({
     mutationFn: async (mailData) => {
       const token = localStorage.getItem('token');
