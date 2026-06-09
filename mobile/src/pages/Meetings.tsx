@@ -1769,7 +1769,7 @@ export default function Meetings() {
                               ? (remoteScreenStreams[originalId] || (originalPeerId ? remoteScreenStreams[originalPeerId] : null))
                               : (remoteStreams[pinnedPeer.id] || (pinnedPeer.peerId ? remoteStreams[pinnedPeer.peerId] : null)));
                             return rtcAvailableNow && remoteStream ? (
-                              <RTCView style={s.cameraView} stream={remoteStream} objectFit="cover" />
+                              <RTCView style={s.cameraView} stream={remoteStream} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                             ) : (
                               <View style={[s.videoAvatar, { backgroundColor: (pinnedPeer as any).isBot ? '#1e40af' : '#475569' }]}>
                                 <Text style={s.videoAvatarText}>{(pinnedPeer as any).isBot ? 'FI' : avatarFor(pinnedPeer.name)}</Text>
@@ -1816,7 +1816,7 @@ export default function Meetings() {
                         return (
                           <TouchableOpacity key={peer.id} style={s.unpinnedTile} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
                             {rtcAvailableNow && remoteStream ? (
-                              <RTCView style={s.cameraView} stream={remoteStream} objectFit="cover" />
+                              <RTCView style={s.cameraView} stream={remoteStream} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                             ) : (
                               <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
                                 <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff' }}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>
@@ -1873,7 +1873,7 @@ export default function Meetings() {
                     return (
                       <TouchableOpacity activeOpacity={0.85} key={peer.id} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
                         {rtcAvailableNow && remoteStream ? (
-                          <RTCView style={s.cameraView} stream={remoteStream} objectFit="cover" />
+                          <RTCView style={s.cameraView} stream={remoteStream} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                         ) : (
                           <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
                             <Text style={s.videoAvatarText}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>
