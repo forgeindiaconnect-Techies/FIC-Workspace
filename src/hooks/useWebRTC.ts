@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useCallback } from 'react';
-import { isWebRTCAvailable } from '../utils/rtc';
+import { isWebRTCAvailable, getRTCPeerConnection } from '../utils/rtc';
 
 export const useWebRTC = ({
   roomId,
@@ -135,7 +135,8 @@ export const useWebRTC = ({
       remoteScreenStreamsRef.current.delete(peerId);
     }
 
-    const pc = new RTCPeerConnection({
+    const PeerConnection = getRTCPeerConnection();
+    const pc = new PeerConnection({
       iceServers: iceServersRef.current
     });
 
@@ -243,7 +244,7 @@ export const useWebRTC = ({
                existing.addTrack(event.track);
             }
         }
-        setRemoteScreenStreams(new Map(remoteScreenStreamsRef.current));
+        if (onPeerTrackAdded) onPeerTrackAdded(peerId);
       } else {
         if (!remoteStreamsRef.current.has(peerId)) {
             remoteStreamsRef.current.set(peerId, remoteStream);
@@ -258,7 +259,7 @@ export const useWebRTC = ({
               existing.addTrack(event.track);
             }
         }
-        setRemoteStreams(new Map(remoteStreamsRef.current));
+        if (onPeerTrackAdded) onPeerTrackAdded(peerId);
       }
 
       // Ensure robust audio playback via dedicated audio element
@@ -326,7 +327,7 @@ export const useWebRTC = ({
     }
 
     // Abstracting signaling connection for the user to integrate with their specific socket logic
-    let API_URL = 'http://localhost:5000';
+    let API_URL = 'http://localhost:3001';
     try {
         API_URL = (import.meta as any).env.VITE_API_URL || API_URL;
     } catch(e){}
@@ -345,7 +346,7 @@ export const useWebRTC = ({
     
     // Reliably notify backend of leave on tab close so AI summaries trigger
     if (token && roomId) {
-      let API_URL = 'http://localhost:5000';
+      let API_URL = 'http://localhost:3001';
       try { API_URL = (import.meta as any).env.VITE_API_URL || API_URL; } catch(e){}
       const leaveUrl = `${API_URL}/api/meetings/${encodeURIComponent(roomId)}/leave`;
       try {
