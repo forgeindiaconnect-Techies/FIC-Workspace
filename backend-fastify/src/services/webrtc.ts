@@ -128,10 +128,10 @@ export function handleWebRtcSignalling(ws: WebSocket) {
     }
 
     if (type === 'offer') {
-      const { targetPeerId, sdp } = data;
+      const { targetPeerId, sdp, isScreenShare } = data;
       const target = rooms.get(meetingId)?.get(targetPeerId);
       if (target) {
-        send(target.socket, { type: 'offer', fromPeerId: peerId, sdp });
+        send(target.socket, { type: 'offer', fromPeerId: peerId, sdp, isScreenShare });
       }
       return;
     }

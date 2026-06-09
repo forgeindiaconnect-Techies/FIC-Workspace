@@ -184,7 +184,8 @@ export const useWebRTC = ({
           type: 'offer',
           data: {
             targetPeerId: peerId,
-            sdp: offer
+            sdp: offer,
+            isScreenShare: !!(window as any).isStartingScreenShare
           }
         }));
       } catch (e) {

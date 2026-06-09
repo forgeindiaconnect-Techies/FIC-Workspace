@@ -649,28 +649,18 @@ const m = Math.floor((seconds % 3600) / 60);
         screenStreamRef.current = stream;
         const screenTrack = stream.getVideoTracks()[0];
         
-        // Add track natively to support dual streams simultaneously
+        window.isStartingScreenShare = true;
         for (const peerEntry of peersRef.current) {
           const { pc, peerID } = peerEntry;
           if (!pc || pc.connectionState === 'closed') continue;
           try {
             const sender = pc.addTrack(screenTrack, stream);
-            const transceiver = pc.getTransceivers().find(t => t.sender === sender);
-            if (transceiver) transceiver.direction = 'sendonly';
             screenSendersRef.current.set(peerID, sender);
-            
-            // Renegotiate
-            pc.createOffer().then(offer => {
-              return pc.setLocalDescription(offer).then(() => {
-                if (sendWsRef.current) {
-                  sendWsRef.current('offer', { targetPeerId: peerID, sdp: offer, isScreenShare: true });
-                }
-              });
-            }).catch(err => console.warn('Renegotiation failed', err));
           } catch (err) {
             console.warn(`[ScreenShare] Failed to addTrack to ${peerID}:`, err);
           }
         }
+        setTimeout(() => { window.isStartingScreenShare = false; }, 2000);
         
         // No local video update needed, dual tiles will handle it via state
         
@@ -698,14 +688,6 @@ const m = Math.floor((seconds % 3600) / 60);
             if (sender) {
               pc.removeTrack(sender);
               screenSendersRef.current.delete(peerID);
-              // Renegotiate
-              pc.createOffer().then(offer => {
-                return pc.setLocalDescription(offer).then(() => {
-                  if (sendWsRef.current) {
-                    sendWsRef.current('offer', { targetPeerId: peerID, sdp: offer });
-                  }
-                });
-              }).catch(err => console.warn('Renegotiation failed', err));
             }
           } catch (err) {
             console.warn(`[ScreenShare] Failed to removeTrack for ${peerID}:`, err);
