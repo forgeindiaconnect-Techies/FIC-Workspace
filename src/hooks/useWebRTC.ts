@@ -180,13 +180,17 @@ export const useWebRTC = ({
         if (pc.signalingState !== 'stable') return; // check again after await
         
         await pc.setLocalDescription(offer);
+        const screenTrack = screenStreamRef.current?.getVideoTracks()[0];
+        const screenTransceiver = screenTrack ? pc.getTransceivers().find(t => t.sender.track === screenTrack) : undefined;
         socketRef.current?.send(JSON.stringify({
           type: 'offer',
           data: {
             targetPeerId: peerId,
             sdp: offer,
-            isScreenShare: !!(window as any).isStartingScreenShare,
-            screenTrackId: screenStreamRef.current?.getVideoTracks()[0]?.id
+            isScreenShare: !!(window as any).isStartingScreenShare || !!screenStreamRef.current,
+            screenTrackId: screenTrack?.id,
+            screenMid: screenTransceiver?.mid,
+            screenStreamId: screenStreamRef.current?.id
           }
         }));
       } catch (e) {
@@ -216,7 +220,12 @@ export const useWebRTC = ({
       const hasCameraVideo = existingCameraStream && existingCameraStream.getVideoTracks().length > 0;
       
       const screenTrackId = (window as any).screenTrackIds?.get(peerId);
+      const screenMid = (window as any).screenMids?.get(peerId);
+      const screenStreamId = (window as any).screenStreamIds?.get(peerId);
+
       const isScreenShare = event.track.id === screenTrackId
+        || (screenMid && event.transceiver?.mid === screenMid)
+        || (screenStreamId && remoteStream?.id === screenStreamId)
         || event.track.label?.toLowerCase().includes('screen') 
         || event.transceiver?.mid === 'screen'
         || (event.track.kind === 'video' && hasCameraVideo && existingCameraStream!.id !== remoteStream.id)

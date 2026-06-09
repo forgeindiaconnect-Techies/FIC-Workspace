@@ -896,6 +896,14 @@ const m = Math.floor((seconds % 3600) / 60);
              window.screenTrackIds = window.screenTrackIds || new Map();
              window.screenTrackIds.set(fromPeerId, msg.screenTrackId);
           }
+          if (msg.screenMid) {
+             window.screenMids = window.screenMids || new Map();
+             window.screenMids.set(fromPeerId, msg.screenMid);
+          }
+          if (msg.screenStreamId) {
+             window.screenStreamIds = window.screenStreamIds || new Map();
+             window.screenStreamIds.set(fromPeerId, msg.screenStreamId);
+          }
           let pc = peersRef.current.find(p => p.peerID === fromPeerId)?.pc;
           if (!pc) {
             pc = createPeerConnectionRef.current(fromPeerId, streamRef.current, 'Participant');

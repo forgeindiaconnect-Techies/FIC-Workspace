@@ -135,6 +135,8 @@ export default function Meetings() {
   const intentionalCloseRef = React.useRef(false);
   const pendingScreenShareRef = React.useRef<Set<string>>(new Set());
   const screenTrackIdsRef = React.useRef<Map<string, string>>(new Map());
+  const screenMidsRef = React.useRef<Map<string, string>>(new Map());
+  const screenStreamIdsRef = React.useRef<Map<string, string>>(new Map());
   const dynamicIceServersRef = React.useRef<any[]>(getIceServers());
 
   const [aiAssistantActive, setAiAssistantActive] = React.useState(false);
@@ -616,7 +618,12 @@ export default function Meetings() {
         const hasCameraVideo = existingCameraStream && existingCameraStream.getVideoTracks().length > 0;
         
         const screenTrackId = screenTrackIdsRef.current.get(targetPeerId) || screenTrackIdsRef.current.get(peerKey);
+        const screenMid = screenMidsRef.current.get(targetPeerId) || screenMidsRef.current.get(peerKey);
+        const screenStreamId = screenStreamIdsRef.current.get(targetPeerId) || screenStreamIdsRef.current.get(peerKey);
+        
         const isScreenShare = event.track?.id === screenTrackId
+          || (screenMid && event.transceiver?.mid === screenMid)
+          || (screenStreamId && incomingStream.id === screenStreamId)
           || event.track?.label?.toLowerCase().includes('screen') 
           || event.transceiver?.mid === 'screen'
           || (event.track?.kind === 'video' && hasCameraVideo && existingCameraStream.id !== incomingStream.id)
@@ -965,6 +972,12 @@ export default function Meetings() {
             }
             if (msg.screenTrackId) {
               screenTrackIdsRef.current.set(fromPeerId, msg.screenTrackId);
+            }
+            if (msg.screenMid) {
+              screenMidsRef.current.set(fromPeerId, msg.screenMid);
+            }
+            if (msg.screenStreamId) {
+              screenStreamIdsRef.current.set(fromPeerId, msg.screenStreamId);
             }
             const peer = {
               id: remotePeerKeyRef.current.get(fromPeerId) || String(fromPeerId),
