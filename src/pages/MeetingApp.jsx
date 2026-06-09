@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { getApiUrl } from '../api';
 import { useWebRTC } from '../hooks/useWebRTC';
+import { isWebRTCAvailable } from '../utils/rtc';
 import MeetingLayout from '../components/MeetingLayout';
 import StarRating from '../components/StarRating';
 import { 
@@ -1150,6 +1151,13 @@ const m = Math.floor((seconds % 3600) / 60);
     console.log(`📡 [CLIENT] Attempting to join call: ID=${id}`);
     setIsVerifying(true);
     setRoomError(null);
+
+    if (!isWebRTCAvailable()) {
+      setPermissionError('WebRTCError');
+      setIsVerifying(false);
+      isJoiningRef.current = false;
+      return;
+    }
 
     let cleanCode = (code || id || '').trim();
     const token = localStorage.getItem('token');
