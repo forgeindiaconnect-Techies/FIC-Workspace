@@ -892,6 +892,10 @@ const m = Math.floor((seconds % 3600) / 60);
              window.pendingScreenShare = window.pendingScreenShare || new Set();
              window.pendingScreenShare.add(fromPeerId);
           }
+          if (msg.screenTrackId) {
+             window.screenTrackIds = window.screenTrackIds || new Map();
+             window.screenTrackIds.set(fromPeerId, msg.screenTrackId);
+          }
           let pc = peersRef.current.find(p => p.peerID === fromPeerId)?.pc;
           if (!pc) {
             pc = createPeerConnectionRef.current(fromPeerId, streamRef.current, 'Participant');

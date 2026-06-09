@@ -185,7 +185,8 @@ export const useWebRTC = ({
           data: {
             targetPeerId: peerId,
             sdp: offer,
-            isScreenShare: !!(window as any).isStartingScreenShare
+            isScreenShare: !!(window as any).isStartingScreenShare,
+            screenTrackId: screenStreamRef.current?.getVideoTracks()[0]?.id
           }
         }));
       } catch (e) {
@@ -214,7 +215,9 @@ export const useWebRTC = ({
       const existingCameraStream = remoteStreamsRef.current.get(peerId);
       const hasCameraVideo = existingCameraStream && existingCameraStream.getVideoTracks().length > 0;
       
-      const isScreenShare = event.track.label?.toLowerCase().includes('screen') 
+      const screenTrackId = (window as any).screenTrackIds?.get(peerId);
+      const isScreenShare = event.track.id === screenTrackId
+        || event.track.label?.toLowerCase().includes('screen') 
         || event.transceiver?.mid === 'screen'
         || (event.track.kind === 'video' && hasCameraVideo && existingCameraStream!.id !== remoteStream.id)
         || ((window as any).pendingScreenShare && (window as any).pendingScreenShare.has(peerId));
