@@ -119,6 +119,8 @@ export default function Meetings() {
   const [localScreenStream, setLocalScreenStream] = React.useState<any>(null);
   const [remoteStreams, setRemoteStreams] = React.useState<Record<string, any>>({});
   const remoteStreamsRef = React.useRef<Record<string, any>>({});
+  const [remoteScreenStreams, setRemoteScreenStreams] = React.useState<Record<string, any>>({});
+  const remoteScreenStreamsRef = React.useRef<Record<string, any>>({});
 
   // WebSocket signaling ref
   const wsRef = React.useRef<WebSocket | null>(null);
@@ -131,6 +133,7 @@ export default function Meetings() {
   const sendSignalRef = React.useRef<(type: string, data: any) => void>(() => {});
   const localStreamRef = React.useRef<any>(null);
   const intentionalCloseRef = React.useRef(false);
+  const pendingScreenShareRef = React.useRef<Set<string>>(new Set());
   const dynamicIceServersRef = React.useRef<any[]>(getIceServers());
 
   const [aiAssistantActive, setAiAssistantActive] = React.useState(false);
@@ -456,11 +459,17 @@ export default function Meetings() {
     iceCandidateBufferRef.current.clear();
     remoteStreamsRef.current = {};
     setRemoteStreams({});
+    remoteScreenStreamsRef.current = {};
+    setRemoteScreenStreams({});
   }, []);
 
   React.useEffect(() => {
     remoteStreamsRef.current = remoteStreams;
   }, [remoteStreams]);
+
+  React.useEffect(() => {
+    remoteScreenStreamsRef.current = remoteScreenStreams;
+  }, [remoteScreenStreams]);
 
   /** Only the peer with the higher peerId sends the offer (avoids SDP glare). */
   const shouldInitiateOffer = React.useCallback((remotePeerId: string) => {
@@ -602,16 +611,36 @@ export default function Meetings() {
         }
       }
       if (incomingStream) {
-        const existing = remoteStreamsRef.current[peerKey];
-        if (existing && existing !== incomingStream) {
-          incomingStream.getTracks().forEach((t: any) => {
-            try { existing.addTrack(t); } catch {}
-          });
+        const existingCameraStream = remoteStreamsRef.current[peerKey];
+        const hasCameraVideo = existingCameraStream && existingCameraStream.getVideoTracks().length > 0;
+        
+        const isScreenShare = event.track?.label?.toLowerCase().includes('screen') 
+          || event.transceiver?.mid === 'screen'
+          || (event.track?.kind === 'video' && hasCameraVideo && existingCameraStream.id !== incomingStream.id)
+          || pendingScreenShareRef.current.has(targetPeerId)
+          || pendingScreenShareRef.current.has(peerKey);
+
+        if (isScreenShare) {
+          const existingScreen = remoteScreenStreamsRef.current[peerKey];
+          if (existingScreen && existingScreen !== incomingStream) {
+            incomingStream.getTracks().forEach((t: any) => {
+              try { existingScreen.addTrack(t); } catch {}
+            });
+          } else {
+            remoteScreenStreamsRef.current[peerKey] = incomingStream;
+            setRemoteScreenStreams(prev => ({ ...prev, [peerKey]: incomingStream }));
+          }
         } else {
-          remoteStreamsRef.current[peerKey] = incomingStream;
-          setRemoteStreams(prev => ({ ...prev, [peerKey]: incomingStream }));
-          
-          if (Platform.OS === 'web' && (window as any).isAIBot && incomingStream.getAudioTracks().length > 0) {
+          const existing = remoteStreamsRef.current[peerKey];
+          if (existing && existing !== incomingStream) {
+            incomingStream.getTracks().forEach((t: any) => {
+              try { existing.addTrack(t); } catch {}
+            });
+          } else {
+            remoteStreamsRef.current[peerKey] = incomingStream;
+            setRemoteStreams(prev => ({ ...prev, [peerKey]: incomingStream }));
+            
+            if (Platform.OS === 'web' && (window as any).isAIBot && incomingStream.getAudioTracks().length > 0) {
             try {
               if (typeof (window as any).MediaRecorder !== 'undefined') {
                 console.log(`[AIBot] Starting audio recorder for peer: ${peerKey}`);
@@ -645,11 +674,19 @@ export default function Meetings() {
           }
         }
       }
+      }
     };
 
     pc.onaddstream = (event: any) => {
       if (event.stream) {
-        setRemoteStreams(prev => ({ ...prev, [peerKey]: event.stream }));
+        const isScreenShare = pendingScreenShareRef.current.has(targetPeerId) || pendingScreenShareRef.current.has(peerKey);
+        if (isScreenShare) {
+          remoteScreenStreamsRef.current[peerKey] = event.stream;
+          setRemoteScreenStreams(prev => ({ ...prev, [peerKey]: event.stream }));
+        } else {
+          remoteStreamsRef.current[peerKey] = event.stream;
+          setRemoteStreams(prev => ({ ...prev, [peerKey]: event.stream }));
+        }
         
         if (Platform.OS === 'web' && (window as any).isAIBot && event.stream.getAudioTracks().length > 0 && !remoteStreamsRef.current[peerKey]) {
           // In case ontrack didn't fire but onaddstream did
@@ -897,6 +934,11 @@ export default function Meetings() {
               delete next[id];
               return next;
             });
+            setRemoteScreenStreams(prev => {
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
             console.log('[Signaling] Peer left:', msg.peerId);
           }
           if (msg.type === 'offer') {
@@ -914,6 +956,9 @@ export default function Meetings() {
               existingPC.close();
               peerConnectionsRef.current.delete(fromPeerId);
               iceCandidateBufferRef.current.delete(fromPeerId);
+            }
+            if (msg.isScreenShare) {
+              pendingScreenShareRef.current.add(fromPeerId);
             }
             const peer = {
               id: remotePeerKeyRef.current.get(fromPeerId) || String(fromPeerId),
@@ -989,7 +1034,7 @@ export default function Meetings() {
             setRemotePeers(prev =>
               prev.map(p =>
                 p.id === peerKey || p.peerId === msg.fromPeerId
-                  ? { ...p, audioMuted: msg.audioEnabled === false, videoOff: msg.videoEnabled === false }
+                  ? { ...p, audioMuted: msg.audioEnabled === false, videoOff: msg.videoEnabled === false, isScreenSharing: msg.isScreenSharing }
                   : p
               )
             );
@@ -1142,6 +1187,7 @@ export default function Meetings() {
     setAiAssistantActive(false);
     setRemotePeers([]);
     setRemoteStreams({});
+    setRemoteScreenStreams({});
     peerIdRef.current = null;
   };
 
@@ -1254,7 +1300,7 @@ export default function Meetings() {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'chat-message',
-        data: { text, user: localUser?.name || 'Unknown' }
+        data: { text, user: user?.name || 'Unknown' }
       }));
     }
   };
@@ -1610,9 +1656,27 @@ export default function Meetings() {
   //  ACTIVE MEETING ROOM 
   if (activeRoom) {
     const localUser = user;
-    const displayPeers = aiAssistantActive && !remotePeers.some(p => p.name === 'Forge India Connect AI')
+    const basePeers = aiAssistantActive && !remotePeers.some(p => p.name === 'Forge India Connect AI')
       ? [...remotePeers, { id: 'ai-bot', peerId: 'ai-bot', name: 'Forge India Connect AI', isBot: true }]
       : remotePeers;
+
+    const screenSharePeers = basePeers.filter(p => p.isScreenSharing && (remoteScreenStreams[p.id] || (p.peerId && remoteScreenStreams[p.peerId]))).map(p => ({
+      ...p,
+      id: `${p.id}-screen`,
+      peerId: p.peerId ? `${p.peerId}-screen` : undefined,
+      isScreen: true,
+      name: `${p.name}'s Screen`
+    }));
+
+    const localScreenSharePeer = localScreenStream ? [{
+      id: 'local-screen',
+      peerId: 'local-screen',
+      isScreen: true,
+      isLocalScreen: true,
+      name: `${localUser?.name || 'You'}'s Screen`
+    }] : [];
+
+    const displayPeers = [...basePeers, ...screenSharePeers, ...localScreenSharePeer];
 
     return (
       <View style={s.roomRoot}>
@@ -1678,8 +1742,8 @@ export default function Meetings() {
                     <View style={s.pinnedTile}>
                       {isPinnedLocal ? (
                         <>
-                          {rtcAvailableNow && (localScreenStream || (rtcLocalStreamSource && !isVideoOff && !isSharing)) ? (
-                            <RTCView style={s.cameraView} stream={localScreenStream || rtcLocalStreamSource} objectFit="cover" mirror={!localScreenStream && facing === 'front'} muted />
+                          {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
+                            <RTCView style={s.cameraView} stream={rtcLocalStreamSource} objectFit="cover" mirror={facing === 'front'} muted />
                           ) : camReady ? (
                             <CameraView style={s.cameraView} facing={facing} mute={isMuted} />
                           ) : (
@@ -1697,7 +1761,13 @@ export default function Meetings() {
                       ) : pinnedPeer ? (
                         <>
                           {(() => {
-                            const remoteStream = remoteStreams[pinnedPeer.id] || (pinnedPeer.peerId ? remoteStreams[pinnedPeer.peerId] : null);
+                            const isScreen = (pinnedPeer as any).isScreen;
+                            const isLocalScreen = (pinnedPeer as any).isLocalScreen;
+                            const originalId = isScreen ? pinnedPeer.id.replace('-screen', '') : pinnedPeer.id;
+                            const originalPeerId = isScreen && pinnedPeer.peerId ? pinnedPeer.peerId.replace('-screen', '') : pinnedPeer.peerId;
+                            const remoteStream = isLocalScreen ? localScreenStream : (isScreen 
+                              ? (remoteScreenStreams[originalId] || (originalPeerId ? remoteScreenStreams[originalPeerId] : null))
+                              : (remoteStreams[pinnedPeer.id] || (pinnedPeer.peerId ? remoteStreams[pinnedPeer.peerId] : null)));
                             return rtcAvailableNow && remoteStream ? (
                               <RTCView style={s.cameraView} stream={remoteStream} objectFit="cover" />
                             ) : (
@@ -1736,7 +1806,13 @@ export default function Meetings() {
                         </TouchableOpacity>
                       )}
                       {unpinnedPeers.map(peer => {
-                        const remoteStream = remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null);
+                        const isScreen = (peer as any).isScreen;
+                        const isLocalScreen = (peer as any).isLocalScreen;
+                        const originalId = isScreen ? peer.id.replace('-screen', '') : peer.id;
+                        const originalPeerId = isScreen && peer.peerId ? peer.peerId.replace('-screen', '') : peer.peerId;
+                        const remoteStream = isLocalScreen ? localScreenStream : (isScreen 
+                          ? (remoteScreenStreams[originalId] || (originalPeerId ? remoteScreenStreams[originalPeerId] : null))
+                          : (remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null)));
                         return (
                           <TouchableOpacity key={peer.id} style={s.unpinnedTile} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
                             {rtcAvailableNow && remoteStream ? (
@@ -1763,8 +1839,8 @@ export default function Meetings() {
                 <>
                   {/* LOCAL CAMERA TILE */}
                   <TouchableOpacity activeOpacity={0.85} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser('local')}>
-                    {rtcAvailableNow && (localScreenStream || (rtcLocalStreamSource && !isVideoOff && !isSharing)) ? (
-                      <RTCView style={s.cameraView} stream={localScreenStream || rtcLocalStreamSource} objectFit="cover" mirror={!localScreenStream && facing === 'front'} muted />
+                    {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
+                      <RTCView style={s.cameraView} stream={rtcLocalStreamSource} objectFit="cover" mirror={facing === 'front'} muted />
                     ) : camReady ? (
                       <CameraView style={s.cameraView} facing={facing} mute={isMuted} />
                     ) : (
@@ -1785,9 +1861,15 @@ export default function Meetings() {
                     <View style={s.pinBtnSmall}><Maximize2 size={12} color="#fff" /></View>
                   </TouchableOpacity>
 
-                  {/* REMOTE PEER TILES */}
+                  {/* REMOTE AND LOCAL SCREEN TILES */}
                   {displayPeers.map(peer => {
-                    const remoteStream = remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null);
+                    const isScreen = (peer as any).isScreen;
+                    const isLocalScreen = (peer as any).isLocalScreen;
+                    const originalId = isScreen ? peer.id.replace('-screen', '') : peer.id;
+                    const originalPeerId = isScreen && peer.peerId ? peer.peerId.replace('-screen', '') : peer.peerId;
+                    const remoteStream = isLocalScreen ? localScreenStream : (isScreen 
+                      ? (remoteScreenStreams[originalId] || (originalPeerId ? remoteScreenStreams[originalPeerId] : null))
+                      : (remoteStreams[peer.id] || (peer.peerId ? remoteStreams[peer.peerId] : null)));
                     return (
                       <TouchableOpacity activeOpacity={0.85} key={peer.id} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
                         {rtcAvailableNow && remoteStream ? (
@@ -1801,7 +1883,7 @@ export default function Meetings() {
                         <View style={s.namePlate}>
                           {(peer as any).isBot ? <Sparkles size={9} color="#fff" /> : <User size={9} color="#fff" />}
                           <Text style={s.namePlateText} numberOfLines={1}>{peer.name}</Text>
-                          {!(peer as any).isBot && <VideoOff size={9} color="#ef4444" />}
+                          {!(peer as any).isBot && (peer as any).videoOff && <VideoOff size={9} color="#ef4444" />}
                         </View>
                         <View style={s.pinBtnSmall}><Maximize2 size={12} color="#fff" /></View>
                       </TouchableOpacity>
@@ -1930,30 +2012,41 @@ export default function Meetings() {
 
           {/* SCREEN SHARE */}
           <TouchableOpacity style={[s.ctrlBtn, isSharing && s.ctrlBtnBlue]} onPress={async () => {
+            if (Platform.OS !== 'web') {
+              Alert.alert('Not Supported', 'Screen sharing is currently only supported on the web version.');
+              return;
+            }
             if (!isSharing) {
               try {
                 const displayStream = await getDisplayMedia({ video: true });
                 setLocalScreenStream(displayStream);
                 setIsSharing(true);
-                setIsVideoOff(true);
                 
                 const screenTrack = displayStream.getVideoTracks()[0];
                 if (screenTrack) {
-                  peerConnectionsRef.current.forEach((pc: any) => {
-                    const senders = pc.getSenders();
-                    const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
-                    if (videoSender) videoSender.replaceTrack(screenTrack);
-                    else pc.addTrack(screenTrack, displayStream);
+                  peerConnectionsRef.current.forEach((pc: any, peerId: string) => {
+                    pc.addTrack(screenTrack, displayStream);
+                    pc.createOffer().then((offer: any) => {
+                      return pc.setLocalDescription(offer).then(() => {
+                        sendSignalRef.current('offer', { targetPeerId: peerId, sdp: offer, isScreenShare: true });
+                      });
+                    }).catch((e: any) => console.warn('Renegotiation failed', e));
                   });
+
                   screenTrack.onended = () => {
                      setIsSharing(false);
                      setLocalScreenStream(null);
-                     const camTrack = localStreamRef.current?.getVideoTracks()[0];
-                     peerConnectionsRef.current.forEach((pc: any) => {
+                     peerConnectionsRef.current.forEach((pc: any, peerId: string) => {
                         const senders = pc.getSenders();
-                        const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
-                        if (videoSender && camTrack) videoSender.replaceTrack(camTrack);
-                        else if (videoSender && !camTrack) pc.removeTrack(videoSender);
+                        const screenSender = senders.find((s: any) => s.track === screenTrack);
+                        if (screenSender) {
+                          pc.removeTrack(screenSender);
+                          pc.createOffer().then((offer: any) => {
+                            return pc.setLocalDescription(offer).then(() => {
+                              sendSignalRef.current('offer', { targetPeerId: peerId, sdp: offer });
+                            });
+                          }).catch((e: any) => console.warn('Renegotiation failed', e));
+                        }
                      });
                   };
                 }
@@ -1967,16 +2060,23 @@ export default function Meetings() {
             } else {
                setIsSharing(false);
                if (localScreenStream) {
+                 const screenTrack = localScreenStream.getVideoTracks()[0];
                  localScreenStream.getTracks().forEach((t: any) => t.stop());
                  setLocalScreenStream(null);
+                 
+                 peerConnectionsRef.current.forEach((pc: any, peerId: string) => {
+                    const senders = pc.getSenders();
+                    const screenSender = senders.find((s: any) => s.track === screenTrack);
+                    if (screenSender) {
+                      pc.removeTrack(screenSender);
+                      pc.createOffer().then((offer: any) => {
+                        return pc.setLocalDescription(offer).then(() => {
+                          sendSignalRef.current('offer', { targetPeerId: peerId, sdp: offer });
+                        });
+                      }).catch((e: any) => console.warn('Renegotiation failed', e));
+                    }
+                 });
                }
-               const camTrack = localStreamRef.current?.getVideoTracks()[0];
-               peerConnectionsRef.current.forEach((pc: any) => {
-                  const senders = pc.getSenders();
-                  const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
-                  if (videoSender && camTrack) videoSender.replaceTrack(camTrack);
-                  else if (videoSender && !camTrack) pc.removeTrack(videoSender);
-               });
             }
           }}>
             <MonitorUp size={20} color={isSharing ? '#3b82f6' : '#fff'} />

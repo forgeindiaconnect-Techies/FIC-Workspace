@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useCallback } from 'react';
+import { isWebRTCAvailable } from '../utils/rtc';
 
 export const useWebRTC = ({
   roomId,
@@ -122,7 +123,7 @@ export const useWebRTC = ({
 
   // 9. Fix createPeerConnection with stale connection guard
   const createPeerConnection = (peerId: string): RTCPeerConnection => {
-    if (typeof window === 'undefined' || !window.RTCPeerConnection) {
+    if (!isWebRTCAvailable()) {
       throw new Error('RTCPeerConnection not available');
     }
 
@@ -214,9 +215,13 @@ export const useWebRTC = ({
       
       const isScreenShare = event.track.label?.toLowerCase().includes('screen') 
         || event.transceiver?.mid === 'screen'
-        || (event.track.kind === 'video' && hasCameraVideo && existingCameraStream!.id !== remoteStream.id);
+        || (event.track.kind === 'video' && hasCameraVideo && existingCameraStream!.id !== remoteStream.id)
+        || ((window as any).pendingScreenShare && (window as any).pendingScreenShare.has(peerId));
 
       if (isScreenShare) {
+        if ((window as any).pendingScreenShare) {
+           (window as any).pendingScreenShare.delete(peerId);
+        }
         if (!remoteScreenStreamsRef.current.has(peerId)) {
             remoteScreenStreamsRef.current.set(peerId, remoteStream);
         } else {
@@ -347,9 +352,16 @@ export const useWebRTC = ({
 
   // 2. Fix double WebSocket connection
   useEffect(() => {
+    // Hard stop if not in browser or WebRTC not available
+    if (typeof window === 'undefined') return;
+    if (!isWebRTCAvailable()) {
+      console.error('WebRTC not supported in this environment');
+      return;
+    }
     if (!isReady || !roomId || !token) return;
     if (hasJoinedRef.current) return;
     hasJoinedRef.current = true;
+    isMountedRef.current = true;
     
     // Fetch ICE Servers (optional, matching existing implementation)
     const fetchIce = async () => {

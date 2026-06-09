@@ -5,8 +5,10 @@ import { Participant } from '../models/Participant';
 import { Mail } from '../models/Mail';
 import { User } from '../models/User';
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
+let groq: Groq | null = null;
+if (process.env.GROQ_API_KEY) {
+  groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+}
 async function dispatchSummaryMail(meeting: any, summaryHtml: string) {
   try {
     // Get all users who participated in this meeting via the Participant collection

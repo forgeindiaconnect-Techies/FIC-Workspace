@@ -104,7 +104,7 @@ const RemoteVideo = ({ peer, stream, isSpeaking, mobileStyle, isScreen, remoteSt
   return (
     <div className={`absolute inset-0 w-full h-full ${isScreen ? 'bg-black' : 'bg-[#1a1b1e]'} transition-all duration-500 overflow-hidden flex items-center justify-center
       ${isSpeaking ? 'ring-2 ring-inset ring-[#5244e1] shadow-[inset_0_0_30px_rgba(82,68,225,0.2)]' : ''}`}>
-       <video playsInline ref={videoRef} autoPlay className={`w-full h-full ${isScreen ? 'object-contain' : 'object-cover'} ${!actualHasVideo ? 'hidden' : ''}`} />
+       <video playsInline muted ref={videoRef} autoPlay className={`w-full h-full ${isScreen ? 'object-contain' : 'object-cover'} ${!actualHasVideo ? 'hidden' : ''}`} />
        {!actualHasVideo && (
          mobileStyle ? (
             <div className="absolute inset-0 bg-violet-600 flex flex-col items-center justify-center">
@@ -658,6 +658,15 @@ const m = Math.floor((seconds % 3600) / 60);
             const transceiver = pc.getTransceivers().find(t => t.sender === sender);
             if (transceiver) transceiver.direction = 'sendonly';
             screenSendersRef.current.set(peerID, sender);
+            
+            // Renegotiate
+            pc.createOffer().then(offer => {
+              return pc.setLocalDescription(offer).then(() => {
+                if (sendWsRef.current) {
+                  sendWsRef.current('offer', { targetPeerId: peerID, sdp: offer, isScreenShare: true });
+                }
+              });
+            }).catch(err => console.warn('Renegotiation failed', err));
           } catch (err) {
             console.warn(`[ScreenShare] Failed to addTrack to ${peerID}:`, err);
           }
@@ -685,14 +694,22 @@ const m = Math.floor((seconds % 3600) / 60);
         const { pc, peerID } = peerEntry;
         if (!pc || pc.connectionState === 'closed') continue;
         try {
-          const sender = screenSendersRef.current.get(peerID);
-          if (sender) {
-            pc.removeTrack(sender);
-            screenSendersRef.current.delete(peerID);
+            const sender = screenSendersRef.current.get(peerID);
+            if (sender) {
+              pc.removeTrack(sender);
+              screenSendersRef.current.delete(peerID);
+              // Renegotiate
+              pc.createOffer().then(offer => {
+                return pc.setLocalDescription(offer).then(() => {
+                  if (sendWsRef.current) {
+                    sendWsRef.current('offer', { targetPeerId: peerID, sdp: offer });
+                  }
+                });
+              }).catch(err => console.warn('Renegotiation failed', err));
+            }
+          } catch (err) {
+            console.warn(`[ScreenShare] Failed to removeTrack for ${peerID}:`, err);
           }
-        } catch (err) {
-          console.warn(`[ScreenShare] Failed to removeTrack for ${peerID}:`, err);
-        }
       }
       
       screenStreamRef.current = null;
@@ -709,6 +726,18 @@ const m = Math.floor((seconds % 3600) / 60);
   }, [createPeerConnection, shouldInitiateOffer, sendWs]);
 
   const connectSignaling = useCallback((signalingRoomId, token) => {
+    if (typeof window === 'undefined') return;
+    if (
+      wsRef.current?.readyState === WebSocket.OPEN ||
+      wsRef.current?.readyState === WebSocket.CONNECTING
+    ) return;
+
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close(1000, 'Reconnecting');
+      wsRef.current = null;
+    }
+
     intentionalCloseRef.current = false;
     meetingIdRef.current = signalingRoomId;
     const wsUrl = buildWsUrl();
@@ -730,8 +759,15 @@ const m = Math.floor((seconds % 3600) / 60);
     };
 
     const handleSignaling = async (e) => {
+      let msg;
       try {
-        const msg = JSON.parse(e.data);
+        msg = JSON.parse(e.data);
+      } catch (err) {
+        console.error('[Signaling] Invalid JSON received');
+        return; // hard stop
+      }
+
+      try {
         if (msg.type === 'joined') {
           peerIdRef.current = msg.peerId;
           setRoomError(null);
@@ -870,6 +906,10 @@ const m = Math.floor((seconds % 3600) / 60);
         }
         if (msg.type === 'offer') {
           const fromPeerId = msg.fromPeerId;
+          if (msg.isScreenShare) {
+             window.pendingScreenShare = window.pendingScreenShare || new Set();
+             window.pendingScreenShare.add(fromPeerId);
+          }
           let pc = peersRef.current.find(p => p.peerID === fromPeerId)?.pc;
           if (!pc) {
             pc = createPeerConnectionRef.current(fromPeerId, streamRef.current, 'Participant');
@@ -1002,7 +1042,7 @@ const m = Math.floor((seconds % 3600) / 60);
           }]);
         }
       } catch (err) {
-        console.warn('[Signaling] Parse error:', err);
+        console.error('[Signaling] Handler error:', err);
       }
     };
     
