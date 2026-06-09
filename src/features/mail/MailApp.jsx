@@ -141,7 +141,13 @@ const MailApp = () => {
       isMountedRef.current = false;
       if (mailSocketRef.current) {
         mailSocketRef.current.onclose = null;
-        mailSocketRef.current.close(1000, 'Unmount');
+        mailSocketRef.current.onerror = null;
+        if (mailSocketRef.current.readyState === 1) {
+          mailSocketRef.current.close(1000, 'Unmount');
+        } else if (mailSocketRef.current.readyState === 0) {
+          // If connecting, closing will throw browser warning, but we must close it to avoid leaks.
+          mailSocketRef.current.close(1000, 'Unmount');
+        }
       }
     };
   }, []);
