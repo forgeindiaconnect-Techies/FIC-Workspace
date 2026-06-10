@@ -1,10 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
-import { Mail as MailIcon, Send, Star, FileText, Trash2, Plus, Paperclip, Search, X, MoreHorizontal, Reply, Forward, Archive, Loader2, Home } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
-const MailApp = () => {
-  const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+const API_URL = '/api';
+
+export default function MailApp() {
+  const [auth] = useState(() => JSON.parse(localStorage.getItem('auth') || 'null'));
+  const [token] = useState(() => localStorage.getItem('token') || '');
+
+  if (!auth || !token) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background text-on-surface-variant" style={{ background: '#0c0f17', color: '#f8fafc' }}>
+        <div className="text-center space-y-4">
+          <Loader2 className="animate-spin mx-auto text-primary" size={32} />
+          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Verifying Workspace Session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <MailClient auth={auth} token={token} />;
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Mail Inner Client
+function MailClient({ auth, token }) {
   const workspaceId = auth.workspaceId || 'demo';
   const currentUserEmail = auth.email || 'guest@example.com';
   const navigate = useNavigate();
@@ -17,12 +43,12 @@ const MailApp = () => {
   const [folder, setFolder] = useState('Inbox');
   const [newMail, setNewMail] = useState({ to: '', subject: '', message: '' });
   const [sending, setSending] = useState(false);
-
-  const API_URL = '/api';
+  const [composeAttachments, setComposeAttachments] = useState([]);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const composeFileRef = useRef(null);
 
   const fetchMails = async () => {
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/mail?folder=all`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -48,7 +74,7 @@ const MailApp = () => {
 
   useEffect(() => {
     fetchMails();
-  }, [workspaceId, currentUserEmail]);
+  }, [workspaceId, currentUserEmail, token]);
 
   const filtered = threads.filter(t => {
     if (folder === 'Trash') return t.isDeleted;
@@ -64,12 +90,40 @@ const MailApp = () => {
     t.sender.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Upload attachment for compose
+  const handleComposeFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingAttachment(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(`${API_URL}/mail/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setComposeAttachments(prev => [...prev, data]);
+      } else {
+        console.error('Attachment upload failed:', data.error);
+      }
+    } catch (err) {
+      console.error('Attachment upload failed:', err);
+    } finally {
+      setUploadingAttachment(false);
+      if (composeFileRef.current) composeFileRef.current.value = '';
+    }
+  };
+
   const handleSend = async () => {
     if (!newMail.to || !newMail.subject) return;
     setSending(true);
 
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/mail/send`, {
         method: 'POST',
         headers: { 
@@ -79,13 +133,20 @@ const MailApp = () => {
         body: JSON.stringify({
           to: newMail.to.split(',').map(e => e.trim()),
           subject: newMail.subject,
-          body: newMail.message
+          body: newMail.message,
+          attachments: composeAttachments.map(a => ({
+            name: a.name,
+            url: a.url,
+            size: a.size,
+            fileType: a.fileType
+          }))
         })
       });
 
       if (response.ok) {
         setComposing(false);
         setNewMail({ to: '', subject: '', message: '' });
+        setComposeAttachments([]);
         fetchMails();
       }
     } catch (err) {
@@ -97,7 +158,6 @@ const MailApp = () => {
 
   const updateMail = async (id, updates) => {
     try {
-      const token = localStorage.getItem('token');
       let url = `${API_URL}/mail/${id}`;
       let method = 'PUT';
       let body = null;
@@ -125,164 +185,388 @@ const MailApp = () => {
     }
   };
 
+  const getUnreadCount = (f) => {
+    if (f === 'Inbox') return threads.filter(t => t.recipient === currentUserEmail && !t.isRead && !t.isDeleted).length;
+    if (f === 'Drafts') return threads.filter(t => t.senderEmail === currentUserEmail && t.isDraft && !t.isDeleted).length;
+    return 0;
+  };
+
   const folders = [
-    { icon: <MailIcon size={15} />, label: 'Inbox', count: threads.filter(t => t.recipient === currentUserEmail && !t.isRead && !t.isDeleted).length },
-    { icon: <Star size={15} />, label: 'Starred' },
-    { icon: <Send size={15} />, label: 'Sent' },
-    { icon: <FileText size={15} />, label: 'Drafts', count: threads.filter(t => t.senderEmail === currentUserEmail && t.isDraft && !t.isDeleted).length },
-    { icon: <Trash2 size={15} />, label: 'Trash' },
+    { icon: 'inbox', label: 'Inbox' },
+    { icon: 'send', label: 'Sent' },
+    { icon: 'draft', label: 'Drafts' },
+    { icon: 'calendar_today', label: 'Calendar' },
+    { icon: 'contacts', label: 'Contacts' },
+  ];
+
+  const bottomFolders = [
+    { icon: 'delete', label: 'Trash' },
+    { icon: 'report', label: 'Spam' },
   ];
 
   return (
-    <AppLayout appName="Mail" appIcon={MailIcon} appColor="#7C3AED">
-      <div className="flex flex-col md:flex-row h-full gap-0 overflow-hidden relative">
-        {/* Sidebar */}
-        <div className={`md:w-44 shrink-0 flex flex-row md:flex-col border-b md:border-b-0 md:border-r px-3 py-2 md:py-4 gap-1 md:gap-1 overflow-x-auto md:overflow-x-visible no-scrollbar ${selected ? 'hidden md:flex' : 'flex'}`} style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-          <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="sidebar-item shrink-0 mb-0 md:mb-1" style={{ color: 'var(--text-2)' }}>
-            <Home size={15} /> <span className="hidden md:inline">Home</span>
-          </button>
-          <button onClick={() => setComposing(true)} className="btn btn-primary shrink-0 w-auto md:w-full mb-0 md:mb-4 px-3 md:px-auto">
-            <Plus size={15} /> <span className="hidden md:inline">Compose</span>
-          </button>
-          {folders.map(({ icon, label, count }) => (
-            <button key={label} onClick={() => { setFolder(label); setSelected(null); }}
-              className="sidebar-item shrink-0 whitespace-nowrap"
-              style={{ background: folder === label ? 'var(--accent-muted)' : 'transparent', color: folder === label ? 'var(--accent)' : 'var(--text-2)' }}
-            >
-              {icon}
-              <span className="flex-1 text-left hidden md:inline">{label}</span>
-              <span className="md:hidden">{label}</span>
-              {count > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'var(--accent)', color: 'white' }}>{count}</span>}
-            </button>
-          ))}
-        </div>
-
-        {/* Thread List */}
-        <div className={`md:w-80 shrink-0 flex-col overflow-hidden border-r ${selected ? 'hidden md:flex' : 'flex flex-1 md:flex-initial'}`} style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-          <div className="p-3 border-b" style={{ borderColor: 'var(--border)' }}>
-            <div className="relative">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-3)' }} />
-              <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${folder}...`} className="input pl-8 py-2 text-xs" />
-            </div>
+    <div className="bg-background text-on-surface h-screen w-full overflow-hidden font-body-md" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* TopNavBar */}
+      <header className="flex justify-between items-center px-[24px] h-16 w-full fixed top-0 z-50 bg-surface-container-lowest border-b border-outline-variant">
+        <div className="flex items-center gap-6">
+          <span className="text-headline-md font-semibold text-primary">CorporateMail</span>
+          <div className="hidden md:flex items-center bg-surface-container-low px-3 py-1.5 rounded-lg border border-outline-variant w-96">
+            <span className="material-symbols-outlined text-on-surface-variant mr-2" style={{fontSize: '20px'}}>search</span>
+            <input 
+              className="bg-transparent border-none outline-none focus:ring-0 text-body-md w-full p-0 text-on-surface" 
+              placeholder="Search mail" 
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
           </div>
-          <div className="overflow-y-auto flex-1">
-            {loading ? (
-              <div className="p-12 text-center opacity-40"><Loader2 className="animate-spin mx-auto mb-2" /> Loading...</div>
-            ) : filtered.length === 0 ? (
-              <div className="p-12 text-center text-xs opacity-40">No messages in {folder}</div>
-            ) : (
-              filtered.map(thread => (
-                <div key={thread._id} onClick={() => {
-                  setSelected(thread);
-                  if (!thread.isRead && thread.recipient === currentUserEmail) {
-                    updateMail(thread._id, { isRead: true });
-                  }
-                }}
-                  className="px-4 py-3.5 cursor-pointer border-b transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
-                  style={{
-                    borderColor: 'var(--border)',
-                    background: selected?._id === thread._id ? 'var(--accent-muted)' : 'transparent'
-                  }}
+        </div>
+        <div className="flex items-center gap-4">
+          <button onClick={() => navigate(`/w/${workspaceId}/dashboard`)} className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer" title="Home">home</button>
+          <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">help</button>
+          <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">apps</button>
+          <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">settings</button>
+          <div className="h-8 w-8 rounded-full overflow-hidden border border-outline-variant ml-2 cursor-pointer">
+            <img alt="User Profile" className="h-full w-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcwzTrIzFfposfwaxTUef7pBMZwJihXeUotHhJSkxhQzt8E8ndUWlGRZghrCsysM66hJvTf8xpB-_qwiC6b6ZpD-gxk9uAT2o6S2CJScsKNYMtO2SMpTcyPRmu2c-sXOnQv3kktVmyMUkBC_xERKxtPCzADim2WtpXlYUID1YTXDT_n8lJd9U-Ez3Vltp0xKQccUraClXfXlSYl_tCu451tb4y3S-65GwEAC1DKHyQEqC5x3L461IMVdIoFu-V_6LLFZfUlIbIL8pR" />
+          </div>
+        </div>
+      </header>
+
+      <div className="flex pt-16 h-screen w-full">
+        {/* SideNavBar */}
+        <aside className="fixed left-0 top-16 h-[calc(100vh-64px)] w-[260px] flex flex-col p-[16px] bg-surface-container-low shrink-0 z-40">
+          <div className="mb-6">
+            <button 
+              onClick={() => { setComposing(true); setNewMail({ to: '', subject: '', message: '' }); setComposeAttachments([]); }}
+              className="flex items-center justify-center gap-2 bg-[#1A2B3C] text-white w-full py-3 rounded-xl font-semibold shadow-sm active:scale-95 transition-transform"
+            >
+              <span className="material-symbols-outlined">edit</span>
+              <span className="text-label-sm font-medium">Compose</span>
+            </button>
+          </div>
+          <nav className="flex-1 space-y-1">
+            {folders.map(({ icon, label }) => {
+              const count = getUnreadCount(label);
+              const isActive = folder === label;
+              return (
+                <div 
+                  key={label}
+                  onClick={() => { setFolder(label); setSelected(null); }}
+                  className={`flex items-center gap-[8px] rounded-xl px-4 py-2 cursor-pointer transition-all scale-95 active:scale-90 ${isActive ? 'bg-secondary-container text-on-secondary-container font-semibold' : 'text-on-surface-variant hover:bg-surface-container-highest'}`}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      {!thread.isRead && thread.recipient === currentUserEmail && <div className="w-1.5 h-1.5 rounded-full shrink-0 bg-indigo-500" />}
-                      <span className={`text-xs ${!thread.isRead ? 'font-semibold' : 'font-medium'}`}>
-                        {folder === 'Sent' || folder === 'Drafts' ? `To: ${thread.recipient}` : thread.sender}
+                  <span className="material-symbols-outlined">{icon}</span>
+                  <span className="text-label-sm font-medium">{label}</span>
+                  {count > 0 && <span className="ml-auto text-xs opacity-80">{count}</span>}
+                </div>
+              )
+            })}
+          </nav>
+          
+          <div className="mt-auto border-t border-outline-variant pt-4 space-y-1">
+            {bottomFolders.map(({ icon, label }) => {
+              const isActive = folder === label;
+              return (
+                <div 
+                  key={label}
+                  onClick={() => { setFolder(label); setSelected(null); }}
+                  className={`flex items-center gap-[8px] rounded-xl px-4 py-2 cursor-pointer transition-all scale-95 active:scale-90 ${isActive ? 'bg-secondary-container text-on-secondary-container font-semibold' : 'text-on-surface-variant hover:bg-surface-container-highest'}`}
+                >
+                  <span className="material-symbols-outlined">{icon}</span>
+                  <span className="text-label-sm font-medium">{label}</span>
+                </div>
+              )
+            })}
+          </div>
+          <div className="mt-6 px-4">
+            <div className="text-xs text-on-surface-variant opacity-60">Mailbox</div>
+            <div className="text-xs font-semibold text-primary truncate" title={currentUserEmail}>{currentUserEmail}</div>
+          </div>
+        </aside>
+
+        {/* Main Content Area: Split Pane */}
+        <main className="ml-[260px] flex flex-1 overflow-hidden h-full w-full">
+          {/* Message List */}
+          <section className="w-1/3 min-w-[320px] bg-white border-r border-outline-variant flex flex-col h-full shrink-0">
+            {/* Filter Bar */}
+            <div className="h-12 flex items-center px-4 border-b border-outline-variant justify-between bg-white sticky top-0 z-10 shrink-0">
+              <div className="flex gap-2">
+                <button className="px-3 py-1 bg-surface-container-high rounded text-label-sm font-medium text-primary">All</button>
+                <button className="px-3 py-1 hover:bg-surface-container text-label-sm font-medium text-on-surface-variant">Unread</button>
+                <button className="px-3 py-1 hover:bg-surface-container text-label-sm font-medium text-on-surface-variant">Flagged</button>
+              </div>
+              <button className="material-symbols-outlined text-on-surface-variant text-sm">filter_list</button>
+            </div>
+            
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
+              {loading ? (
+                <div className="p-12 text-center text-xs text-on-surface-variant flex flex-col items-center gap-2">
+                  <Loader2 className="animate-spin text-primary" size={18} />
+                  <span>Loading messages...</span>
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="p-12 text-center text-xs text-on-surface-variant">No messages in {folder}</div>
+              ) : (
+                filtered.map(thread => {
+                  const isUnread = !thread.isRead && thread.recipient === currentUserEmail;
+                  const isActive = selected?._id === thread._id;
+                  
+                  return (
+                    <div 
+                      key={thread._id}
+                      onClick={() => {
+                        setSelected(thread);
+                        if (!thread.isRead && thread.recipient === currentUserEmail) {
+                          updateMail(thread._id, { isRead: true });
+                        }
+                      }}
+                      className={`message-item p-4 border-b border-outline-variant relative cursor-pointer group hover:bg-slate-50 transition-colors ${isActive ? 'bg-[#edf2f7]' : ''}`}
+                    >
+                      {isUnread && <div className="absolute left-0 top-0 w-0.5 h-full bg-[#3182CE]"></div>}
+                      <div className="flex justify-between items-start mb-1">
+                        <span className={`${isUnread ? 'font-bold text-primary' : 'font-medium text-on-surface-variant'} text-body-md truncate mr-2`}>
+                          {folder === 'Sent' || folder === 'Drafts' ? `To: ${thread.recipient}` : thread.sender}
+                        </span>
+                        <span className="text-label-xs font-semibold text-on-surface-variant shrink-0">{new Date(thread.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <div className="text-label-sm font-semibold text-on-surface truncate mb-1">
+                        {thread.subject || '(No Subject)'}
+                      </div>
+                      <div className="text-label-xs text-on-surface-variant line-clamp-2 leading-relaxed">
+                        {thread.content}
+                      </div>
+                      
+                      {/* Hover Actions */}
+                      <div className="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span onClick={(e) => { e.stopPropagation(); updateMail(thread._id, { isStarred: !thread.isStarred }); }} className="material-symbols-outlined text-sm text-on-surface-variant hover:text-primary" title="Star">star</span>
+                        <span onClick={(e) => { e.stopPropagation(); updateMail(thread._id, { isDeleted: !thread.isDeleted }); }} className="material-symbols-outlined text-sm text-on-surface-variant hover:text-error" title="Delete">delete</span>
+                        <span onClick={(e) => { e.stopPropagation(); updateMail(thread._id, { isRead: !thread.isRead }); }} className="material-symbols-outlined text-sm text-on-surface-variant hover:text-primary" title="Mark unread">mark_as_unread</span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          {/* Reading Pane */}
+          {selected ? (
+            <section className="flex-1 bg-white flex flex-col h-full overflow-hidden w-full">
+              {/* Action Toolbar */}
+              <div className="h-12 flex items-center px-6 border-b border-outline-variant justify-between bg-white sticky top-0 z-10 shrink-0">
+                <div className="flex items-center gap-4">
+                  <button onClick={() => updateMail(selected._id, { isStarred: !selected.isStarred })} className={`material-symbols-outlined hover:bg-surface-container-low p-1.5 rounded transition-colors ${selected.isStarred ? 'text-tertiary-container' : 'text-on-surface-variant'}`} title="Star">star</button>
+                  <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-1.5 rounded transition-colors" title="Report">report</button>
+                  <button onClick={() => { updateMail(selected._id, { isDeleted: !selected.isDeleted }); setSelected(null); }} className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-1.5 rounded transition-colors text-error" title="Delete">delete</button>
+                  <div className="w-[1px] h-4 bg-outline-variant"></div>
+                  <button onClick={() => { updateMail(selected._id, { isRead: false }); setSelected(null); }} className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-1.5 rounded transition-colors" title="Mark as unread">mail</button>
+                  <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-1.5 rounded transition-colors">schedule</button>
+                  <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-1.5 rounded transition-colors">add_task</button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-label-xs font-semibold text-on-surface-variant">Selected</span>
+                  <button onClick={() => setSelected(null)} className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-1.5 rounded transition-colors" title="Close">close</button>
+                </div>
+              </div>
+
+              {/* Message Content */}
+              <div className="flex-1 overflow-y-auto p-10 max-w-5xl mx-auto w-full custom-scrollbar">
+                <h1 className="text-display-lg font-semibold text-primary mb-8" style={{ fontSize: '30px', letterSpacing: '-0.02em', lineHeight: '38px' }}>{selected.subject || '(No Subject)'}</h1>
+                
+                <div className="flex items-center mb-8">
+                  <div className="h-10 w-10 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-body-md mr-4 shrink-0">
+                    {selected.sender?.[0]?.toUpperCase() || 'U'}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-body-md text-primary">
+                        {selected.sender} <span className="font-normal text-on-surface-variant ml-2">&lt;{selected.senderEmail}&gt;</span>
+                      </span>
+                      <span className="text-label-sm font-medium text-on-surface-variant">
+                        {new Date(selected.timestamp).toLocaleString()}
                       </span>
                     </div>
-                    <span className="text-[10px] opacity-40">{new Date(thread.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <div className="text-label-sm font-medium text-on-surface-variant flex items-center">
+                      To: {selected.recipient || currentUserEmail}
+                      <span className="material-symbols-outlined text-xs ml-1 cursor-pointer">expand_more</span>
+                    </div>
                   </div>
-                  <p className="text-xs mb-0.5 truncate font-medium">{thread.subject}</p>
-                  <p className="text-[11px] truncate opacity-60">{thread.content}</p>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
 
-        {/* Reading Pane */}
-        <div className={`flex-1 flex-col overflow-hidden ${selected ? 'flex' : 'hidden md:flex'}`} style={{ background: 'var(--bg)' }}>
-          {selected ? (
-            <>
-              <div className="px-6 py-4 border-b flex items-start justify-between" style={{ borderColor: 'var(--border)' }}>
-                <div>
-                  <h2 className="font-bold text-lg mb-1">{selected.subject}</h2>
-                  <p className="text-xs opacity-60">
-                    {folder === 'Sent' || folder === 'Drafts' ? `To: ${selected.recipient}` : `From: ${selected.sender} <${selected.senderEmail}>`}
-                  </p>
+                <div className="prose prose-slate max-w-none text-body-lg text-on-surface-variant space-y-4">
+                  {selected.content}
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => updateMail(selected._id, { isStarred: !selected.isStarred })} className="btn btn-ghost btn-icon btn-sm">
-                    <Star size={15} fill={selected.isStarred ? 'var(--warning)' : 'none'} color={selected.isStarred ? 'var(--warning)' : 'currentColor'} />
-                  </button>
-                  <button onClick={() => updateMail(selected._id, { isDeleted: !selected.isDeleted })} className="btn btn-ghost btn-icon btn-sm"><Trash2 size={15} /></button>
-                  <button onClick={() => setSelected(null)} className="btn btn-ghost btn-icon btn-sm"><X size={15} /></button>
-                </div>
-              </div>
-              <div className="flex-1 p-8 overflow-y-auto">
-                <div className="max-w-3xl">
-                  <p 
-                    className="text-sm leading-relaxed whitespace-pre-wrap"
-                    dangerouslySetInnerHTML={{ 
-                      __html: (selected.content || '').replace(
-                        /(https?:\/\/[^\s]+|nexus-workspace:\/\/[^\s]+)/g, 
-                        '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline hover:text-blue-600">$1</a>'
-                      ) 
-                    }}
-                  ></p>
-                  <div className="mt-12 pt-6 border-t border-dashed border-zinc-200 dark:border-zinc-800">
-                    <p className="text-xs opacity-40 italic">Sent via Forge India Connect Pvt Ltd Workspace Secure Mail</p>
+
+                {/* Attachments */}
+                {selected.attachments?.length > 0 && (
+                  <div className="mt-12 pt-6 border-t border-outline-variant">
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="material-symbols-outlined text-sm">attachment</span>
+                      <span className="text-label-sm font-semibold">{selected.attachments.length} Attachments</span>
+                    </div>
+                    <div className="flex gap-4">
+                      {selected.attachments.map((att, i) => {
+                        const isPdf = att.name?.toLowerCase().endsWith('.pdf');
+                        const isExcel = att.name?.toLowerCase().match(/\.xlsx?$/);
+                        const icon = isPdf ? 'picture_as_pdf' : (isExcel ? 'table_chart' : 'attachment');
+                        const iconColor = isPdf ? 'text-error' : (isExcel ? 'text-tertiary-container' : 'text-on-surface-variant');
+                        
+                        return (
+                        <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className="w-48 bg-surface-container-low border border-outline-variant p-3 rounded-lg hover:bg-surface-container transition-colors cursor-pointer group no-underline">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`material-symbols-outlined ${iconColor}`}>{icon}</span>
+                            <span className="text-label-sm font-medium truncate text-primary">{att.name || 'File'}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-label-xs font-semibold text-on-surface-variant">
+                            <span>{formatFileSize(att.size)}</span>
+                            <span className="material-symbols-outlined opacity-0 group-hover:opacity-100 transition-opacity">download</span>
+                          </div>
+                        </a>
+                      )})}
+                    </div>
                   </div>
+                )}
+
+                {/* Quick Reply */}
+                <div className="mt-12 flex gap-4">
+                  <button 
+                    onClick={() => { setComposing(true); setNewMail({ ...newMail, to: selected.senderEmail, subject: `Re: ${selected.subject}`}); }} 
+                    className="flex items-center gap-2 border border-outline-variant px-6 py-2 rounded-full text-label-sm font-semibold hover:bg-surface-container-low transition-colors"
+                  >
+                    <span className="material-symbols-outlined">reply</span> Reply
+                  </button>
+                  <button 
+                    onClick={() => { setComposing(true); setNewMail({ ...newMail, to: selected.senderEmail, subject: `Re: ${selected.subject}`}); }} 
+                    className="flex items-center gap-2 border border-outline-variant px-6 py-2 rounded-full text-label-sm font-semibold hover:bg-surface-container-low transition-colors"
+                  >
+                    <span className="material-symbols-outlined">reply_all</span> Reply all
+                  </button>
+                  <button 
+                    onClick={() => { setComposing(true); setNewMail({ ...newMail, subject: `Fwd: ${selected.subject}`, message: `\n\n--- Forwarded Message ---\n${selected.content}`}); }} 
+                    className="flex items-center gap-2 border border-outline-variant px-6 py-2 rounded-full text-label-sm font-semibold hover:bg-surface-container-low transition-colors"
+                  >
+                    <span className="material-symbols-outlined">forward</span> Forward
+                  </button>
                 </div>
               </div>
-            </>
+            </section>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 opacity-40">
-              <MailIcon size={48} strokeWidth={1} />
-              <p className="text-sm font-medium">Select an email to read</p>
-            </div>
+            <section className="flex-1 bg-white flex flex-col h-full overflow-hidden items-center justify-center opacity-80">
+               <div className="w-20 h-20 bg-secondary-container rounded-full flex items-center justify-center mb-4">
+                  <span className="material-symbols-outlined text-tertiary-container" style={{fontSize: '36px'}}>mail</span>
+               </div>
+               <p className="text-label-sm font-bold uppercase tracking-widest text-on-surface-variant">Select a message to view</p>
+            </section>
           )}
-        </div>
+        </main>
       </div>
 
       {/* Compose Modal */}
       {composing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setComposing(false)} />
-          <div className="relative w-full max-w-lg bg-white shadow-2xl border border-gray-200 rounded-xl animate-up overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b border-gray-200 text-gray-900">
-              <span className="text-sm font-bold">New Message</span>
-              <button onClick={() => setComposing(false)} className="p-1 hover:bg-gray-200 rounded-lg transition-colors"><X size={16} /></button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-[#181C1E]/60 backdrop-blur-sm" onClick={() => setComposing(false)} />
+          <div className="relative w-full max-w-2xl bg-white border border-outline-variant rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-surface-container-low border-b border-outline-variant">
+              <h3 className="text-body-md font-semibold text-primary">New Message</h3>
+              <div className="flex items-center gap-2">
+                <button className="text-on-surface-variant hover:bg-surface-container-highest p-1 rounded transition-colors"><span className="material-symbols-outlined text-sm">minimize</span></button>
+                <button className="text-on-surface-variant hover:bg-surface-container-highest p-1 rounded transition-colors"><span className="material-symbols-outlined text-sm">open_in_full</span></button>
+                <button onClick={() => setComposing(false)} className="text-on-surface-variant hover:bg-surface-container-highest p-1 rounded transition-colors"><span className="material-symbols-outlined text-sm">close</span></button>
+              </div>
             </div>
-            <div className="p-6 space-y-4">
-              <div className="flex items-center gap-3 border-b border-gray-200 pb-2">
-                <span className="text-xs font-bold text-gray-500 w-12">To</span>
-                <input type="email" value={newMail.to} onChange={e => setNewMail({...newMail, to: e.target.value})} className="bg-transparent border-none outline-none text-sm flex-1 text-gray-900" placeholder="recipient@workspace.com" />
+            
+            <div className="flex flex-col">
+              <div className="flex items-center gap-3 border-b border-outline-variant px-6 py-2">
+                <span className="text-label-sm text-on-surface-variant w-12">To</span>
+                <input
+                  type="email"
+                  value={newMail.to}
+                  onChange={e => setNewMail({...newMail, to: e.target.value})}
+                  className="bg-transparent border-none outline-none text-body-md text-primary flex-1 placeholder-outline-variant focus:ring-0"
+                  placeholder="recipient@workspace.com"
+                />
               </div>
-              <div className="flex items-center gap-3 border-b border-gray-200 pb-2">
-                <span className="text-xs font-bold text-gray-500 w-12">Subject</span>
-                <input type="text" value={newMail.subject} onChange={e => setNewMail({...newMail, subject: e.target.value})} className="bg-transparent border-none outline-none text-sm flex-1 text-gray-900" placeholder="Meeting Sync" />
+              <div className="flex items-center gap-3 border-b border-outline-variant px-6 py-2">
+                <span className="text-label-sm text-on-surface-variant w-12">Subject</span>
+                <input
+                  type="text"
+                  value={newMail.subject}
+                  onChange={e => setNewMail({...newMail, subject: e.target.value})}
+                  className="bg-transparent border-none outline-none text-body-md text-primary flex-1 placeholder-outline-variant focus:ring-0"
+                  placeholder="Subject"
+                />
               </div>
-              <textarea 
-                className="w-full bg-transparent border-none outline-none text-sm resize-none text-gray-900" 
-                rows={8} 
-                placeholder="Write your message here..."
-                value={newMail.message}
-                onChange={e => setNewMail({...newMail, message: e.target.value})}
-              />
-              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <button className="p-2 hover:bg-gray-100 rounded-xl transition-all text-gray-500"><Paperclip size={18} /></button>
-                <button onClick={handleSend} disabled={sending} className="btn bg-blue-600 text-white hover:bg-blue-700 hover:shadow-none px-8 rounded-xl py-2">
-                  {sending ? 'Sending...' : 'Send Now'}
-                </button>
+              
+              <div className="p-6">
+                <textarea 
+                  className="w-full bg-transparent border-none outline-none text-body-md text-primary placeholder-outline-variant focus:ring-0 resize-none min-h-[300px]" 
+                  placeholder="Write your email content here..."
+                  value={newMail.message}
+                  onChange={e => setNewMail({...newMail, message: e.target.value})}
+                />
+                
+                {/* Attachment chips */}
+                {composeAttachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-4 border-t border-outline-variant pt-4">
+                    {composeAttachments.map((att, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-secondary-container rounded px-3 py-1.5">
+                        <span className="material-symbols-outlined text-[16px] text-tertiary-container">attachment</span>
+                        <span className="text-label-xs font-semibold text-on-secondary-container truncate max-w-[150px]">{att.name}</span>
+                        <button onClick={() => setComposeAttachments(prev => prev.filter((_, idx) => idx !== i))} className="text-on-secondary-container hover:text-error ml-1">
+                          <span className="material-symbols-outlined text-[14px]">close</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {uploadingAttachment && (
+                  <div className="flex items-center gap-2 text-primary mt-4">
+                    <Loader2 className="animate-spin" size={14} />
+                    <span className="text-label-xs font-semibold">Uploading attachment...</span>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex items-center justify-between px-6 py-4 bg-surface-container-low border-t border-outline-variant">
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={composeFileRef}
+                    type="file"
+                    onChange={handleComposeFileUpload}
+                    className="hidden"
+                    accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => composeFileRef.current?.click()}
+                    disabled={uploadingAttachment}
+                    className="p-2 text-on-surface-variant hover:bg-surface-container-highest rounded transition-colors disabled:opacity-40"
+                    title="Attach file"
+                  >
+                    <span className="material-symbols-outlined">attach_file</span>
+                  </button>
+                  <button className="p-2 text-on-surface-variant hover:bg-surface-container-highest rounded transition-colors"><span className="material-symbols-outlined">link</span></button>
+                  <button className="p-2 text-on-surface-variant hover:bg-surface-container-highest rounded transition-colors"><span className="material-symbols-outlined">mood</span></button>
+                  <button className="p-2 text-on-surface-variant hover:bg-surface-container-highest rounded transition-colors"><span className="material-symbols-outlined">insert_photo</span></button>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setComposing(false)} className="px-4 py-2 text-label-sm font-semibold text-on-surface-variant hover:bg-surface-container-highest rounded transition-colors">Discard</button>
+                  <button
+                    onClick={handleSend}
+                    disabled={sending || uploadingAttachment}
+                    className="bg-primary hover:bg-tertiary-container text-on-primary px-6 py-2.5 rounded-full text-label-sm font-semibold transition-all disabled:opacity-40 flex items-center gap-2 shadow-sm"
+                  >
+                    {sending ? 'Sending...' : 'Send'}
+                    {!sending && <span className="material-symbols-outlined text-[16px]">send</span>}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
-    </AppLayout>
+    </div>
   );
-};
-
-export default MailApp;
+}
