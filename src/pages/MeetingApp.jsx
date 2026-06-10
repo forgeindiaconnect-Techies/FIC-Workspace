@@ -472,35 +472,19 @@ const MeetingApp = () => {
           const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
           aiMediaRecorderRef.current = recorder;
 
-          let chunkBuffer = [];
-          let flushTimer = null;
-
-          const flush = () => {
-             if (chunkBuffer.length === 0 || ws.readyState !== WebSocket.OPEN || isMutedRef.current) {
-                chunkBuffer = [];
-                return;
-             }
-             const blob = new Blob(chunkBuffer, { type: recorder.mimeType || 'audio/webm' });
-             if (blob.size > 1000) {
-                blob.arrayBuffer().then(buf => {
+          recorder.ondataavailable = (e) => {
+             if (e.data.size > 0 && ws.readyState === WebSocket.OPEN && !isMutedRef.current) {
+                e.data.arrayBuffer().then(buf => {
                    if (ws.readyState === WebSocket.OPEN) {
                       ws.send(buf);
                    }
                 });
              }
-             chunkBuffer = [];
-          };
-
-          recorder.ondataavailable = (e) => {
-             if (e.data.size > 0) chunkBuffer.push(e.data);
           };
 
           recorder.start(1000);
-          flushTimer = setInterval(flush, 10000);
 
           return () => {
-             if (flushTimer) clearInterval(flushTimer);
-             flush();
              if (aiMediaRecorderRef.current) {
                 try { aiMediaRecorderRef.current.stop(); } catch {}
                 aiMediaRecorderRef.current = null;
@@ -1274,7 +1258,11 @@ const m = Math.floor((seconds % 3600) / 60);
           });
           peersRef.current.forEach(({ pc, peerID }) => {
              if (!pc) return;
-             const cameraSender = cameraSendersRef.current.get(peerID);
+             let cameraSender = cameraSendersRef.current.get(peerID);
+             if (!cameraSender) {
+                cameraSender = pc.getSenders().find(s => s.track && s.track.kind === 'video' && (!screenStreamRef.current || s.track.id !== screenStreamRef.current.getVideoTracks()[0]?.id));
+                if (cameraSender) cameraSendersRef.current.set(peerID, cameraSender);
+             }
              if (cameraSender) {
                 cameraSender.replaceTrack(null).catch(e => console.warn("Failed to nullify video track:", e));
              }
@@ -1469,7 +1457,8 @@ const m = Math.floor((seconds % 3600) / 60);
             <div className={[
               "flex-1 pb-28 md:pb-24 overflow-hidden",
               pinnedUser ? "flex flex-col md:flex-row p-2 md:p-3 gap-2" : 
-              (!pinnedUser && peers.length >= 3) ? "p-2 md:p-4 gap-3 horizontal-video-grid" :
+              (!pinnedUser && peers.length >= 4) ? "p-2 md:p-4 gap-3 horizontal-video-grid" :
+              (!pinnedUser && (peers.length === 2 || peers.length === 3)) ? "p-2 md:p-4 grid gap-3 overflow-y-auto content-start grid-cols-2 lg:grid-cols-3" :
               "p-2 md:p-4 grid gap-3 overflow-y-auto content-start grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
             ].filter(Boolean).join(" ")}>
 

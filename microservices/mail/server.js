@@ -141,7 +141,7 @@ app.put('/api/mail/:id/read', async (req, res) => {
     const mail = await Mail.findOneAndUpdate(
       { _id: req.params.id, ownerEmail: req.user.email },
       { isRead: true },
-      { new: true }
+      { returnDocument: 'after' }
     );
     res.json(mail);
   } catch (err) {
@@ -171,11 +171,26 @@ app.put('/api/mail/:id/move', async (req, res) => {
     const mail = await Mail.findOneAndUpdate(
       { _id: req.params.id, ownerEmail: req.user.email },
       { folder },
-      { new: true }
+      { returnDocument: 'after' }
     );
     res.json(mail);
   } catch (err) {
     res.status(500).json({ error: 'Failed to move mail' });
+  }
+});
+
+// 6a. Update Mail Label
+app.put('/api/mail/:id/label', async (req, res) => {
+  try {
+    const { label } = req.body;
+    const mail = await Mail.findOneAndUpdate(
+      { _id: req.params.id, ownerEmail: req.user.email },
+      { label },
+      { returnDocument: 'after' }
+    );
+    res.json(mail);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update label' });
   }
 });
 
@@ -231,7 +246,7 @@ app.patch('/api/mail/:id', async (req, res) => {
           updatedAt: new Date()
         } 
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
     
     if (!draftMail) return res.status(404).json({ error: 'Draft not found' });

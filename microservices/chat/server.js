@@ -407,7 +407,7 @@ app.post('/api/status/:id/view', async (req, res) => {
     const status = await KuralStatus.findByIdAndUpdate(
       id,
       { $addToSet: { views: currentEmail } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!status) return res.status(404).json({ error: 'Status not found' });
@@ -484,7 +484,7 @@ app.put('/api/tasks/:id', async (req, res) => {
     const { title, description, status, assignee, dueDate } = req.body;
     const task = await Task.findByIdAndUpdate(req.params.id, {
       title, description, status, assignee, dueDate
-    }, { new: true });
+    }, { returnDocument: 'after' });
     res.json(task);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update task.' });
@@ -537,7 +537,7 @@ app.patch('/api/docs/:id', async (req, res) => {
     const doc = await Doc.findOneAndUpdate(
       { _id: req.params.id, createdBy: req.user.email }, // Only creator can update
       updateData, 
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!doc) {
       return res.status(403).json({ error: 'Not authorized to edit this document or document not found.' });

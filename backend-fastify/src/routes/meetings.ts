@@ -143,7 +143,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
           const reqOrigin = request.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
           const origin = reqOrigin.includes('localhost') || reqOrigin.includes('127.0.0.1') ? 'https://workspace-blue-theta-87.vercel.app' : reqOrigin;
           const webLink = `${origin}/w/${workspaceId}/meet/room/${joinCode}${plainPasscode ? `?pwd=${encodeURIComponent(plainPasscode)}&intent=join` : '?intent=join'}`;
-          const mobileLink = `${origin}/mobile-join?room=${joinCode}${plainPasscode ? `&pwd=${encodeURIComponent(plainPasscode)}` : ''}`;
+          const mobileLink = `nexus://meet/room/${joinCode}${plainPasscode ? `?pwd=${encodeURIComponent(plainPasscode)}` : ''}`;
           
           const mailBody = `
   <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b;">

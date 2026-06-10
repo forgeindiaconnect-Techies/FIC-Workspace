@@ -102,6 +102,10 @@ const ReadingPane = () => {
         url += '/move';
         headers['Content-Type'] = 'application/json';
         body = JSON.stringify({ folder: 'archive' });
+      } else if (updates.newLabel !== undefined) {
+        url += '/label';
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify({ label: updates.newLabel === 'None' ? null : updates.newLabel });
       }
 
       const res = await fetch(url, { method, headers, body });
@@ -125,6 +129,13 @@ const ReadingPane = () => {
   const handleArchive = () => {
     updateMailMutation.mutate({ label: 'Archive' });
     setSelectedId(null);
+  };
+
+  const handleNextLabel = () => {
+    const labels = ['Work', 'Client', 'Finance', 'Personal', 'None'];
+    const currentIndex = mail.label ? labels.indexOf(mail.label) : 4;
+    const nextIndex = (currentIndex + 1) % labels.length;
+    updateMailMutation.mutate({ newLabel: labels[nextIndex] });
   };
 
   const handleReply = () => {
@@ -192,7 +203,6 @@ const ReadingPane = () => {
               <div className="w-px h-6 bg-[var(--border)] mx-2" />
               <ToolbarButton icon={Archive} label="Archive" onClick={handleArchive} />
               <ToolbarButton icon={Trash2} label="Delete" onClick={handleDelete} />
-              <ToolbarButton icon={Clock} label="Snooze" />
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -220,15 +230,16 @@ const ReadingPane = () => {
               <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] leading-tight">
                 {mail.subject}
               </h1>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 shrink-0 cursor-pointer" onClick={handleNextLabel} title="Click to change label">
                 <span className={cn(
-                  "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border",
+                  "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all hover:opacity-80",
                   mail.label === 'Work' ? "bg-blue-50 text-blue-600 border-blue-100" :
                   mail.label === 'Client' ? "bg-purple-50 text-purple-600 border-purple-100" :
                   mail.label === 'Finance' ? "bg-amber-50 text-amber-600 border-amber-100" :
-                  "bg-emerald-50 text-emerald-600 border-emerald-100"
+                  mail.label === 'Personal' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                  "bg-[var(--surface-2)] text-[var(--text-secondary)] border-[var(--border)]"
                 )}>
-                  {mail.label}
+                  {mail.label || 'Add Label'}
                 </span>
               </div>
             </div>

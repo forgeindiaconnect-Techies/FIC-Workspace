@@ -33,7 +33,6 @@ const Sidebar = () => {
   const NAV_ITEMS = [
     { id: 'Inbox', icon: Inbox, label: 'Inbox' },
     { id: 'Starred', icon: Star, label: 'Starred' },
-    { id: 'Snoozed', icon: Clock, label: 'Snoozed' },
     { id: 'Sent', icon: Send, label: 'Sent' },
     { id: 'Drafts', icon: File, label: 'Drafts' },
     { id: 'Spam', icon: ShieldAlert, label: 'Spam' },

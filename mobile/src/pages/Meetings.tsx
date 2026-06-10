@@ -2037,10 +2037,6 @@ export default function Meetings() {
 
           {/* SCREEN SHARE */}
           <TouchableOpacity style={[s.ctrlBtn, isSharing && s.ctrlBtnBlue]} onPress={async () => {
-            if (Platform.OS !== 'web') {
-              Alert.alert('Not Supported', 'Screen sharing is currently only supported on the web version.');
-              return;
-            }
             if (!isSharing) {
               try {
                 const displayStream = await getDisplayMedia({ video: true });
@@ -2049,8 +2045,9 @@ export default function Meetings() {
                 
                 const screenTrack = displayStream.getVideoTracks()[0];
                 if (screenTrack) {
-                  // Notify peers that screen sharing started
+                  // Notify peers that screen sharing started using requested signaling events
                   if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({ type: 'screen-share-started', data: {} }));
                     wsRef.current.send(JSON.stringify({
                       type: 'media-state',
                       data: { isScreenSharing: true }
@@ -2079,6 +2076,7 @@ export default function Meetings() {
                      setIsSharing(false);
                      setLocalScreenStream(null);
                      if (wsRef.current?.readyState === WebSocket.OPEN) {
+                       wsRef.current.send(JSON.stringify({ type: 'screen-share-stopped', data: {} }));
                        wsRef.current.send(JSON.stringify({
                          type: 'media-state',
                          data: { isScreenSharing: false }
@@ -2112,6 +2110,7 @@ export default function Meetings() {
                  localScreenStream.getTracks().forEach((t: any) => t.stop());
                  setLocalScreenStream(null);
                  if (wsRef.current?.readyState === WebSocket.OPEN) {
+                   wsRef.current.send(JSON.stringify({ type: 'screen-share-stopped', data: {} }));
                    wsRef.current.send(JSON.stringify({
                      type: 'media-state',
                      data: { isScreenSharing: false }
