@@ -219,13 +219,15 @@ function MailClient({ auth, token }) {
 
   const folders = [
     { icon: 'inbox', label: 'Inbox' },
-    { icon: 'star', label: 'Starred' },
     { icon: 'send', label: 'Sent' },
     { icon: 'draft', label: 'Drafts' },
+    { icon: 'calendar_today', label: 'Calendar' },
+    { icon: 'contacts', label: 'Contacts' },
   ];
 
   const bottomFolders = [
     { icon: 'delete', label: 'Trash' },
+    { icon: 'report', label: 'Spam' },
   ];
 
   return (
@@ -250,8 +252,8 @@ function MailClient({ auth, token }) {
           <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">help</button>
           <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">apps</button>
           <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">settings</button>
-          <div className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-xs ml-2 cursor-pointer shadow-sm">
-            {currentUserEmail[0].toUpperCase()}
+          <div className="h-8 w-8 rounded-full overflow-hidden border border-outline-variant ml-2 cursor-pointer">
+            <img alt="User Profile" className="h-full w-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcwzTrIzFfposfwaxTUef7pBMZwJihXeUotHhJSkxhQzt8E8ndUWlGRZghrCsysM66hJvTf8xpB-_qwiC6b6ZpD-gxk9uAT2o6S2CJScsKNYMtO2SMpTcyPRmu2c-sXOnQv3kktVmyMUkBC_xERKxtPCzADim2WtpXlYUID1YTXDT_n8lJd9U-Ez3Vltp0xKQccUraClXfXlSYl_tCu451tb4y3S-65GwEAC1DKHyQEqC5x3L461IMVdIoFu-V_6LLFZfUlIbIL8pR" />
           </div>
         </div>
       </header>
@@ -276,7 +278,7 @@ function MailClient({ auth, token }) {
                 <div 
                   key={label}
                   onClick={() => { setFolder(label); setSelected(null); }}
-                  className={`flex items-center gap-[8px] font-semibold rounded-xl px-4 py-2 cursor-pointer transition-all active:scale-95 ${isActive ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-surface-container-highest'}`}
+                  className={`flex items-center gap-[8px] rounded-xl px-4 py-2 cursor-pointer transition-all scale-95 active:scale-90 ${isActive ? 'bg-secondary-container text-on-secondary-container font-semibold' : 'text-on-surface-variant hover:bg-surface-container-highest'}`}
                 >
                   <span className="material-symbols-outlined">{icon}</span>
                   <span className="text-label-sm">{label}</span>
@@ -293,7 +295,7 @@ function MailClient({ auth, token }) {
                 <div 
                   key={label}
                   onClick={() => { setFolder(label); setSelected(null); }}
-                  className={`flex items-center gap-[8px] font-semibold rounded-xl px-4 py-2 cursor-pointer transition-all active:scale-95 ${isActive ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-surface-container-highest'}`}
+                  className={`flex items-center gap-[8px] rounded-xl px-4 py-2 cursor-pointer transition-all scale-95 active:scale-90 ${isActive ? 'bg-secondary-container text-on-secondary-container font-semibold' : 'text-on-surface-variant hover:bg-surface-container-highest'}`}
                 >
                   <span className="material-symbols-outlined">{icon}</span>
                   <span className="text-label-sm">{label}</span>
@@ -361,7 +363,7 @@ function MailClient({ auth, token }) {
                       </div>
                       
                       {/* Hover Actions */}
-                      <div className="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity absolute right-4 bottom-4 bg-white/80 backdrop-blur-sm p-1 rounded">
+                      <div className="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <span onClick={(e) => { e.stopPropagation(); updateMail(thread._id, { isStarred: !thread.isStarred }); }} className="material-symbols-outlined text-sm text-on-surface-variant hover:text-primary" title="Star">star</span>
                         <span onClick={(e) => { e.stopPropagation(); updateMail(thread._id, { isDeleted: !thread.isDeleted }); }} className="material-symbols-outlined text-sm text-on-surface-variant hover:text-error" title="Delete">delete</span>
                         <span onClick={(e) => { e.stopPropagation(); updateMail(thread._id, { isRead: !thread.isRead }); }} className="material-symbols-outlined text-sm text-on-surface-variant hover:text-primary" title="Mark unread">mark_as_unread</span>
@@ -395,7 +397,7 @@ function MailClient({ auth, token }) {
 
               {/* Message Content */}
               <div className="flex-1 overflow-y-auto p-10 max-w-5xl mx-auto w-full custom-scrollbar">
-                <h1 className="text-display-lg text-primary mb-8">{selected.subject || '(No Subject)'}</h1>
+                <h1 className="font-display-lg text-display-lg text-primary mb-8">{selected.subject || '(No Subject)'}</h1>
                 
                 <div className="flex items-center mb-8">
                   <div className="h-10 w-10 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-body-md mr-4 shrink-0">
@@ -417,7 +419,7 @@ function MailClient({ auth, token }) {
                   </div>
                 </div>
 
-                <div className="text-body-lg text-on-surface-variant space-y-4 whitespace-pre-wrap leading-relaxed max-w-none">
+                <div className="prose prose-slate max-w-none text-body-lg text-on-surface-variant space-y-4">
                   {selected.content}
                 </div>
 
@@ -428,11 +430,17 @@ function MailClient({ auth, token }) {
                       <span className="material-symbols-outlined text-sm">attachment</span>
                       <span className="text-label-sm font-semibold">{selected.attachments.length} Attachments</span>
                     </div>
-                    <div className="flex flex-wrap gap-4">
-                      {selected.attachments.map((att, i) => (
+                    <div className="flex gap-4">
+                      {selected.attachments.map((att, i) => {
+                        const isPdf = att.name?.toLowerCase().endsWith('.pdf');
+                        const isExcel = att.name?.toLowerCase().match(/\.xlsx?$/);
+                        const icon = isPdf ? 'picture_as_pdf' : (isExcel ? 'table_chart' : 'attachment');
+                        const iconColor = isPdf ? 'text-error' : (isExcel ? 'text-tertiary-container' : 'text-on-surface-variant');
+                        
+                        return (
                         <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className="w-48 bg-surface-container-low border border-outline-variant p-3 rounded-lg hover:bg-surface-container transition-colors cursor-pointer group no-underline">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="material-symbols-outlined text-tertiary-container">draft</span>
+                            <span className={`material-symbols-outlined ${iconColor}`}>{icon}</span>
                             <span className="text-label-sm font-medium truncate text-primary">{att.name || 'File'}</span>
                           </div>
                           <div className="flex justify-between items-center text-label-xs text-on-surface-variant">
@@ -440,28 +448,28 @@ function MailClient({ auth, token }) {
                             <span className="material-symbols-outlined opacity-0 group-hover:opacity-100 transition-opacity">download</span>
                           </div>
                         </a>
-                      ))}
+                      )})}
                     </div>
                   </div>
                 )}
 
                 {/* Quick Reply */}
-                <div className="mt-12 flex flex-wrap gap-4">
+                <div className="mt-12 flex gap-4">
                   <button 
                     onClick={() => { setComposing(true); setNewMail({ ...newMail, to: selected.senderEmail, subject: `Re: ${selected.subject}`}); }} 
-                    className="flex items-center gap-2 border border-outline-variant px-6 py-2 rounded-full text-label-sm font-semibold hover:bg-surface-container-low transition-colors text-primary"
+                    className="flex items-center gap-2 border border-outline-variant px-6 py-2 rounded-full text-label-sm font-semibold hover:bg-surface-container-low transition-colors"
                   >
                     <span className="material-symbols-outlined">reply</span> Reply
                   </button>
                   <button 
                     onClick={() => { setComposing(true); setNewMail({ ...newMail, to: selected.senderEmail, subject: `Re: ${selected.subject}`}); }} 
-                    className="flex items-center gap-2 border border-outline-variant px-6 py-2 rounded-full text-label-sm font-semibold hover:bg-surface-container-low transition-colors text-primary"
+                    className="flex items-center gap-2 border border-outline-variant px-6 py-2 rounded-full text-label-sm font-semibold hover:bg-surface-container-low transition-colors"
                   >
                     <span className="material-symbols-outlined">reply_all</span> Reply all
                   </button>
                   <button 
                     onClick={() => { setComposing(true); setNewMail({ ...newMail, subject: `Fwd: ${selected.subject}`, message: `\n\n--- Forwarded Message ---\n${selected.content}`}); }} 
-                    className="flex items-center gap-2 border border-outline-variant px-6 py-2 rounded-full text-label-sm font-semibold hover:bg-surface-container-low transition-colors text-primary"
+                    className="flex items-center gap-2 border border-outline-variant px-6 py-2 rounded-full text-label-sm font-semibold hover:bg-surface-container-low transition-colors"
                   >
                     <span className="material-symbols-outlined">forward</span> Forward
                   </button>
