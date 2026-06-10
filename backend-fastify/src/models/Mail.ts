@@ -11,6 +11,7 @@ const mailSchema = new mongoose.Schema({
   body: { type: String, default: '' },
   isRead: { type: Boolean, default: false },
   isStarred: { type: Boolean, default: false },
+  label: { type: String, default: null },
   attachments: [{
     name: String,
     url: String,

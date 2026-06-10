@@ -148,6 +148,22 @@ export async function mailRoutes(fastify: FastifyInstance) {
   });
 
   // 5. Toggle Star Status
+  fastify.put('/:id/label', async (request: any, reply) => {
+    try {
+      const { label } = request.body;
+      const mail = await Mail.findOneAndUpdate(
+        { _id: request.params.id, ownerEmail: request.user.email },
+        { label },
+        { new: true }
+      );
+      if (!mail) return reply.code(404).send({ error: 'Mail not found' });
+      return reply.code(200).send(mail);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to update mail label' });
+    }
+  });
+
+  // 6. Toggle Star Status
   fastify.put('/:id/star', async (request: any, reply) => {
     try {
       const mail = await Mail.findOne({ _id: request.params.id, ownerEmail: request.user.email });
