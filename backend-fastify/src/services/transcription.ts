@@ -35,16 +35,17 @@ export async function transcribeChunk(
     const text = transcription.text.trim();
     const lowerText = text.toLowerCase();
     
+    const cleanText = lowerText.replace(/[^a-z0-9\s]/g, '').trim();
+    
     // Whisper often hallucinates the prompt or generic phrases on silent chunks
-    const isHallucination = lowerText.includes('meeting conversation in tamil and english. transcribe accurately') ||
-                            lowerText.includes('meeting conversation. transcribe accurately') || 
-                            lowerText === 'thank you.' || 
-                            lowerText === 'thank you' || 
-                            lowerText === 'thanks.' ||
-                            lowerText === 'subscribe.' ||
-                            lowerText === 'subscribe';
+    const isHallucination = cleanText.includes('meeting conversation in tamil and english transcribe accurately') ||
+                            cleanText.includes('meeting conversation transcribe accurately') || 
+                            cleanText.includes('transcribe accurately') ||
+                            cleanText === 'thank you' || 
+                            cleanText === 'thanks' ||
+                            cleanText === 'subscribe';
 
-    if (text && !isHallucination) {
+    if (text && !isHallucination && cleanText.length > 0) {
       await Transcript.create({
         meetingId,
         userId,

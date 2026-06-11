@@ -482,7 +482,7 @@ const MeetingApp = () => {
              }
           };
 
-          recorder.start(1000);
+          recorder.start(5000); // 5 seconds chunks to prevent Whisper hallucinations on cut-off words
 
           return () => {
              if (aiMediaRecorderRef.current) {
