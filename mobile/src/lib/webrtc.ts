@@ -171,6 +171,7 @@ export function RTCView(props: any) {
       (typeof props.stream === 'string' ? props.stream : props.stream?.toURL?.());
     return React.createElement(NativeRTCView, {
       streamURL,
+      stream: props.stream,
       objectFit: props.objectFit === 'contain' ? 'contain' : 'cover',
       style: props.style,
       mirror: props.mirror,

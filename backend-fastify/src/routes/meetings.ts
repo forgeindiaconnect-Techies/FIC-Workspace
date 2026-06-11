@@ -7,6 +7,7 @@ import { Recording } from '../models/Recording';
 import { User } from '../models/User';
 import { Mail } from '../models/Mail';
 import { Room } from '../models/Room';
+import { Transcript } from '../models/Transcript';
 import { authenticate } from '../middlewares/auth';
 import { launchAIBot, stopAIBot } from '../services/aiBot';
 import { summarizeMeeting } from '../services/summarizer';
@@ -770,8 +771,8 @@ export async function meetingRoutes(fastify: FastifyInstance) {
        }
 
        // Check if there are any transcripts before attempting summarization
-       const hasTranscripts = meeting.transcripts && Array.isArray(meeting.transcripts) && meeting.transcripts.length > 0;
-       if (!hasTranscripts) {
+       const transcriptCount = await Transcript.countDocuments({ meetingId: meeting._id });
+       if (transcriptCount === 0) {
          return reply.code(400).send({ error: 'No transcript data available for this meeting. Summary cannot be generated without transcripts.' });
        }
 

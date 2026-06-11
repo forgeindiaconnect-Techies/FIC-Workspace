@@ -19,8 +19,8 @@ export async function transcribeChunk(
   speakerName: string,
   filePath: string
 ): Promise<string | null> {
-  if (!process.env.GROQ_API_KEY) {
-    console.warn('[Transcription] GROQ_API_KEY is not set. Skipping transcription.');
+  if (!process.env.GROQ_API_KEY || !groq) {
+    console.warn('[Transcription] GROQ_API_KEY is not set or groq client is not initialized. Skipping transcription.');
     return null;
   }
 
@@ -28,16 +28,16 @@ export async function transcribeChunk(
     const transcription = await groq.audio.transcriptions.create({
       file: fs.createReadStream(filePath),
       model: 'whisper-large-v3',
-      prompt: 'Meeting conversation. Transcribe accurately.',
+      prompt: 'Meeting conversation in Tamil and English. Transcribe accurately.',
       response_format: 'json',
-      language: 'en',
     });
 
     const text = transcription.text.trim();
     const lowerText = text.toLowerCase();
     
     // Whisper often hallucinates the prompt or generic phrases on silent chunks
-    const isHallucination = lowerText.includes('meeting conversation. transcribe accurately') || 
+    const isHallucination = lowerText.includes('meeting conversation in tamil and english. transcribe accurately') ||
+                            lowerText.includes('meeting conversation. transcribe accurately') || 
                             lowerText === 'thank you.' || 
                             lowerText === 'thank you' || 
                             lowerText === 'thanks.' ||

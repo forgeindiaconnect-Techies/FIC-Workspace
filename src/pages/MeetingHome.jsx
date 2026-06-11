@@ -63,8 +63,8 @@ const MeetingHome = () => {
       if (res.ok) {
         const data = await res.json();
         const meetingsList = Array.isArray(data) ? data : (data.meetings || []);
-        setMeetings(meetingsList.filter(m => m.status !== 'Ended'));
-        setPastMeetings(meetingsList.filter(m => m.status === 'Ended'));
+        setMeetings(meetingsList.filter(m => m.status?.toLowerCase() !== 'ended'));
+        setPastMeetings(meetingsList.filter(m => m.status?.toLowerCase() === 'ended'));
       }
     } catch (err) {
       console.error('Failed to fetch meetings:', err);

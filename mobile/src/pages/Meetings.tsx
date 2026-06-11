@@ -641,7 +641,10 @@ export default function Meetings() {
             incomingStream.getTracks().forEach((t: any) => {
               try { existingScreen.addTrack(t); } catch {}
             });
-            setRemoteScreenStreams(prev => ({ ...prev }));
+            const MSClass = getMediaStreamClass();
+            const newStream = MSClass ? new MSClass(existingScreen.getTracks()) : existingScreen;
+            remoteScreenStreamsRef.current[peerKey] = newStream;
+            setRemoteScreenStreams(prev => ({ ...prev, [peerKey]: newStream }));
           } else {
             remoteScreenStreamsRef.current[peerKey] = incomingStream;
             setRemoteScreenStreams(prev => ({ ...prev, [peerKey]: incomingStream }));
@@ -652,7 +655,10 @@ export default function Meetings() {
             incomingStream.getTracks().forEach((t: any) => {
               try { existing.addTrack(t); } catch {}
             });
-            setRemoteStreams(prev => ({ ...prev }));
+            const MSClass = getMediaStreamClass();
+            const newStream = MSClass ? new MSClass(existing.getTracks()) : existing;
+            remoteStreamsRef.current[peerKey] = newStream;
+            setRemoteStreams(prev => ({ ...prev, [peerKey]: newStream }));
           } else {
             remoteStreamsRef.current[peerKey] = incomingStream;
             setRemoteStreams(prev => ({ ...prev, [peerKey]: incomingStream }));

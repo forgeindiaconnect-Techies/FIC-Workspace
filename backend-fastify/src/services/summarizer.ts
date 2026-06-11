@@ -92,12 +92,13 @@ export async function summarizeMeeting(meetingId: string) {
 
   let summaryHtml: string;
 
-  if (!hasTranscripts || !process.env.GROQ_API_KEY) {
-    // No transcripts or no API key  send a "meeting completed" notification instead
-    console.log(`[Summarizer] No transcripts found (or no API key). Sending completion notification.`);
-    const duration = meeting.scheduledAt
-      ? Math.round((Date.now() - new Date(meeting.scheduledAt).getTime()) / 60000)
-      : 0;
+  if (!hasTranscripts || !process.env.GROQ_API_KEY || !groq) {
+    // No transcripts or no API key / groq client  send a "meeting completed" notification instead
+    console.log(`[Summarizer] No transcripts found (or no API key/client). Sending completion notification.`);
+    let duration = 0;
+    if (meeting.scheduledAt) {
+      duration = Math.max(1, Math.round((Date.now() - new Date(meeting.scheduledAt).getTime()) / 60000));
+    }
 
     summaryHtml = `
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;border-radius:12px">
@@ -128,6 +129,8 @@ export async function summarizeMeeting(meetingId: string) {
     console.log(`[Summarizer] Summarizing ${transcripts.length} transcript entries (${fullText.length} chars)...`);
 
     const prompt = `You are an expert Executive Assistant. Summarize the following meeting transcript.
+The transcript may contain a mix of English and Tamil.
+Your summary MUST be entirely in English.
 Your response MUST be formatted in clean HTML suitable for an email body.
 Do NOT use markdown. Use bold tags, lists, and headers (h2, h3).
 Include the following sections exactly:
@@ -157,8 +160,49 @@ ${fullText}`;
         max_tokens: 2000,
       });
 
-      summaryHtml = chatCompletion.choices[0]?.message?.content || '';
-      console.log(`[Summarizer] AI summary generated (${summaryHtml.length} chars).`);
+      const rawSummary = chatCompletion.choices[0]?.message?.content || '';
+      let duration = meeting.durationMinutes || 60;
+      if (transcripts && transcripts.length > 0) {
+        const firstTs = new Date(transcripts[0].timestamp).getTime();
+        const lastTs = new Date(transcripts[transcripts.length - 1].timestamp).getTime();
+        duration = Math.max(1, Math.round((lastTs - firstTs) / 60000));
+      } else if (meeting.scheduledAt) {
+        duration = Math.max(1, Math.round((Date.now() - new Date(meeting.scheduledAt).getTime()) / 60000));
+      }
+
+      // Extract unique speakers from transcript to show participant count
+      const uniqueSpeakers = new Set(transcripts.map((t: any) => t.speakerName)).size;
+
+      // Wrap the raw AI summary in our premium Forge India email design
+      summaryHtml = `
+<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;border-radius:12px">
+  <div style="background:linear-gradient(135deg,#1e40af,#7c3aed);padding:24px;border-radius:8px;margin-bottom:20px">
+    <h1 style="color:#fff;margin:0;font-size:22px">Meeting Summary</h1>
+    <p style="color:#bfdbfe;margin:8px 0 0">${meeting.title}</p>
+  </div>
+  
+  <div style="background:#fff;padding:20px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:20px">
+    <h2 style="color:#1e293b;margin-top:0;font-size:16px;margin-bottom:12px">Meeting Details</h2>
+    <ul style="color:#475569;line-height:1.8;margin:0;padding-left:20px">
+      <li><strong>Date:</strong> ${new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</li>
+      <li><strong>Duration:</strong> ~${duration} minutes</li>
+      <li><strong>Speakers:</strong> ${uniqueSpeakers}</li>
+    </ul>
+  </div>
+
+  <div style="background:#fff;padding:24px;border-radius:8px;border:1px solid #e2e8f0;color:#1e293b;line-height:1.6">
+    ${rawSummary
+      .replace(/<h2>/g, '<h2 style="color:#1e40af;font-size:18px;margin-top:24px;margin-bottom:12px;border-bottom:2px solid #e2e8f0;padding-bottom:8px">')
+      .replace(/<h3>/g, '<h3 style="color:#334155;font-size:16px;margin-top:20px;margin-bottom:8px">')
+      .replace(/<ul>/g, '<ul style="color:#475569;padding-left:20px;margin-bottom:16px">')
+      .replace(/<li>/g, '<li style="margin-bottom:8px">')
+    }
+  </div>
+  
+  <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:24px">Sent by Forge India Connect AI</p>
+</div>`;
+      
+      console.log(`[Summarizer] AI summary generated and formatted.`);
     } catch (err: any) {
       console.error('[Summarizer] Groq API failed:', err.message);
       return null;

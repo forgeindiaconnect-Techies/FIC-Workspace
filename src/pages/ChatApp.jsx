@@ -1457,8 +1457,8 @@ const ChatApp = () => {
                 
                 {/* Local Video */}
                 <div className={`${callAccepted ? 'absolute bottom-8 right-8 w-64 h-48' : 'w-full max-w-3xl h-[60vh]'} bg-zinc-800 rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 border-2 border-white/20 z-10`}>
-                  <video playsInline muted ref={myVideo} autoPlay className={`w-full h-full object-cover ${!isVideoCall && 'hidden'}`} />
-                  {!isVideoCall && (
+                  <video playsInline muted ref={myVideo} autoPlay className={`w-full h-full object-cover ${(!isVideoCall || isCameraOff) ? 'hidden' : ''}`} />
+                  {(!isVideoCall || isCameraOff) && (
                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-800">
                         <UserCircle size={48} className="text-white/30" />
                      </div>
