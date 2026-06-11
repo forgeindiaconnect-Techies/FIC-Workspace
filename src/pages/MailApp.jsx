@@ -226,8 +226,12 @@ function MailClient({ auth, token }) {
           <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">help</button>
           <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">apps</button>
           <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">settings</button>
-          <div className="h-8 w-8 rounded-full overflow-hidden border border-outline-variant ml-2 cursor-pointer">
-            <img alt="User Profile" className="h-full w-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcwzTrIzFfposfwaxTUef7pBMZwJihXeUotHhJSkxhQzt8E8ndUWlGRZghrCsysM66hJvTf8xpB-_qwiC6b6ZpD-gxk9uAT2o6S2CJScsKNYMtO2SMpTcyPRmu2c-sXOnQv3kktVmyMUkBC_xERKxtPCzADim2WtpXlYUID1YTXDT_n8lJd9U-Ez3Vltp0xKQccUraClXfXlSYl_tCu451tb4y3S-65GwEAC1DKHyQEqC5x3L461IMVdIoFu-V_6LLFZfUlIbIL8pR" />
+          <div className="h-8 w-8 rounded-full overflow-hidden border border-outline-variant ml-2 cursor-pointer bg-surface-container flex items-center justify-center text-on-surface font-bold text-label-md">
+            {auth?.avatarUrl ? (
+              <img alt="User Profile" className="h-full w-full object-cover" src={auth.avatarUrl} />
+            ) : (
+              (auth?.name || auth?.user || 'U')[0].toUpperCase()
+            )}
           </div>
         </div>
       </header>
@@ -324,9 +328,18 @@ function MailClient({ auth, token }) {
                     >
                       {isUnread && <div className="absolute left-0 top-0 w-0.5 h-full bg-[#3182CE]"></div>}
                       <div className="flex justify-between items-start mb-1">
-                        <span className={`${isUnread ? 'font-bold text-primary' : 'font-medium text-on-surface-variant'} text-body-md truncate mr-2`}>
-                          {folder === 'Sent' || folder === 'Drafts' ? `To: ${thread.recipient}` : thread.sender}
-                        </span>
+                        <div className="flex items-center gap-3 w-full mr-2">
+                          <div className="h-8 w-8 rounded-full overflow-hidden bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-label-md shrink-0">
+                            {thread.senderAvatar ? (
+                              <img src={thread.senderAvatar} alt={thread.sender} className="w-full h-full object-cover" />
+                            ) : (
+                              (folder === 'Sent' || folder === 'Drafts' ? thread.recipient : thread.sender)?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'U'
+                            )}
+                          </div>
+                          <span className={`${isUnread ? 'font-bold text-primary' : 'font-medium text-on-surface-variant'} text-body-md truncate`}>
+                            {folder === 'Sent' || folder === 'Drafts' ? `To: ${thread.recipient}` : thread.sender}
+                          </span>
+                        </div>
                         <span className="text-label-xs font-semibold text-on-surface-variant shrink-0">{new Date(thread.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                       <div className="text-label-sm font-semibold text-on-surface truncate mb-1">
@@ -374,8 +387,12 @@ function MailClient({ auth, token }) {
                 <h1 className="text-display-lg font-semibold text-primary mb-8" style={{ fontSize: '30px', letterSpacing: '-0.02em', lineHeight: '38px' }}>{selected.subject || '(No Subject)'}</h1>
                 
                 <div className="flex items-center mb-8">
-                  <div className="h-10 w-10 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-body-md mr-4 shrink-0">
-                    {selected.sender?.[0]?.toUpperCase() || 'U'}
+                  <div className="h-10 w-10 rounded-full overflow-hidden bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-body-md mr-4 shrink-0">
+                    {selected.senderAvatar ? (
+                      <img src={selected.senderAvatar} alt={selected.sender} className="w-full h-full object-cover" />
+                    ) : (
+                      selected.sender?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'U'
+                    )}
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-center">
