@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import LogoImage from '../assets/landing-logo.png';
 
 const API_URL = '/api';
 
@@ -330,7 +331,9 @@ function MailClient({ auth, token }) {
                       <div className="flex justify-between items-start mb-1">
                         <div className="flex items-center gap-3 w-full mr-2">
                           <div className="h-8 w-8 rounded-full overflow-hidden bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-label-md shrink-0">
-                            {thread.senderAvatar ? (
+                            {thread.sender === 'Forge India Connect AI' ? (
+                              <img src={LogoImage} alt={thread.sender} className="w-full h-full object-cover p-1 bg-white" />
+                            ) : thread.senderAvatar ? (
                               <img src={thread.senderAvatar} alt={thread.sender} className="w-full h-full object-cover" />
                             ) : (
                               (folder === 'Sent' || folder === 'Drafts' ? thread.recipient : thread.sender)?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'U'
@@ -388,7 +391,9 @@ function MailClient({ auth, token }) {
                 
                 <div className="flex items-center mb-8">
                   <div className="h-10 w-10 rounded-full overflow-hidden bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-body-md mr-4 shrink-0">
-                    {selected.senderAvatar ? (
+                    {selected.sender === 'Forge India Connect AI' ? (
+                      <img src={LogoImage} alt={selected.sender} className="w-full h-full object-cover p-1 bg-white" />
+                    ) : selected.senderAvatar ? (
                       <img src={selected.senderAvatar} alt={selected.sender} className="w-full h-full object-cover" />
                     ) : (
                       selected.sender?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'U'

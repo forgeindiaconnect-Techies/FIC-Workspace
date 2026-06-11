@@ -26,6 +26,9 @@ const ComposeModal = () => {
   const [suggestion, setSuggestion] = useState('');
   const [draftId, setDraftId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [attachments, setAttachments] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
   const autoSaveTimerRef = useRef(null);
   
   const queryClient = useQueryClient();
@@ -141,6 +144,40 @@ const ComposeModal = () => {
     }
   };
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Data = reader.result.split(',')[1];
+        const token = localStorage.getItem('token');
+        const res = await fetch(getApiUrl('/api/mail/upload-attachment'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            fileBase64: base64Data,
+            fileName: file.name,
+            mimeType: file.type
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.url) {
+          setAttachments(prev => [...prev, { name: file.name, url: data.url, size: file.size }]);
+        } else {
+          alert('Upload failed: ' + (data.error || 'Unknown error'));
+        }
+        setIsUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('File upload error:', err);
+      setIsUploading(false);
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
@@ -169,6 +206,7 @@ const ComposeModal = () => {
       const subjectInput = document.getElementById('compose-subject');
       if (subjectInput) subjectInput.value = '';
       if (editor) editor.commands.setContent('');
+      setAttachments([]);
     }
   }, [isComposeOpen, composeData, editor]);
 
@@ -187,6 +225,7 @@ const ComposeModal = () => {
     onSuccess: () => {
       queryClient.invalidateQueries(['mails']);
       setComposeOpen(false);
+      setAttachments([]);
     }
   });
 
@@ -199,6 +238,7 @@ const ComposeModal = () => {
       to: to.split(',').map(e => e.trim()),
       subject,
       body: content,
+      attachments: attachments.map(a => ({ name: a.name, url: a.url, size: a.size })),
       isDraft: false,
     });
   };
@@ -250,6 +290,20 @@ const ComposeModal = () => {
                   <input id="compose-subject" type="text" className="flex-1 bg-transparent border-none outline-none text-sm font-semibold" placeholder="Meeting sync" />
                 </div>
               </div>
+              
+              {attachments.length > 0 && (
+                <div className="px-6 py-2 border-b border-[var(--border)] flex gap-2 flex-wrap bg-[var(--surface-1)]">
+                  {attachments.map((file, i) => (
+                    <div key={i} className="flex items-center gap-2 bg-[var(--surface-2)] border border-[var(--border)] px-3 py-1.5 rounded-lg text-xs font-medium">
+                      <Paperclip size={12} className="text-[var(--text-secondary)]" />
+                      <span className="truncate max-w-[150px]">{file.name}</span>
+                      <button onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-rose-500 ml-1">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Editor */}
               <div className="flex-1 overflow-y-auto p-6 custom-scrollbar min-h-[200px] relative">
@@ -290,8 +344,13 @@ const ComposeModal = () => {
                     <span className="hidden sm:inline">{isGenerating ? 'Writing...' : 'Write with AI'}</span>
                   </button>
                   <div className="w-px h-6 bg-[var(--border)] mx-1" />
-                  <EditorAction icon={Paperclip} />
-                  <EditorAction icon={Image} />
+                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                  {isUploading ? (
+                    <div className="p-2 text-[var(--text-secondary)]"><Loader2 size={16} className="animate-spin" /></div>
+                  ) : (
+                    <EditorAction icon={Paperclip} onClick={() => fileInputRef.current?.click()} />
+                  )}
+                  <EditorAction icon={Image} onClick={() => fileInputRef.current?.click()} />
                   <EditorAction icon={Smile} />
                   <div className="w-px h-6 bg-[var(--border)] mx-1" />
                   <EditorAction icon={Trash2} />

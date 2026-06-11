@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
+import LogoImage from './assets/landing-logo.png'; // Make sure the asset exists or use an absolute URL
 
 const API_URL = 'http://localhost:3001/api';
 
@@ -405,10 +406,12 @@ function MailClient({ auth, token }) {
                 
                 <div className="flex items-center mb-8">
                   <div className="h-10 w-10 rounded-full overflow-hidden bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-body-md mr-4 shrink-0">
-                    {selected.senderAvatar ? (
+                    {selected.sender === 'Forge India Connect AI' ? (
+                      <img src={LogoImage} alt={selected.sender} className="w-full h-full object-cover p-1 bg-white" />
+                    ) : selected.senderAvatar ? (
                       <img src={selected.senderAvatar} alt={selected.sender} className="w-full h-full object-cover" />
                     ) : (
-                      selected.sender?.[0]?.toUpperCase() || 'U'
+                      selected.sender?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'U'
                     )}
                   </div>
                   <div className="flex-1">

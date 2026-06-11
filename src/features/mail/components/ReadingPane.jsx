@@ -279,11 +279,20 @@ const ReadingPane = () => {
               <div className="pt-10 border-t border-[var(--border)]">
                 <div className="flex items-center gap-2 mb-4">
                   <Paperclip size={14} className="text-[var(--text-secondary)]" />
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">2 Attachments</span>
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">
+                    {selected.attachments.length} Attachment{selected.attachments.length !== 1 && 's'}
+                  </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <AttachmentCard name="Proposal_v2.pdf" size="2.4 MB" type="PDF" />
-                  <AttachmentCard name="Indigo_Group_Requirements.docx" size="1.1 MB" type="DOCX" />
+                  {selected.attachments.map((att, i) => (
+                    <a key={i} href={att.url} target="_blank" rel="noreferrer" style={{textDecoration: 'none'}}>
+                      <AttachmentCard 
+                        name={att.name} 
+                        size={att.size ? (att.size / 1024 / 1024).toFixed(1) + ' MB' : 'Unknown'} 
+                        type={att.name.split('.').pop().toUpperCase()} 
+                      />
+                    </a>
+                  ))}
                 </div>
               </div>
             )}

@@ -29,7 +29,8 @@ export async function transcribeChunk(
       file: fs.createReadStream(filePath),
       model: 'whisper-large-v3',
       prompt: 'Meeting conversation in Tamil and English. Transcribe accurately.',
-      response_format: 'json',
+      temperature: 0,
+      response_format: 'verbose_json',
     });
 
     const text = transcription.text.trim();
@@ -61,3 +62,4 @@ export async function transcribeChunk(
     return null;
   }
 }
+

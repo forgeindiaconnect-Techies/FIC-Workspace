@@ -111,7 +111,8 @@ wssAudio.on('connection', (ws, req) => {
             file: fs.createReadStream(filePath),
             model: 'whisper-large-v3',
             prompt: 'Meeting conversation. Transcribe accurately.',
-            response_format: 'json',
+            temperature: 0,
+            response_format: 'verbose_json',
             language: 'en',
           });
 

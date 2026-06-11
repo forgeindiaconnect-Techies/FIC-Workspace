@@ -174,18 +174,24 @@ const Sidebar = () => {
           </button>
           
           <div className="relative">
-            <img 
-              src="https://api.dicebear.com/7.x/avataaars/svg?seed=Admin" 
-              className="w-10 h-10 rounded-full border-2 border-[var(--surface-0)] shadow-sm cursor-pointer hover:scale-105 transition-transform"
-              alt="User"
-            />
+            {getAuth()?.avatarUrl ? (
+              <img 
+                src={getAuth().avatarUrl} 
+                className="w-10 h-10 rounded-full border-2 border-[var(--surface-0)] shadow-sm cursor-pointer hover:scale-105 transition-transform object-cover"
+                alt="User"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full border-2 border-[var(--surface-0)] shadow-sm bg-[var(--surface-3)] flex items-center justify-center text-[var(--text-primary)] font-bold text-lg cursor-pointer hover:scale-105 transition-transform">
+                {(getAuth()?.name || getAuth()?.user || 'A').charAt(0).toUpperCase()}
+              </div>
+            )}
             <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-[var(--surface-1)] rounded-full" />
           </div>
 
           {!isSidebarCollapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-black truncate text-[var(--text-primary)]">Admin</p>
-              <p className="text-[10px] font-medium truncate text-[var(--text-secondary)]">admin@forgeindia.com</p>
+              <p className="text-xs font-black truncate text-[var(--text-primary)]">{getAuth()?.name || getAuth()?.user || 'Account'}</p>
+              <p className="text-[10px] font-medium truncate text-[var(--text-secondary)]">{getAuth()?.email || 'user@example.com'}</p>
             </div>
           )}
 
