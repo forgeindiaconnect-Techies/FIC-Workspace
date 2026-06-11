@@ -623,6 +623,21 @@ const ChatApp = () => {
     return otherMember ? otherMember.name : (channel.name || 'Direct Message');
   };
 
+  const getUserPicture = (identifier, type = 'name') => {
+    const member = members.find(m => m[type] === identifier);
+    if (member && member.profilePicture) return member.profilePicture;
+    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${identifier}`;
+  };
+
+  const getDMPicture = (channel) => {
+    if (channel.displayPicture) return channel.displayPicture;
+    if (channel.type !== 'dm') return `https://api.dicebear.com/7.x/avataaars/svg?seed=${channel.name}`;
+    const otherMemberEmail = channel.members.find(m => m !== currentUserEmail);
+    const otherMember = members.find(m => m.email === otherMemberEmail);
+    if (otherMember && otherMember.profilePicture) return otherMember.profilePicture;
+    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${getDMName(channel)}`;
+  };
+
   const otherUserEmail = selected?.type === 'dm' ? selected.members.find(m => m !== currentUserEmail) : null;
 
   const callUser = (userToCall, isVideo = true) => {
@@ -829,7 +844,7 @@ const ChatApp = () => {
                           <div className={`w-10 h-10 rounded-[1rem] overflow-hidden bg-gray-100 border-2 ${isSelected ? 'border-emerald-400' : 'border-white'} transition-all flex items-center justify-center shadow-sm`}>
                             {ch.type === 'dm' ? (
                               <img 
-                                src={ch.displayPicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`} 
+                                src={getDMPicture(ch)} 
                                 alt={name} 
                                 className="w-full h-full object-cover"
                               />
@@ -891,7 +906,7 @@ const ChatApp = () => {
                     {stories.map(story => (
                       <button key={story._id} className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 transition-all border border-transparent hover:border-gray-100">
                         <div className="w-10 h-10 rounded-2xl p-0.5 border-2 border-emerald-500 shadow-sm">
-                           <img src={story.userPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${story.userName}`} className="w-full h-full object-cover rounded-[0.8rem]" alt={story.userName} />
+                           <img src={story.userPhoto || getUserPicture(story.userName)} className="w-full h-full object-cover rounded-[0.8rem]" alt={story.userName} />
                         </div>
                         <div className="text-left">
                            <div className="text-[11px] font-black text-gray-900">{story.userName}</div>
@@ -948,7 +963,7 @@ const ChatApp = () => {
                  <div className="flex items-center gap-4 cursor-pointer" onClick={() => setShowMemberInfo(true)}>
                     <div className="w-10 h-10 rounded-full bg-white overflow-hidden shadow-sm border border-black/5">
                        <img 
-                         src={selected.type === 'dm' ? (selected.displayPicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${getDMName(selected)}`) : `https://api.dicebear.com/7.x/avataaars/svg?seed=${selected.name}`} 
+                         src={getDMPicture(selected)} 
                          alt="Avatar" 
                        />
                     </div>
@@ -1120,7 +1135,7 @@ const ChatApp = () => {
                  <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden">
                     <div className="flex items-center gap-3 mb-4">
                        <div className="w-8 h-8 rounded-xl bg-gray-100 overflow-hidden">
-                          <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${activeThread.sender}`} />
+                          <img src={getUserPicture(activeThread.sender)} />
                        </div>
                        <div>
                           <div className="text-[11px] font-black text-gray-900">{activeThread.sender}</div>
@@ -1150,7 +1165,7 @@ const ChatApp = () => {
                     {threadMessages.map(msg => (
                       <div key={msg._id} className="flex gap-4">
                          <div className="w-8 h-8 rounded-xl bg-gray-100 overflow-hidden shrink-0 mt-1">
-                            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.sender}`} />
+                            <img src={getUserPicture(msg.sender)} />
                          </div>
                          <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
@@ -1201,7 +1216,7 @@ const ChatApp = () => {
                 <div className="text-center">
                   <div className="w-32 h-32 rounded-[2.5rem] bg-emerald-50 mx-auto mb-6 overflow-hidden border-4 border-white shadow-2xl relative">
                     <img 
-                      src={selected.type === 'dm' ? (selected.displayPicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${getDMName(selected)}`) : `https://api.dicebear.com/7.x/avataaars/svg?seed=${selected.name}`} 
+                      src={getDMPicture(selected)} 
                       alt="Avatar" 
                       className="w-full h-full object-cover" 
                     />
@@ -1301,7 +1316,7 @@ const ChatApp = () => {
                         <div className="flex items-center gap-5">
                           <div className="w-14 h-14 rounded-[1.2rem] overflow-hidden bg-white border-2 border-white shadow-xl group-hover:scale-105 transition-transform">
                             <img 
-                              src={user.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`} 
+                              src={getUserPicture(user.name)} 
                               alt={user.name} 
                               className="w-full h-full object-cover"
                             />
@@ -1366,7 +1381,7 @@ const ChatApp = () => {
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl overflow-hidden bg-gray-50">
-                            <img src={dm.displayPicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${dm.displayName}`} alt={dm.displayName} />
+                            <img src={getDMPicture(dm)} alt={dm.displayName} />
                           </div>
                           <div className="text-left">
                              <div className="text-xs font-bold text-gray-900">{dm.displayName}</div>
@@ -1425,7 +1440,7 @@ const ChatApp = () => {
                      transition={{ repeat: Infinity, duration: 3 }}
                      className="w-32 h-32 rounded-full border-4 border-emerald-500/20 overflow-hidden shadow-[0_0_50px_rgba(0,168,132,0.3)]"
                    >
-                      <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${callTargetName}`} className="w-full h-full object-cover" />
+                      <img src={getUserPicture(callTargetName)} className="w-full h-full object-cover" />
                    </motion.div>
                    <div className="text-center">
                       <h2 className="text-3xl font-black tracking-tight mb-2 uppercase">{callTargetName || 'Kural Call'}</h2>
