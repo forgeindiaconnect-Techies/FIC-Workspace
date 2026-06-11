@@ -252,8 +252,12 @@ function MailClient({ auth, token }) {
           <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">help</button>
           <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">apps</button>
           <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors cursor-pointer">settings</button>
-          <div className="h-8 w-8 rounded-full overflow-hidden border border-outline-variant ml-2 cursor-pointer">
-            <img alt="User Profile" className="h-full w-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcwzTrIzFfposfwaxTUef7pBMZwJihXeUotHhJSkxhQzt8E8ndUWlGRZghrCsysM66hJvTf8xpB-_qwiC6b6ZpD-gxk9uAT2o6S2CJScsKNYMtO2SMpTcyPRmu2c-sXOnQv3kktVmyMUkBC_xERKxtPCzADim2WtpXlYUID1YTXDT_n8lJd9U-Ez3Vltp0xKQccUraClXfXlSYl_tCu451tb4y3S-65GwEAC1DKHyQEqC5x3L461IMVdIoFu-V_6LLFZfUlIbIL8pR" />
+          <div className="h-8 w-8 rounded-full overflow-hidden border border-outline-variant ml-2 cursor-pointer bg-surface-container flex items-center justify-center text-on-surface font-bold text-label-md">
+            {auth?.avatarUrl ? (
+              <img alt="User Profile" className="h-full w-full object-cover" src={auth.avatarUrl} />
+            ) : (
+              (auth?.name || auth?.user || 'U')[0].toUpperCase()
+            )}
           </div>
         </div>
       </header>
@@ -400,8 +404,12 @@ function MailClient({ auth, token }) {
                 <h1 className="font-display-lg text-display-lg text-primary mb-8">{selected.subject || '(No Subject)'}</h1>
                 
                 <div className="flex items-center mb-8">
-                  <div className="h-10 w-10 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-body-md mr-4 shrink-0">
-                    {selected.sender?.[0]?.toUpperCase() || 'U'}
+                  <div className="h-10 w-10 rounded-full overflow-hidden bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-body-md mr-4 shrink-0">
+                    {selected.senderAvatar ? (
+                      <img src={selected.senderAvatar} alt={selected.sender} className="w-full h-full object-cover" />
+                    ) : (
+                      selected.sender?.[0]?.toUpperCase() || 'U'
+                    )}
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-center">

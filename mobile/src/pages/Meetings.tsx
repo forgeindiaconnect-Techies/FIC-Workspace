@@ -2056,7 +2056,7 @@ export default function Meetings() {
                     wsRef.current.send(JSON.stringify({ type: 'screen-share-started', data: {} }));
                     wsRef.current.send(JSON.stringify({
                       type: 'media-state',
-                      data: { isScreenSharing: true }
+                      data: { isScreenSharing: true, audioEnabled: !isMuted, videoEnabled: !isVideoOff }
                     }));
                   }
                   

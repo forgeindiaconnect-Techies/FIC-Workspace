@@ -143,7 +143,7 @@ export const useWebRTC = ({
     // Add local camera and microphone tracks safely
     if (localStreamRef.current) {
       const existingSenderKinds = pc.getSenders()
-        .map(s => s.track?.kind)
+        .map((s: RTCRtpSender) => s.track?.kind)
         .filter(Boolean);
 
       localStreamRef.current.getTracks().forEach(track => {
@@ -161,7 +161,7 @@ export const useWebRTC = ({
       });
     }
 
-    pc.onicecandidate = (e) => {
+    pc.onicecandidate = (e: RTCPeerConnectionIceEvent) => {
       if (e.candidate) {
         sendWs('ice-candidate', {
           targetPeerId: peerId,
@@ -182,7 +182,7 @@ export const useWebRTC = ({
         
         await pc.setLocalDescription(offer);
         const screenTrack = screenStreamRef.current?.getVideoTracks()[0];
-        const screenTransceiver = screenTrack ? pc.getTransceivers().find(t => t.sender.track === screenTrack) : undefined;
+        const screenTransceiver = screenTrack ? pc.getTransceivers().find((t: RTCRtpTransceiver) => t.sender.track === screenTrack) : undefined;
         socketRef.current?.send(JSON.stringify({
           type: 'offer',
           data: {

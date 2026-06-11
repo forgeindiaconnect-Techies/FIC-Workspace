@@ -6,6 +6,10 @@ import { connectMongo, User, Transcript } from '../shared/database.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '../.env') }); // Fallback if run from microservices/sockets
 
 const app = express();
 app.use(express.json());
@@ -368,7 +372,7 @@ wssWebRtc.on('connection', (ws) => {
     }
 
     if (type === 'media-state') {
-      const { audioEnabled, videoEnabled } = data;
+      const { audioEnabled, videoEnabled, isScreenSharing } = data;
       const room = webrtcRooms.get(meetingId);
       if (room && room.has(peerId)) {
         const peerObj = room.get(peerId);
@@ -381,6 +385,7 @@ wssWebRtc.on('connection', (ws) => {
         peerId,
         audioEnabled,
         videoEnabled,
+        isScreenSharing,
       });
       return;
     }

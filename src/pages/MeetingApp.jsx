@@ -220,7 +220,7 @@ const MeetingApp = () => {
   const [isWaiting, setIsWaiting] = useState(false);
   const [waitingQueue, setWaitingQueue] = useState([]);
   const [roomLocked, setRoomLocked] = useState(false);
-  const [aiAssistantActive, setAiAssistantActive] = useState(false);
+  const [aiAssistantActive, setAiAssistantActive] = useState(true);
   const [hostControlsModal, setHostControlsModal] = useState(false);
   const [hostControlsTab, setHostControlsTab] = useState('meeting');
   const [waitingRoomEnabled, setWaitingRoomEnabled] = useState(false);
@@ -1250,24 +1250,11 @@ const m = Math.floor((seconds % 3600) / 60);
     const toggleMedia = async () => {
       if (streamRef.current) {
         streamRef.current.getAudioTracks().forEach(track => track.enabled = micOn);
+        streamRef.current.getVideoTracks().forEach(track => {
+          track.enabled = videoOn;
+        });
         
-        if (!videoOn) {
-          streamRef.current.getVideoTracks().forEach(track => {
-            track.stop();
-            streamRef.current.removeTrack(track);
-          });
-          peersRef.current.forEach(({ pc, peerID }) => {
-             if (!pc) return;
-             let cameraSender = cameraSendersRef.current.get(peerID);
-             if (!cameraSender) {
-                cameraSender = pc.getSenders().find(s => s.track && s.track.kind === 'video' && (!screenStreamRef.current || s.track.id !== screenStreamRef.current.getVideoTracks()[0]?.id));
-                if (cameraSender) cameraSendersRef.current.set(peerID, cameraSender);
-             }
-             if (cameraSender) {
-                cameraSender.replaceTrack(null).catch(e => console.warn("Failed to nullify video track:", e));
-             }
-          });
-        } else if (streamRef.current.getVideoTracks().length === 0) {
+        if (videoOn && streamRef.current.getVideoTracks().length === 0) {
           try {
             const newStream = await navigator.mediaDevices.getUserMedia(getMediaConstraints(true));
             if (!mounted) {
