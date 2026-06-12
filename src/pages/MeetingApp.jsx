@@ -61,6 +61,8 @@ const RemoteVideo = ({ peer, stream, isSpeaking, mobileStyle, isScreen, remoteSt
         const videoTrack = currentStream.getVideoTracks()[0];
         if (videoTrack) {
           setHasVideo(videoTrack.enabled && videoTrack.readyState === 'live');
+        } else {
+          setHasVideo(false);
         }
       };
 
@@ -263,13 +265,7 @@ const MeetingApp = () => {
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
-        autoGainControl: true,
-        latency: 0,
-        googCpuOveruseDetection: true,
-        channelCount: 1,
-        googHighpassFilter: false,
-        googTypingNoiseDetection: false,
-        advanced: [{ googCpuOveruseDetection: true }]
+        autoGainControl: true
       }
     };
   };
@@ -469,22 +465,36 @@ const MeetingApp = () => {
             ? 'audio/webm'
             : '';
           
-          const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-          aiMediaRecorderRef.current = recorder;
-
-          recorder.ondataavailable = (e) => {
-             if (e.data.size > 0 && ws.readyState === WebSocket.OPEN && !isMutedRef.current) {
-                e.data.arrayBuffer().then(buf => {
-                   if (ws.readyState === WebSocket.OPEN) {
-                      ws.send(buf);
-                   }
-                });
+          let intervalId;
+          const startRecordingCycle = () => {
+             if (!ws || ws.readyState !== WebSocket.OPEN) return;
+             if (!isMutedRef.current && streamRef.current && streamRef.current.getAudioTracks().length > 0) {
+                try {
+                   const currentStream = new MediaStream([streamRef.current.getAudioTracks()[0]]);
+                   const recorder = new MediaRecorder(currentStream, mimeType ? { mimeType } : undefined);
+                   aiMediaRecorderRef.current = recorder;
+                   recorder.ondataavailable = (e) => {
+                      if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+                         e.data.arrayBuffer().then(buf => {
+                            if (ws.readyState === WebSocket.OPEN) ws.send(buf);
+                         });
+                      }
+                   };
+                   recorder.start();
+                   setTimeout(() => {
+                      if (recorder.state === 'recording') recorder.stop();
+                   }, 5000);
+                } catch(e) {
+                   console.warn("AI recording cycle error:", e);
+                }
              }
           };
 
-          recorder.start(5000); // 5 seconds chunks to prevent Whisper hallucinations on cut-off words
+          intervalId = setInterval(startRecordingCycle, 5000);
+          startRecordingCycle();
 
           return () => {
+             clearInterval(intervalId);
              if (aiMediaRecorderRef.current) {
                 try { aiMediaRecorderRef.current.stop(); } catch {}
                 aiMediaRecorderRef.current = null;
@@ -1251,7 +1261,12 @@ const m = Math.floor((seconds % 3600) / 60);
       if (streamRef.current) {
         streamRef.current.getAudioTracks().forEach(track => track.enabled = micOn);
         streamRef.current.getVideoTracks().forEach(track => {
-          track.enabled = videoOn;
+          if (!videoOn) {
+            track.stop();
+            streamRef.current.removeTrack(track);
+          } else {
+            track.enabled = true;
+          }
         });
         
         if (videoOn && streamRef.current.getVideoTracks().length === 0) {
