@@ -230,10 +230,10 @@ export const useWebRTC = ({
         || event.track.label?.toLowerCase().includes('screen') 
         || event.transceiver?.mid === 'screen'
         || (event.track.kind === 'video' && hasCameraVideo && existingCameraStream!.id !== remoteStream.id)
-        || ((window as any).pendingScreenShare && (window as any).pendingScreenShare.has(peerId));
+        || (event.track.kind === 'video' && (window as any).pendingScreenShare && (window as any).pendingScreenShare.has(peerId));
 
       if (isScreenShare) {
-        if ((window as any).pendingScreenShare) {
+        if (event.track.kind === 'video' && (window as any).pendingScreenShare) {
            (window as any).pendingScreenShare.delete(peerId);
         }
         if (!remoteScreenStreamsRef.current.has(peerId)) {
