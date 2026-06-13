@@ -21,10 +21,12 @@ import { docsRoutes } from './routes/docs';
 import { showRoutes } from './routes/show';
 import { superadminRoutes } from './routes/superadmin';
 import { statusRoutes } from './routes/status';
+import { threadsRoutes } from './routes/threads';
 import { handleWebRtcSignalling } from './services/webrtc';
 import { handleCallSignaling } from './services/callSignaling';
 import { handleMailSocket } from './services/mailSockets';
 import { handleAudioSocket } from './services/aiBot';
+import { handleThreadsSocket } from './services/threadSockets';
 import { ensureDefaultUser } from './utils/seedDefaultUser';
 import { connectMongo, getLastMongoError, isMongoConnected, validateMongoUri } from './utils/mongo';
 
@@ -154,6 +156,7 @@ async function bootstrap() {
   await server.register(showRoutes, { prefix: '/api/show' });
   await server.register(superadminRoutes, { prefix: '/api/superadmin' });
   await server.register(statusRoutes, { prefix: '/api/status' });
+  await server.register(threadsRoutes, { prefix: '/api/threads' });
 
   // 3b. ICE / TURN server config endpoint (public  returns STUN + Metered TURN via REST API)
   server.get('/api/meet/ice-servers', async () => {
@@ -169,7 +172,7 @@ async function bootstrap() {
         server.log.warn(`Metered API error: ${response.status}`);
       }
     } catch (err: any) {
-      server.log.error('Metered TURN fetch failed:', err.message);
+      server.log.error(err, 'Metered TURN fetch failed:');
     }
     
     // Fallback if the API call fails
@@ -195,6 +198,11 @@ async function bootstrap() {
   server.get('/ws/audio', { websocket: true }, (connection: any, req: any) => {
     const ws = connection.socket || connection;
     handleAudioSocket(ws);
+  });
+
+  server.get('/ws/threads', { websocket: true }, (connection: any, req: any) => {
+    const ws = connection.socket || connection;
+    handleThreadsSocket(ws, req);
   });
 
   // 4b. 1-to-1 VOICE CALL SIGNALING (Chat module  completely separate from /ws/webrtc)

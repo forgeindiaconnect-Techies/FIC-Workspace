@@ -6,17 +6,24 @@ if (typeof window !== 'undefined') {
   window.RTCPeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
 }
 import AppLayout from '../components/AppLayout';
+import LogoImage from '../assets/landing-logo.png';
 import { 
   Send, Plus, Hash, Search, Smile, Paperclip, 
   Phone, Video, MessageSquare, Loader2, MessageCircle, 
   Users, Settings, X, Check, Zap, MoreHorizontal, ArrowRight, Circle, History, UserCircle, Camera, Trash2, Mic, VideoOff, Square,
-  Star, Pin, Bell, MoreVertical, Layout, List, Layers, ShieldCheck, Globe
+  Star, Pin, Bell, MoreVertical, Layout, List, Layers, ShieldCheck, Globe,
+  Home, LayoutGrid, FileText, MessageSquareText, HelpCircle, Info, Bold, Italic, Link2, Code, AtSign, PlusCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { UserPlus } from 'lucide-react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Peer from 'simple-peer';
+import HomeTab from '../components/HomeTab';
+import ThreadsTab from '../components/ThreadsTab';
+import FilesTab from '../components/FilesTab';
+import AppsTab from '../components/AppsTab';
 
 const ChatApp = () => {
   const navigate = useNavigate();
@@ -76,6 +83,15 @@ const ChatApp = () => {
   };
   
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const [isAddingMembers, setIsAddingMembers] = useState(false);
+  const [selectedNewMembers, setSelectedNewMembers] = useState([]);
+
+  const handleAddMembersSubmit = async () => {
+    if (selectedNewMembers.length === 0 || !selected) return;
+    await addMembersToGroup(selected._id, selectedNewMembers);
+    setIsAddingMembers(false);
+    setSelectedNewMembers([]);
+  };
   const [groupName, setGroupName] = useState('');
   const [selectedGroupMembers, setSelectedGroupMembers] = useState([]);
   
@@ -122,36 +138,74 @@ const ChatApp = () => {
 
   const fetchChannels = async () => {
     try {
-      const res = await fetch(getApiUrl(`/api/channels/${workspaceId}?email=${currentUserEmail}`));
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const res = await fetch(getApiUrl(`/api/channels/${workspaceId}?email=${currentUserEmail}`), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const data = await res.json();
+      
       if (res.ok) {
-        setChannels(data);
-        if (data.length > 0 && !selected) setSelected(data[0]);
+        // Manually verify messages for DMs to handle old backend payloads without 'hasMessages'
+        const channelsWithVerification = await Promise.all(data.map(async (ch) => {
+          const type = ch.type || (ch.isGroup ? 'group' : 'dm');
+          if (['dm', 'direct'].includes(type)) {
+            // If backend is already restarted and provides hasMessages, use it
+            if (ch.hasMessages !== undefined) return ch;
+            
+            try {
+              const msgRes = await fetch(getApiUrl(`/api/chat/${workspaceId}/${ch._id}`), {
+                 headers: { Authorization: `Bearer ${token}` }
+              });
+              const msgs = await msgRes.json();
+              const hasMsg = msgs && msgs.length > 0;
+              return { 
+                ...ch, 
+                hasMessages: hasMsg,
+                ...(hasMsg && { 
+                  lastMessageContent: msgs[msgs.length - 1].content,
+                  lastMessage: msgs[msgs.length - 1].sentAt || msgs[msgs.length - 1].createdAt
+                })
+              };
+            } catch (e) {
+              return { ...ch, hasMessages: false };
+            }
+          }
+          return ch;
+        }));
+        const readTimestamps = JSON.parse(localStorage.getItem('chat_read_timestamps') || '{}');
+        const fixedData = channelsWithVerification.map(ch => {
+          const lastMessageTimeVal = ch.lastMessage || ch.lastMessageTime;
+          const lastTime = new Date(lastMessageTimeVal || 0).getTime();
+          const readTime = new Date(readTimestamps[ch._id] || 0).getTime();
+          return {
+            ...ch,
+            type: ch.type || 'dm',
+            members: ch.members || [currentUserEmail, ch.email],
+            lastMessage: lastMessageTimeVal,
+            unreadCount: (lastTime > readTime && ch.hasMessages) ? 1 : 0
+          };
+        });
+        
+        setChannels(fixedData);
+        return fixedData;
       }
     } catch (err) {
       console.error('Failed to fetch channels:', err);
     }
+    return null;
   };
 
   const fetchStories = async () => {
-    try {
-      const res = await fetch(getApiUrl('/api/stories'));
-      const data = await res.json();
-      if (res.ok) setStories(data);
-    } catch (err) {
-      console.error('Failed to fetch stories:', err);
-    }
+    if (!currentUserEmail) return;
+    // Backend endpoint /api/stories doesn't exist yet, mock to prevent 404 console error
+    setStories([]);
   };
 
   const fetchCallHistory = async () => {
     if (!currentUserEmail) return;
-    try {
-      const res = await fetch(getApiUrl(`/api/calls/${currentUserEmail}`));
-      const data = await res.json();
-      if (res.ok) setCallHistory(data);
-    } catch (err) {
-      console.error('Failed to fetch call history:', err);
-    }
+    // Backend endpoint /api/calls doesn't exist yet, mock to prevent 404 console error
+    setCallHistory([]);
   };
 
   useEffect(() => {
@@ -161,7 +215,10 @@ const ChatApp = () => {
 
   const fetchMembers = async () => {
     try {
-      const res = await fetch(getApiUrl(`/api/members/${workspaceId}`));
+      const token = localStorage.getItem('token');
+      const res = await fetch(getApiUrl(`/api/members/${workspaceId}`), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const data = await res.json();
       if (res.ok) setMembers(data);
     } catch (err) {
@@ -230,13 +287,13 @@ const ChatApp = () => {
       setIsRecording(false);
     }
   };
-
-
-
   const fetchMessages = async (channelId) => {
     setLoading(true);
     try {
-      const response = await fetch(getApiUrl(`/api/chat/${workspaceId}/${channelId}`));
+      const token = localStorage.getItem('token');
+      const response = await fetch(getApiUrl(`/api/chat/${workspaceId}/${channelId}`), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const data = await response.json();
       if (response.ok) setMessages(data);
     } catch (err) {
@@ -252,7 +309,8 @@ const ChatApp = () => {
     fetchMembers();
     fetchCallHistory();
     
-    socketRef.current = io(getSocketUrl());
+    // Mock socket since backend uses native websockets without socket.io support
+    socketRef.current = { on: () => {}, emit: () => {}, disconnect: () => {} };
     
     socketRef.current.on("connect", () => {
       console.log("Connected to Chat Signaling Server");
@@ -309,9 +367,24 @@ const ChatApp = () => {
       }
       
       // Update channels list last message
-      setChannels(prev => prev.map(ch => 
-        ch._id === message.channelId ? { ...ch, lastMessage: message.timestamp, lastMessageContent: message.content } : ch
-      ));
+      setChannels(prev => prev.map(ch => {
+        if (ch._id === message.channelId) {
+          const isSelected = selectedIdRef.current === message.channelId;
+          if (isSelected) {
+            const readTimestamps = JSON.parse(localStorage.getItem('chat_read_timestamps') || '{}');
+            readTimestamps[ch._id] = new Date().toISOString();
+            localStorage.setItem('chat_read_timestamps', JSON.stringify(readTimestamps));
+          }
+          return { 
+            ...ch, 
+            lastMessage: message.timestamp, 
+            lastMessageContent: message.content,
+            hasMessages: true,
+            unreadCount: isSelected ? 0 : (ch.unreadCount || 0) + 1
+          };
+        }
+        return ch;
+      }));
     });
 
     socketRef.current.on("reaction-updated", ({ messageId, reactions }) => {
@@ -336,14 +409,14 @@ const ChatApp = () => {
 
     socketRef.current.on('presence-update', ({ mobile, isOnline, lastSeen }) => {
       setChannels(prev => prev.map(ch => {
-        if (ch.type === 'dm' && ch.members.includes(mobile)) {
+        if (['dm', 'direct'].includes(ch.type) && ch.members.includes(mobile)) {
           return { ...ch, isOnline, lastSeen };
         }
         return ch;
       }));
       
       setSelected(prev => {
-        if (prev?.type === 'dm' && prev.members.includes(mobile)) {
+        if (['dm', 'direct'].includes(prev?.type) && prev.members.includes(mobile)) {
           return { ...prev, isOnline, lastSeen };
         }
         return prev;
@@ -369,22 +442,46 @@ const ChatApp = () => {
     window.location.href = '/';
   };
 
-  const sendMessage = (e, fileData = null) => {
+
+
+  const sendMessage = async (e, fileData = null) => {
     if (e) e.preventDefault();
-    if (!input.trim() && !fileData || !selected) return;
+    const plainText = stripHtml(input);
+    if (!plainText && !fileData || !selected) return;
     
     const msgContent = fileData ? `Sent a file: ${fileData.originalName}` : input.trim();
     const msgData = {
-      workspaceId,
-      channelId: selected._id,
-      sender: currentUserName,
-      senderEmail: currentUserEmail,
       content: msgContent,
       fileUrl: fileData?.url,
-      fileType: fileData?.type
+      fileType: fileData?.type,
+      originalName: fileData?.originalName
     };
     
-    socketRef.current.emit("send message", msgData);
+    try {
+      const res = await fetch(getApiUrl(`/api/chat/${workspaceId}/${selected._id}/messages`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(msgData)
+      });
+      const newMessage = await res.json();
+      if (res.ok) {
+        setMessages(prev => [...prev, newMessage]);
+        setChannels(prev => prev.map(ch => 
+          ch._id === selected._id ? { 
+            ...ch, 
+            lastMessage: newMessage.timestamp, 
+            lastMessageContent: newMessage.content,
+            hasMessages: true 
+          } : ch
+        ));
+      }
+    } catch (err) {
+      console.error('Failed to send message:', err);
+    }
+    
     setInput('');
     stopTyping();
   };
@@ -485,30 +582,79 @@ const ChatApp = () => {
     try {
       const res = await fetch(getApiUrl('/api/chat/start-dm'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({
-          members: [currentUserEmail, targetUser.mobile],
+          members: [currentUserEmail, targetUser.email || targetUser.mobile],
           createdBy: currentUserEmail
         })
       });
       const data = await res.json();
       if (res.ok) {
-        await fetchChannels();
-        setSelected(data);
+        // Build the formatted channel directly to avoid fetch timing/caching issues
+        const targetEmail = targetUser.email || targetUser.mobile;
+        const targetName = targetUser.name || targetUser.displayName || targetEmail;
+        
+        const formattedChannel = {
+          _id: data._id,
+          type: 'direct',
+          displayName: targetName,
+          name: targetName,
+          email: targetEmail,
+          avatar: targetUser.avatarUrl || targetUser.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${targetName}`,
+          role: targetUser.role || 'Member',
+          workspaceId: data.workspaceId || workspaceId,
+          isOnline: true,
+          unreadCount: 0,
+          hasMessages: true,
+          lastMessageContent: data.lastMessageContent || 'Start a secure Kural conversation',
+          lastMessageTime: data.lastMessageTime || data.updatedAt || new Date().toISOString(),
+          members: data.participantEmails || [currentUserEmail, targetEmail]
+        };
+
+        // Add to channels list if not already there
+        setChannels(prev => {
+          if (!prev.find(ch => ch._id === formattedChannel._id)) {
+            return [formattedChannel, ...prev];
+          }
+          // If already exists, ensure it is marked as having messages so it displays
+          return prev.map(ch => ch._id === formattedChannel._id ? { ...ch, hasMessages: true } : ch);
+        });
+
+        setSelected(formattedChannel);
+        const readTimestamps = JSON.parse(localStorage.getItem('chat_read_timestamps') || '{}');
+        readTimestamps[formattedChannel._id] = new Date().toISOString();
+        localStorage.setItem('chat_read_timestamps', JSON.stringify(readTimestamps));
+        setChannels(prev => prev.map(c => c._id === formattedChannel._id ? { ...c, unreadCount: 0 } : c));
         setIsFindingFriends(false);
         setSearchQuery('');
+        setActiveTab('messenger');
       }
     } catch (err) {
       console.error('Failed to start chat:', err);
     }
   };
 
+  const handleSelectChannel = (ch) => {
+    setSelected(ch);
+    const readTimestamps = JSON.parse(localStorage.getItem('chat_read_timestamps') || '{}');
+    readTimestamps[ch._id] = new Date().toISOString();
+    localStorage.setItem('chat_read_timestamps', JSON.stringify(readTimestamps));
+    // Clear unread count locally when opened
+    setChannels(prev => prev.map(c => c._id === ch._id ? { ...c, unreadCount: 0 } : c));
+  };
+
   const createGroup = async () => {
     if (!groupName.trim() || selectedGroupMembers.length === 0) return;
     try {
-      const res = await fetch(getApiUrl('/api/channels/create'), {
+      const res = await fetch(getApiUrl('/api/chat/groups'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({
           workspaceId: 'independent',
           name: groupName,
@@ -527,6 +673,25 @@ const ChatApp = () => {
       }
     } catch (err) {
       console.error('Failed to create group:', err);
+    }
+  };
+
+  const addMembersToGroup = async (channelId, newMemberEmails) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(getApiUrl(`/api/chat/group/${channelId}/members`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ members: newMemberEmails })
+      });
+      if (!res.ok) throw new Error('Failed to add members');
+      const updatedGroup = await res.json();
+      setChannels(prev => prev.map(ch => ch._id === channelId ? { ...ch, members: updatedGroup.members } : ch));
+    } catch (err) {
+      console.error('Failed to add members:', err);
     }
   };
 
@@ -617,28 +782,38 @@ const ChatApp = () => {
 
   const getDMName = (channel) => {
     if (channel.displayName) return channel.displayName;
-    if (channel.type !== 'dm') return channel.name;
+    if (!['dm', 'direct'].includes(channel.type)) return channel.name;
     const otherMemberEmail = channel.members.find(m => m !== currentUserEmail);
     const otherMember = members.find(m => m.email === otherMemberEmail);
     return otherMember ? otherMember.name : (channel.name || 'Direct Message');
   };
 
   const getUserPicture = (identifier, type = 'name') => {
-    const member = members.find(m => m[type] === identifier);
+    let member;
+    if (identifier === 'You') {
+      member = members.find(m => m.email === currentUserEmail);
+    } else {
+      member = members.find(m => m[type] === identifier);
+    }
+    
     if (member && member.profilePicture) return member.profilePicture;
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${identifier}`;
+    if (member && member.avatarUrl && !member.avatarUrl.includes('avataaars')) return member.avatarUrl;
+    
+    const seed = identifier === 'You' ? currentUserName : identifier;
+    return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`;
   };
 
   const getDMPicture = (channel) => {
     if (channel.displayPicture) return channel.displayPicture;
-    if (channel.type !== 'dm') return `https://api.dicebear.com/7.x/avataaars/svg?seed=${channel.name}`;
-    const otherMemberEmail = channel.members.find(m => m !== currentUserEmail);
+    if (!['dm', 'direct'].includes(channel.type)) return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(channel.name)}`;
+    const otherMemberEmail = channel.members?.find(m => m !== currentUserEmail);
     const otherMember = members.find(m => m.email === otherMemberEmail);
     if (otherMember && otherMember.profilePicture) return otherMember.profilePicture;
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${getDMName(channel)}`;
+    if (otherMember && otherMember.avatarUrl && !otherMember.avatarUrl.includes('avataaars')) return otherMember.avatarUrl;
+    return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(getDMName(channel))}`;
   };
 
-  const otherUserEmail = selected?.type === 'dm' ? selected.members.find(m => m !== currentUserEmail) : null;
+  const otherUserEmail = ['dm', 'direct'].includes(selected?.type) ? selected.members?.find(m => m !== currentUserEmail) : null;
 
   const callUser = (userToCall, isVideo = true) => {
     const targetName = getDMName(selected);
@@ -766,352 +941,303 @@ const ChatApp = () => {
 
       <div className="flex h-full w-full bg-[#f0f2f5] overflow-hidden font-sans selection:bg-[#25d366]/30">
         
-        {/* Pane 1: Global Navigation Sidebar */}
-        <div className="w-[64px] shrink-0 flex flex-col items-center py-6 bg-[#111b21] z-50">
-           <div className="w-12 h-12 bg-[#00A884] rounded-2xl flex items-center justify-center p-1.5 shadow-2xl mb-8 cursor-pointer hover:scale-105 transition-all">
-             <img src="/kural_logo.png" alt="Kural" className="w-full h-full object-cover rounded-xl" />
-           </div>
-           
-           <div className="flex-1 space-y-6">
-              {[
-                { icon: MessageSquare, id: 'messenger' },
-                { icon: Globe, id: 'updates' },
-                { icon: Phone, id: 'calls' },
-                { icon: Star, id: 'stories' },
-                { icon: Settings, id: 'preferences' }
-              ].map(item => (
-                <button 
-                  key={item.id}
-                  onClick={() => item.id === 'preferences' ? navigate(`/w/${workspaceId}/chat/settings`) : setActiveTab(item.id)}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                    activeTab === item.id ? 'bg-white/10 text-white shadow-sm' : 'text-gray-500 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <item.icon size={20} strokeWidth={activeTab === item.id ? 2.5 : 2} />
-                </button>
-              ))}
-           </div>
+        {/* MAIN WORKSPACE WRAPPER */}
+        <div className="flex-1 flex flex-col min-w-0 bg-[#FFFFFF]">
 
-               <div className="mt-auto pb-6">
-                  <div className="relative group cursor-pointer" onClick={() => navigate(`/w/${workspaceId}/chat/settings`)} title="Settings">
-                     <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white/20 shadow-md">
-                       <img src={currentUserPhoto} alt="Me" className="w-full h-full object-cover" />
+
+           <div className="flex-1 flex overflow-hidden">
+              {/* Pane 2: Side Navigation Bar */}
+              <div className="w-[260px] bg-[#EFF4FF] border-r border-[#C6C6CD] flex flex-col justify-between items-start p-2 z-10 shrink-0">
+                 {/* Workspace Profile / Button */}
+                 <div className="w-full pt-2 pb-4">
+                    <div className="flex items-center gap-2 mb-4 px-2">
+                       <div className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                          <img src={LogoImage} alt="Forge India Connect" className="w-full h-full object-contain" />
+                       </div>
+                       <div>
+                          <h3 className="font-semibold text-[16px] text-[#0B1C30] leading-none tracking-tight">Forge India Connect</h3>
+                          <p className="text-[11px] font-semibold text-[#45464D] tracking-wide mt-1">PRO PLAN</p>
+                       </div>
+                    </div>
+                    <button onClick={() => setIsFindingFriends(true)} className="w-full bg-black hover:bg-neutral-800 text-white shadow-sm rounded-lg py-3 flex items-center justify-center gap-2 font-bold text-[14px] transition-all">
+                       <Plus size={18} strokeWidth={3} /> New Message
+                    </button>
+                 </div>
+
+                 {/* Navigation Items */}
+                 <div className="flex-1 w-full overflow-y-auto px-2 space-y-6 custom-scrollbar pb-6">
+                    <div className="space-y-1">
+                       <button onClick={() => setActiveTab('home')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${activeTab === 'home' ? 'bg-[#2170E4] text-white font-semibold' : 'text-[#0B1C30] hover:bg-black/5 font-medium'}`}>
+                          <Home size={18} /> <span className="text-[14px] tracking-wide">Home</span>
+                       </button>
+                       <button onClick={() => setActiveTab('messenger')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${activeTab === 'messenger' ? 'bg-[#2170E4] text-white font-semibold' : 'text-[#0B1C30] hover:bg-black/5 font-medium'}`}>
+                          <MessageSquareText size={18} /> <span className="text-[14px] tracking-wide">Direct Messages</span>
+                       </button>
+                       <button onClick={() => setActiveTab('channels')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${activeTab === 'channels' ? 'bg-[#2170E4] text-white font-semibold' : 'text-[#0B1C30] hover:bg-black/5 font-medium'}`}>
+                          <Hash size={18} /> <span className="text-[14px] tracking-wide">Channels</span>
+                       </button>
+                       <button onClick={() => setActiveTab('apps')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${activeTab === 'apps' ? 'bg-[#2170E4] text-white font-semibold' : 'text-[#0B1C30] hover:bg-black/5 font-medium'}`}>
+                          <LayoutGrid size={18} /> <span className="text-[14px] tracking-wide">Apps</span>
+                       </button>
+                       <button onClick={() => setActiveTab('files')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${activeTab === 'files' ? 'bg-[#2170E4] text-white font-semibold' : 'text-[#0B1C30] hover:bg-black/5 font-medium'}`}>
+                          <FileText size={18} /> <span className="text-[14px] tracking-wide">Files</span>
+                       </button>
+                    </div>
+
+                    {/* Channels List - Kept for functionality until Channels Tab is built */}
+                    <div className="space-y-1">
+                       <div className="px-2 text-[11px] font-bold text-[#76777D] tracking-wider uppercase mb-2">Channels</div>
+                       {channels.filter(ch => ch.type === 'group').map(ch => {
+                         const isSelected = selected?._id === ch._id;
+                         return (
+                           <button key={ch._id} onClick={() => setSelected(ch)} className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-all ${isSelected ? 'bg-blue-100 text-[#0B1C30] font-semibold' : 'text-[#45464D] hover:bg-black/5 font-medium'}`}>
+                             <div className="flex items-center gap-2">
+                               <Hash size={16} />
+                               <span className="text-[12px] truncate">{ch.name}</span>
+                             </div>
+                           </button>
+                         )
+                       })}
+                    </div>
+                 </div>
+              </div>
+
+               {/* Pane 3: Main Content Canvas */}
+               <div className="flex-1 bg-white flex flex-col relative z-0 overflow-hidden">
+                  {/* Top Navigation Bar */}
+                  <header className="flex justify-between items-center h-14 px-6 w-full shrink-0 border-b border-[#C6C6CD] bg-[#F8F9FF]">
+                     <div className="flex items-center gap-6 h-full">
+                        <h2 className="font-bold text-[22px] text-[#0B1C30]">WorkspacePro</h2>
+                        <div className="hidden md:flex gap-6 items-center h-full ml-4">
+                           <button onClick={() => setActiveTab('threads')} className={`text-[13px] font-bold transition-colors h-full border-b-[3px] ${activeTab === 'threads' ? 'text-[#2170E4] border-[#2170E4]' : 'text-[#45464D] border-transparent hover:text-[#0B1C30]'}`}>Threads</button>
+                           <button onClick={() => setActiveTab('messenger')} className={`text-[13px] font-bold transition-colors h-full border-b-[3px] ${activeTab === 'messenger' ? 'text-[#2170E4] border-[#2170E4]' : 'text-[#45464D] border-transparent hover:text-[#0B1C30]'}`}>Direct Messages</button>
+                           <button onClick={() => setActiveTab('activity')} className={`text-[13px] font-bold transition-colors h-full border-b-[3px] ${activeTab === 'activity' ? 'text-[#2170E4] border-[#2170E4]' : 'text-[#45464D] border-transparent hover:text-[#0B1C30]'}`}>Activity</button>
+                        </div>
                      </div>
-                     <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#25d366] border-2 border-[#111b21] shadow-sm" />
-                  </div>
-               </div>
-        </div>
+                     <div className="flex items-center gap-2">
+                        <button className="w-9 h-9 flex items-center justify-center hover:bg-black/5 rounded-full text-[#45464D] transition-colors"><HelpCircle size={20} /></button>
+                        <button className="w-9 h-9 flex items-center justify-center hover:bg-black/5 rounded-full text-[#45464D] transition-colors"><Settings size={20} /></button>
+                     </div>
+                  </header>
 
-        {/* Pane 2: Conversation List Area */}
-        <div className="w-[400px] bg-white border-r border-[#E9EDEF] flex flex-col z-40">
-           <div className="p-6 pb-4">
-              <div className="flex items-center justify-between mb-6">
-                 <h1 className="text-2xl font-bold text-[#111b21]">Chats</h1>
-                 <div className="flex items-center gap-2">
-                    <button onClick={() => setIsCreatingGroup(true)} className="w-10 h-10 rounded-full flex items-center justify-center text-[#54656f] hover:bg-[#f0f2f5] transition-all"><Users size={20} /></button>
-                    <button onClick={() => setIsFindingFriends(true)} className="w-10 h-10 rounded-full flex items-center justify-center text-[#54656f] hover:bg-[#f0f2f5] transition-all"><Plus size={20} /></button>
-                 </div>
-              </div>
-              
-              <div className="relative group">
-                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#54656f] group-focus-within:text-[#00a884] transition-colors"><Search size={18} /></div>
-                 <input 
-                   type="text" 
-                   placeholder="Search or start new chat" 
-                   className="w-full bg-[#f0f2f5] rounded-xl py-2 pl-12 pr-4 text-[14px] text-[#111b21] placeholder-[#667781] outline-none border-none"
-                 />
-              </div>
-           </div>
-
-           <div className="flex-1 overflow-y-auto custom-scrollbar px-3 space-y-1 pb-8">
-              {activeTab === 'messenger' || activeTab === 'conversations' ? (
-                <div className="space-y-1">
-                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest px-3 py-2 mb-1">Direct Messages</p>
-                  {channels
-                    .filter(ch => activeTab === 'messenger' ? ch.type === 'dm' : ch.type === 'group')
-                    .map(ch => {
-                    const name = getDMName(ch);
-                    const isSelected = selected?._id === ch._id;
-                    return (
-                      <div 
-                        key={ch._id}
-                        onClick={() => setSelected(ch)}
-                        className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all relative group cursor-pointer ${
-                          isSelected ? 'bg-emerald-50 shadow-sm border border-emerald-100/50' : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <div className="relative shrink-0">
-                          <div className={`w-10 h-10 rounded-[1rem] overflow-hidden bg-gray-100 border-2 ${isSelected ? 'border-emerald-400' : 'border-white'} transition-all flex items-center justify-center shadow-sm`}>
-                            {ch.type === 'dm' ? (
-                              <img 
-                                src={getDMPicture(ch)} 
-                                alt={name} 
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <Users size={16} className="text-emerald-500" />
-                            )}
-                          </div>
-                          {ch.isOnline && (
-                             <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white shadow-sm" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0 text-left">
-                          <div className="flex justify-between items-center mb-0.5">
-                            <span className={`text-[11px] font-black truncate ${isSelected ? 'text-emerald-900' : 'text-gray-700'}`}>{name}</span>
-                            <span className="text-[9px] text-gray-400 font-bold">{formatTime(ch.lastMessage)}</span>
-                          </div>
-                          <p className={`text-[10px] truncate font-semibold leading-relaxed ${isSelected ? 'text-emerald-600/70' : 'text-gray-400'}`}>
-                            {stripHtml(ch.lastMessageContent) || 'Start a conversation...'}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          {isSelected && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                          )}
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelected(ch);
-                              handleDeleteChat();
-                            }}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-50 text-gray-300 hover:text-rose-500 rounded-lg transition-all"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                        {isSelected && (
-                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-emerald-500 rounded-r-full" />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : activeTab === 'updates' ? (
-                <div className="space-y-4 pt-2">
-                   <button 
-                    onClick={() => setIsPostingStory(true)}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-emerald-50/50 border border-emerald-100/50 hover:bg-emerald-50 transition-all group"
-                  >
-                    <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center text-emerald-500 border border-emerald-100 shadow-sm group-hover:scale-105 transition-transform">
-                      <Plus size={18} strokeWidth={3} />
-                    </div>
-                    <div className="text-left">
-                      <div className="text-[11px] font-black text-gray-900">My Status</div>
-                      <div className="text-[9px] text-emerald-600 font-bold">Update your presence</div>
-                    </div>
-                  </button>
-                  <div className="space-y-1 pt-2">
-                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest px-3 mb-2">Team Updates</p>
-                    {stories.map(story => (
-                      <button key={story._id} className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 transition-all border border-transparent hover:border-gray-100">
-                        <div className="w-10 h-10 rounded-2xl p-0.5 border-2 border-emerald-500 shadow-sm">
-                           <img src={story.userPhoto || getUserPicture(story.userName)} className="w-full h-full object-cover rounded-[0.8rem]" alt={story.userName} />
-                        </div>
-                        <div className="text-left">
-                           <div className="text-[11px] font-black text-gray-900">{story.userName}</div>
-                           <div className="text-[9px] text-gray-400 font-bold">Today, {new Date(story.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : activeTab === 'calls' ? (
-                <div className="space-y-1">
-                   <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest px-3 py-2 mb-1">Recent Calls</p>
-                   {callHistory.map(call => (
-                    <div key={call._id} className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 transition-all group border border-transparent hover:border-gray-100">
-                      <div className="w-10 h-10 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-white transition-colors">
-                         <Phone size={16} />
-                      </div>
-                      <div className="flex-1 text-left">
-                         <div className="text-[11px] font-black text-gray-900 truncate">{call.to === currentUserEmail ? call.from : call.to}</div>
-                         <div className="flex items-center gap-1 mt-0.5">
-                            <History size={10} className="text-gray-300" />
-                            <span className="text-[9px] text-gray-400 font-bold capitalize">{call.status} • {new Date(call.timestamp).toLocaleDateString()}</span>
-                         </div>
-                      </div>
-                      <button className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"><Phone size={14} /></button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full px-6 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-500 mb-4 shadow-sm">
-                    <Settings size={28} strokeWidth={2.5} />
-                  </div>
-                  <h3 className="text-sm font-black text-gray-900 mb-2">Chat Settings</h3>
-                  <p className="text-[11px] text-gray-400 font-bold max-w-xs leading-relaxed mb-6">
-                    Manage your profile, privacy, notifications and more.
-                  </p>
-                  <button
-                    onClick={() => navigate(`/w/${workspaceId}/chat/settings`)}
-                    className="px-6 py-3 bg-[#00A884] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#008f6b] transition-all shadow-lg shadow-emerald-100"
-                  >
-                    Open Settings
-                  </button>
-                </div>
-              )}
-           </div>
-        </div>
-        {/* Pane 3: Main Chat Viewport */}
-        <div className="flex-1 flex flex-col relative bg-[#efeae2] overflow-hidden">
-          {selected ? (
-            <>
-              {/* WhatsApp Style Header */}
-              <div className="h-[64px] px-6 bg-[#f0f2f5] border-b border-[#E9EDEF] flex items-center justify-between z-30">
-                 <div className="flex items-center gap-4 cursor-pointer" onClick={() => setShowMemberInfo(true)}>
-                    <div className="w-10 h-10 rounded-full bg-white overflow-hidden shadow-sm border border-black/5">
-                       <img 
-                         src={getDMPicture(selected)} 
-                         alt="Avatar" 
-                       />
-                    </div>
-                    <div className="flex flex-col">
-                       <span className="font-bold text-[#111b21] leading-tight">{getDMName(selected)}</span>
-                       <span className={`text-[11px] font-medium ${selected.isOnline ? 'text-emerald-500' : 'text-[#667781]'}`}>
-                          {selected.type === 'dm' ? (selected.isOnline ? 'online' : (selected.lastSeen ? `last seen ${formatLastSeen(selected.lastSeen)}` : 'offline')) : 'click for group info'}
-                       </span>
-                    </div>
-                 </div>
-                 
-                 <div className="flex items-center gap-2">
-                    {selected?.type === 'dm' && otherUserEmail && (
-                      <>
-                        <button onClick={() => callUser(otherUserEmail, true)} className="p-2 text-[#54656f] hover:bg-black/5 rounded-full"><Video size={20} /></button>
-                        <button onClick={() => callUser(otherUserEmail, false)} className="p-2 text-[#54656f] hover:bg-black/5 rounded-full"><Phone size={20} /></button>
-                        <div className="w-px h-6 bg-black/10 mx-2" />
-                      </>
-                    )}
-                    <button className="p-2 text-[#54656f] hover:bg-black/5 rounded-full"><Search size={20} /></button>
-                    <button className="p-2 text-[#54656f] hover:bg-black/5 rounded-full"><MoreVertical size={20} /></button>
-                 </div>
-              </div>
-              {/* Chat Canvas with Wallpaper */}
-              <div 
-                className="flex-1 overflow-y-auto p-6 space-y-4 relative custom-scrollbar"
-                style={{ 
-                  backgroundImage: 'url("https://w0.peakpx.com/wallpaper/580/678/wallpaper-whatsapp-doodle-patterns-background-whatsapp-doodle-patterns-thumbnail.jpg")', 
-                  backgroundBlendMode: 'overlay',
-                  backgroundColor: 'rgba(239, 234, 226, 0.9)'
-                }}
-              >
-                {loading ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-4">
-                     <Loader2 className="animate-spin text-[#00a884]" size={32} />
-                  </div>
-                ) : (
-                  <div className="flex flex-col space-y-2">
-                    {messages.map((msg, i) => {
-                      const isMe = msg.senderEmail === currentUserEmail;
-                      
-                      return (
-                        <motion.div 
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          key={msg._id || i} 
-                          className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div className={`max-w-[85%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                            <div className={`group relative px-2.5 py-1.5 rounded-lg shadow-sm text-[14.2px] font-normal leading-relaxed min-w-[80px] ${
-                              isMe ? 'bg-[#dcf8c6] text-[#303030] rounded-tr-none' : 'bg-white text-[#303030] rounded-tl-none border border-black/5'
-                            }`}>
-                              <div className="prose mb-1 max-w-none text-inherit" dangerouslySetInnerHTML={{ __html: msg.content }} />
-                              
-                              {msg.fileUrl && (
-                                 <div className="mt-2 rounded-lg overflow-hidden border border-black/5">
-                                   {msg.fileType?.startsWith('image/') ? (
-                                      <img src={msg.fileUrl} className="w-full h-auto max-w-[300px] cursor-pointer" onClick={() => window.open(msg.fileUrl, '_blank')} />
-                                   ) : (
-                                      <div className="p-3 bg-black/5 flex items-center gap-3">
-                                         <Paperclip size={18} className="text-gray-500" />
-                                         <span className="text-[12px] truncate max-w-[150px]">{msg.content.replace('Sent a file: ', '')}</span>
-                                      </div>
-                                   )}
+                  <div className="flex flex-1 overflow-hidden">
+                     {activeTab === 'threads' || activeTab === 'activity' ? (
+                        <ThreadsTab workspaceId={workspaceId} currentUserEmail={currentUserEmail} currentUserName={currentUserName} activityMode={activeTab === 'activity'} onExitActivityMode={() => setActiveTab('threads')} />
+                     ) : activeTab === 'files' ? (
+                        <FilesTab workspaceId={workspaceId} currentUserEmail={currentUserEmail} currentUserName={currentUserName} />
+                     ) : activeTab === 'apps' ? (
+                        <AppsTab workspaceId={workspaceId} />
+                     ) : activeTab === 'home' ? (
+                        <HomeTab
+                          members={members.filter(m => m.email !== currentUserEmail)}
+                          workspaceId={workspaceId}
+                          onViewAllMembers={() => setIsFindingFriends(true)}
+                          onStartChat={(user) => { startChat(user); setActiveTab('messenger'); }}
+                        />
+                     ) : (
+                        <>
+                           {(activeTab === 'messenger' || activeTab === 'channels') && (
+                              <section className="w-80 border-r border-[#C6C6CD] bg-white flex flex-col shrink-0 z-10">
+                                 <div className="p-4 border-b border-[#C6C6CD]">
+                                    <div className="relative">
+                                       <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#76777D]" />
+                                       <input className="w-full bg-[#EFF4FF] border-none rounded-lg pl-9 pr-4 py-2 text-[13px] focus:ring-2 focus:ring-[#2170E4]/20 outline-none text-[#0B1C30] placeholder-[#76777D] font-medium" placeholder="Jump to..." type="text" />
+                                    </div>
                                  </div>
-                              )}
-
-                              <div className="flex items-center justify-end gap-1.5 -mb-0.5 select-none opacity-60">
-                                <span className="text-[10.5px] tabular-nums">{formatTime(msg.timestamp)}</span>
-                                {isMe && (
-                                  <div className="flex items-center -space-x-1.5">
-                                     <Check size={14} className="text-[#53BDEB]" strokeWidth={2.5} />
-                                     <Check size={14} className="text-[#53BDEB]" strokeWidth={2.5} />
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className={`absolute top-0 ${isMe ? 'right-full mr-2' : 'left-full ml-2'} h-full flex items-center opacity-0 group-hover:opacity-100 transition-opacity`}>
-                                 <div className="flex items-center gap-1 p-1 bg-white shadow-xl rounded-full border border-gray-100 relative">
-                                    <button onClick={() => setShowReactionPicker(msg._id)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-50 rounded-full text-gray-400"><Smile size={14} /></button>
-                                    <button onClick={() => openThread(msg)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-50 rounded-full text-gray-400"><MessageSquare size={14} /></button>
-                                    
-                                    {showReactionPicker === msg._id && (
-                                       <div className="absolute bottom-full mb-2 left-0 bg-white shadow-2xl border border-gray-100 rounded-full p-1 flex gap-1 z-50">
-                                          {['👍', '❤️', '😂', '🎉', '🚀', '🔥'].map(emoji => (
-                                            <button key={emoji} onClick={() => toggleReaction(msg._id, emoji)} className="w-8 h-8 flex items-center justify-center hover:bg-gray-50 rounded-full transition-transform hover:scale-125">{emoji}</button>
-                                          ))}
+                                 <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                                    {activeTab === 'channels' && (
+                                       <div className="px-2 mb-2 pt-1">
+                                          <button onClick={() => setIsCreatingGroup(true)} className="w-full bg-[#2170E4] hover:bg-[#1A5BB8] text-white py-2 rounded-lg text-[13px] font-semibold transition-colors flex items-center justify-center gap-2">
+                                             <Plus size={16} /> Create Team
+                                          </button>
                                        </div>
                                     )}
+                                    {channels
+                                      .filter(ch => activeTab === 'channels' ? (ch.type === 'group' || ch.isGroup) : (['dm', 'direct'].includes(ch.type) && ch.hasMessages))
+                                      .sort((a, b) => new Date(b.lastMessage || 0) - new Date(a.lastMessage || 0))
+                                      .map(ch => {
+                                      const name = getDMName(ch);
+                                      const isSelected = selected?._id === ch._id;
+                                      return (
+                                         <button key={ch._id} onClick={() => handleSelectChannel(ch)} className={`w-full flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-colors group ${isSelected ? 'bg-[#EFF4FF]' : 'hover:bg-black/5'}`}>
+                                            <div className="relative shrink-0">
+                                               <img alt={name} className="w-10 h-10 rounded-full object-cover border border-[#C6C6CD]" src={getDMPicture(ch)} />
+                                               <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${ch.isOnline ? 'bg-[#4EDEA3]' : 'bg-[#C6C6CD]'}`}></span>
+                                            </div>
+                                            <div className="flex-1 min-w-0 text-left">
+                                               <div className="flex justify-between items-center mb-0.5">
+                                                  <span className={`text-[14px] truncate ${isSelected ? 'font-semibold text-[#0B1C30]' : 'font-medium text-[#45464D] group-hover:text-[#0B1C30]'}`}>{name}</span>
+                                                  <span className="text-[10px] text-[#76777D] font-medium mt-0.5">
+                                                     {ch.lastMessage ? formatTime(ch.lastMessage) : ''}
+                                                  </span>
+                                               </div>
+                                               <p className="text-[12px] text-[#76777D] truncate font-medium">
+                                                  {stripHtml(ch.lastMessageContent) || 'No messages yet'}
+                                               </p>
+                                            </div>
+                                            {ch.unreadCount > 0 && <div className="w-[18px] h-[18px] rounded-full bg-[#2170E4] text-white flex items-center justify-center text-[10px] font-bold shrink-0">{ch.unreadCount}</div>}
+                                         </button>
+                                      )
+                                    })}
                                  </div>
-                              </div>
-                            </div>
+                              </section>
+                           )}
+
+                           <section className="flex-1 flex flex-col bg-white relative z-0">
+                              {selected ? (
+                                <>
+                                  {/* Chat Header */}
+                                  <div className="h-16 px-6 border-b border-[#C6C6CD] flex items-center justify-between shrink-0 bg-white">
+                                     <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setShowMemberInfo(true)}>
+                                        <div className="relative">
+                                           <img src={getDMPicture(selected)} alt="Avatar" className="w-10 h-10 rounded-full object-cover border border-[#C6C6CD]" />
+                                           {['dm', 'direct'].includes(selected.type) && <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-[1.5px] border-white ${selected.isOnline ? 'bg-[#4EDEA3]' : 'bg-[#C6C6CD]'}`}></span>}
+                                        </div>
+                                        <div className="flex flex-col">
+                                           <span className="font-semibold text-[#0B1C30] text-[16px] leading-tight group-hover:text-[#2170E4] transition-colors">{getDMName(selected)}</span>
+                                           <span className="text-[12px] font-medium text-[#009668] mt-0.5 tracking-wide">
+                                              {['dm', 'direct'].includes(selected.type) ? (selected.isOnline ? 'Active now' : (selected.lastSeen ? `Last seen ${formatLastSeen(selected.lastSeen)}` : 'Offline')) : 'Group Chat'}
+                                           </span>
+                                        </div>
+                                     </div>
+                                   </div>
+
+                                  {/* Messages Area */}
+                                  <div className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar relative bg-[#FFFFFF]">
+                        {loading ? (
+                          <div className="flex flex-col items-center justify-center h-full gap-4">
+                             <Loader2 className="animate-spin text-blue-500" size={32} />
                           </div>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                )}
-                <div ref={bottomRef} />
-              </div>
+                        ) : (
+                          <div className="flex flex-col space-y-6">
+                            {messages.map((msg, i) => {
+                              const isMe = msg.senderEmail === currentUserEmail;
+                              const showDateDivider = i === 0 || new Date(msg.timestamp).getDate() !== new Date(messages[i-1].timestamp).getDate();
+                              
+                              return (
+                                <React.Fragment key={msg._id || i}>
+                                  {showDateDivider && (
+                                    <div className="flex items-center justify-center py-2">
+                                       <div className="h-px bg-[#C6C6CD] w-full max-w-[280px]"></div>
+                                       <span className="px-4 text-[11px] font-bold text-[#76777D] tracking-widest uppercase">{new Date(msg.timestamp).toLocaleDateString()}</span>
+                                       <div className="h-px bg-[#C6C6CD] w-full max-w-[280px]"></div>
+                                    </div>
+                                  )}
+                                  <motion.div 
+                                    initial={{ opacity: 0, y: 5 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className={`flex items-start gap-4 group w-full ${isMe ? 'flex-row-reverse' : ''}`}
+                                  >
+                                    <div className={`flex flex-col flex-1 min-w-0 ${isMe ? 'items-end' : 'items-start'}`}>
+                                       <div className={`flex items-baseline gap-2 mb-1 ${isMe ? 'flex-row-reverse' : ''}`}>
+                                          <span className="text-[11px] text-[#76777D] font-medium px-1">{formatTime(msg.timestamp)}</span>
+                                       </div>
+                                       <div className={`text-[14px] leading-[1.62] max-w-[800px] px-4 py-2.5 rounded-2xl ${isMe ? 'bg-[#2170E4] text-white rounded-tr-sm [&_p]:!text-white' : 'bg-[#EFF4FF] text-[#0B1C30] rounded-tl-sm [&_p]:!text-[#0B1C30]'}`}>
+                                          <div className="prose text-inherit" dangerouslySetInnerHTML={{ __html: msg.content }} />
+                                          {msg.fileUrl && (
+                                             <div className="mt-3 rounded-xl overflow-hidden border border-[#C6C6CD] inline-block">
+                                               {msg.fileType?.startsWith('image/') ? (
+                                                  <img src={msg.fileUrl} className="max-w-[400px] h-auto cursor-pointer" onClick={() => window.open(msg.fileUrl, '_blank')} />
+                                               ) : (
+                                                  <div className="p-4 bg-[#EFF4FF] flex items-center gap-3 w-64 cursor-pointer hover:bg-blue-50 transition-colors" onClick={() => window.open(msg.fileUrl, '_blank')}>
+                                                     <div className="w-10 h-10 rounded bg-[#FFDAD6] flex items-center justify-center text-[#93000A]"><List size={20} /></div>
+                                                     <div className="flex flex-col overflow-hidden">
+                                                        <span className="text-[14px] font-semibold text-[#0B1C30] truncate">{msg.content.replace('Sent a file: ', '')}</span>
+                                                        <span className="text-[12px] text-[#76777D] font-medium truncate">Document</span>
+                                                     </div>
+                                                  </div>
+                                               )}
+                                             </div>
+                                          )}
+                                          {msg.reactions?.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                              {msg.reactions.map(r => (
+                                                <button key={r.emoji} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-[#C6C6CD] shadow-sm hover:bg-gray-50 text-[11px] font-bold text-[#0058BE]">
+                                                  {r.emoji} {r.users.length}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          )}
+                                       </div>
+                                    </div>
+                                    
+                                    {/* Hover Actions */}
+                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-white border border-[#C6C6CD] rounded-lg shadow-sm p-1 shrink-0 -mt-2">
+                                       <button onClick={() => setShowReactionPicker(msg._id)} className="w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded text-[#45464D]"><Smile size={14} /></button>
+                                       <button onClick={() => openThread(msg)} className="w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded text-[#45464D]"><MessageSquare size={14} /></button>
+                                       <button className="w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded text-[#45464D]"><MoreHorizontal size={14} /></button>
+                                       
+                                       {showReactionPicker === msg._id && (
+                                          <div className="absolute right-12 mt-8 bg-white shadow-xl border border-[#C6C6CD] rounded-xl p-2 flex gap-2 z-50">
+                                             {['👍', '❤️', '😂', '🎉', '🚀', '🔥'].map(emoji => (
+                                               <button key={emoji} onClick={() => toggleReaction(msg._id, emoji)} className="w-8 h-8 flex items-center justify-center hover:bg-gray-50 rounded-lg text-lg transition-transform hover:scale-110">{emoji}</button>
+                                             ))}
+                                          </div>
+                                       )}
+                                    </div>
+                                  </motion.div>
+                                </React.Fragment>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <div ref={bottomRef} />
+                     </div>
+                         {/* Message Input Area */}
+                     <div className="px-6 pb-6 bg-[#FFFFFF] z-30 shrink-0">
+                        <div className="border border-[#C6C6CD] rounded-2xl bg-white focus-within:border-[#2170E4] focus-within:ring-1 focus-within:ring-[#2170E4] transition-all flex flex-col p-1 shadow-sm">
+                           {/* Action Toolbar */}
+                           <div className="px-3 py-2 flex items-center gap-2 border-b border-[#C6C6CD]/30">
+                              <button onClick={() => fileInputRef.current.click()} className="p-1.5 hover:bg-black/5 rounded-md text-[#45464D]" title="Attach File"><Paperclip size={18} /></button>
+                              <button className="p-1.5 hover:bg-black/5 rounded-md text-[#45464D]" title="Add Emoji"><Smile size={18} /></button>
+                              <button className="p-1.5 hover:bg-black/5 rounded-md text-[#45464D]" title="Mention Someone"><AtSign size={18} /></button>
+                           </div>
 
-              {/* WhatsApp Style Input Component */}
-              <div className="px-6 py-4 bg-[#F0F2F5] flex items-end gap-3 z-30">
-                 <div className="flex items-center gap-1.5 mb-1 text-[#54656F]">
-                    <button className="p-2 hover:bg-black/5 rounded-full transition-all"><Smile size={24} /></button>
-                    <button onClick={() => fileInputRef.current.click()} className="p-2 hover:bg-black/5 rounded-full transition-all"><Plus size={24} /></button>
-                 </div>
-                 
-                 <div className="flex-1 bg-white rounded-xl shadow-sm border border-transparent focus-within:border-emerald-100 transition-all flex items-center px-4 min-h-[48px]">
-                    <RichInput 
-                      value={input} 
-                      onChange={setInput} 
-                      onSend={() => sendMessage()} 
-                      placeholder="Type a message" 
-                    />
-                 </div>
-
-                 <button 
-                   onClick={(input.trim() && input !== '<p></p>') ? () => sendMessage() : (isRecording ? stopRecording : startRecording)}
-                   className={`w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg shrink-0 ${
-                     isRecording ? 'bg-rose-500 text-white animate-pulse' : 'bg-[#00A884] text-white hover:scale-105 active:scale-95'
-                   }`}
-                 >
-                    {(input.trim() && input !== '<p></p>') ? <ArrowRight size={22} strokeWidth={3} /> : (isRecording ? <Square size={22} /> : <Mic size={22} />)}
-                 </button>
-              </div>
+                           <div className="px-3 min-h-[40px] pt-1">
+                              <RichInput
+                                value={input}
+                                onChange={setInput}
+                                onSend={() => sendMessage()}
+                                placeholder={`Message ${selected ? getDMName(selected) : '...'}`}
+                              />
+                           </div>
+                           
+                           <div className="flex items-center justify-end px-3 pb-2 pt-1">
+                              <button
+                                onClick={(input.trim() && input !== '<p></p>') ? () => sendMessage() : (isRecording ? stopRecording : startRecording)}
+                                className={`px-4 py-1.5 rounded-lg shrink-0 flex items-center justify-center gap-2 transition-all font-semibold text-[13px] ${
+                                  isRecording ? 'bg-rose-500 text-white animate-pulse' :
+                                  ((input.trim() && input !== '<p></p>') ? 'bg-[#2170E4] text-white hover:bg-blue-700 shadow-sm' : 'bg-[#EFF4FF] text-[#2170E4]')
+                                }`}
+                              >
+                                 Send {((input.trim() && input !== '<p></p>') || !isRecording) && <Send size={14} className="ml-1" />}
+                              </button>
+                           </div>
+                        </div>
+                        <div className="text-center mt-3">
+                           <span className="text-[10px] text-[#C6C6CD] font-medium tracking-wide">Press Shift + Enter for a new line</span>
+                        </div>
+                     </div>
+                   </>
+                 ) : (
+                   <div className="flex-1 flex flex-col items-center justify-center text-[#76777D] bg-[#FFFFFF] relative h-full">
+                      <div className="w-20 h-20 rounded-2xl bg-[#EFF4FF] mb-6 flex items-center justify-center overflow-hidden shadow-sm border border-[#C6C6CD]">
+                         <MessageSquare size={32} className="text-[#2170E4]" />
+                      </div>
+                      <h3 className="text-2xl font-bold text-[#0B1C30] tracking-tight">Direct Messages</h3>
+                      <p className="text-[14px] text-[#45464D] mt-2 max-w-sm text-center font-medium">
+                         Select a direct message from the list to start chatting with your team.
+                      </p>
+                      <button onClick={() => setIsFindingFriends(true)} className="mt-8 bg-[#2170E4] text-white px-6 py-2.5 rounded-lg font-semibold text-[14px] hover:bg-blue-700 transition-colors shadow-sm">
+                         New Message
+                      </button>
+                   </div>
+                 )}
+               </section>
             </>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-[#667781] bg-[#F0F2F5] relative overflow-hidden">
-               <div className="absolute top-0 left-0 w-full h-1.5 bg-[#00A884]" />
-               <motion.div 
-                 initial={{ scale: 0.8, opacity: 0 }}
-                 animate={{ scale: 1, opacity: 1 }}
-                 className="w-64 h-64 flex items-center justify-center text-[#E9EDEF] mb-8"
-               >
-                  <MessageSquare size={160} strokeWidth={0.5} />
-               </motion.div>
-               <h3 className="text-3xl font-light text-[#41525D] tracking-tight">Kural for Web</h3>
-               <p className="text-sm text-[#667781] mt-4 max-w-md text-center leading-relaxed">
-                  Send and receive messages without keeping your phone online.<br/>
-                  Use Kural on up to 4 linked devices and 1 phone at the same time.
-               </p>
-               <div className="mt-auto pb-10 flex items-center gap-2 text-[12px] text-[#8696A0]">
-                  <ShieldCheck size={14} /> End-to-end encrypted
-               </div>
-            </div>
-          )}
-        </div>
+         )}
+      </div>
+   </div>
 
         {/* SaaS Pane 4: Info/Thread Sidebar with Tabbed Content */}
         <AnimatePresence>
@@ -1125,7 +1251,7 @@ const ChatApp = () => {
               <div className="h-[72px] px-8 flex items-center justify-between border-b border-gray-100 bg-white">
                  <div className="flex flex-col">
                     <span className="font-black text-gray-900 text-[10px] tracking-widest uppercase">Thread</span>
-                    <span className="text-[9px] text-emerald-600 font-bold uppercase tracking-tight">{getDMName(selected)}</span>
+                    <span className="text-[9px] text-[#2170E4] font-bold uppercase tracking-tight">{getDMName(selected)}</span>
                  </div>
                  <button onClick={() => setShowThread(false)} className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-300 hover:bg-gray-50 hover:text-rose-500 transition-all"><X size={18} /></button>
               </div>
@@ -1191,7 +1317,7 @@ const ChatApp = () => {
                     />
                     <button 
                       onClick={sendThreadReply}
-                      className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-100 shrink-0"
+                      className="w-8 h-8 rounded-xl bg-[#2170E4] text-white flex items-center justify-center shadow-lg shadow-blue-100 shrink-0"
                     >
                        <ArrowRight size={14} />
                     </button>
@@ -1214,19 +1340,19 @@ const ChatApp = () => {
               
               <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
                 <div className="text-center">
-                  <div className="w-32 h-32 rounded-[2.5rem] bg-emerald-50 mx-auto mb-6 overflow-hidden border-4 border-white shadow-2xl relative">
+                  <div className="w-32 h-32 rounded-[2.5rem] bg-[#EFF4FF] mx-auto mb-6 overflow-hidden border-4 border-white shadow-2xl relative">
                     <img 
                       src={getDMPicture(selected)} 
                       alt="Avatar" 
                       className="w-full h-full object-cover" 
                     />
-                    <div className="absolute bottom-2.5 right-2.5 w-6 h-6 rounded-full bg-emerald-500 border-4 border-white shadow-lg" />
+                    <div className="absolute bottom-2.5 right-2.5 w-6 h-6 rounded-full bg-[#4EDEA3] border-4 border-white shadow-lg" />
                   </div>
                   <h3 className="font-black text-xl text-gray-900 leading-tight">{getDMName(selected)}</h3>
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em] mt-3">Team Member • Forge India Connect</p>
                   
                   <div className="mt-10 grid grid-cols-2 gap-4 px-2">
-                     <button className="py-3.5 bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 shadow-lg shadow-emerald-100 transition-all active:scale-95">Message</button>
+                     <button className="py-3.5 bg-[#2170E4] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all active:scale-95">Message</button>
                      <button className="py-3.5 bg-gray-50 text-gray-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-100 transition-all active:scale-95">View Profile</button>
                   </div>
                 </div>
@@ -1239,7 +1365,7 @@ const ChatApp = () => {
                       <div className="bg-gray-50 rounded-3xl p-6 space-y-6 border border-gray-100/50 shadow-inner">
                          <div className="flex items-center justify-between">
                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Email</span>
-                            <span className="text-[11px] font-bold text-gray-800 truncate max-w-[140px]">{selected.type === 'dm' ? selected.members?.find(m => m !== currentUserEmail) : 'Team Channel'}</span>
+                            <span className="text-[11px] font-bold text-gray-800 truncate max-w-[140px]">{['dm', 'direct'].includes(selected.type) ? selected.members?.find(m => m !== currentUserEmail) : 'Team Channel'}</span>
                          </div>
                          <div className="flex items-center justify-between">
                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Local Time</span>
@@ -1248,8 +1374,8 @@ const ChatApp = () => {
                          <div className="flex items-center justify-between">
                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</span>
                             <div className="flex items-center gap-2">
-                               <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                               <span className="text-[11px] font-bold text-emerald-600">Available</span>
+                               <div className="w-2 h-2 rounded-full bg-[#4EDEA3] shadow-[0_0_8px_rgba(78,222,163,0.5)]" />
+                               <span className="text-[11px] font-bold text-[#008950]">Available</span>
                             </div>
                          </div>
                       </div>
@@ -1261,12 +1387,12 @@ const ChatApp = () => {
                       </h4>
                       <div className="grid grid-cols-3 gap-3">
                          {[1,2,3].map(i => (
-                           <div key={i} className="aspect-square bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden cursor-pointer hover:border-emerald-200 transition-all">
+                           <div key={i} className="aspect-square bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden cursor-pointer hover:border-[#2170E4] transition-all">
                               <img src={`https://picsum.photos/seed/${i+10}/200`} className="w-full h-full object-cover opacity-80 hover:opacity-100" />
                            </div>
                          ))}
                       </div>
-                      <button className="w-full py-3 border border-gray-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-50 hover:text-emerald-500 transition-all">See all attachments</button>
+                      <button className="w-full py-3 border border-gray-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-400 hover:bg-[#EFF4FF] hover:text-[#2170E4] transition-all">See all attachments</button>
                    </div>
 
                    <button className="w-full py-4 bg-rose-50 text-rose-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-colors flex items-center justify-center gap-2 mt-10">
@@ -1277,76 +1403,120 @@ const ChatApp = () => {
             </motion.div>
           )}
         </AnimatePresence>
+           </div>
+        </div>
 
-        {/* SaaS-Style Find Friends Modal */}
-        {isFindingFriends && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-xl animate-in fade-in duration-300">
-            <div className="w-full max-w-lg bg-white shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] rounded-[2.5rem] overflow-hidden border border-white p-2">
-              <div className="p-10 pb-6">
-                <div className="flex items-center justify-between mb-10">
+        {/* Find Friends / Team Directory Modal */}
+        {isFindingFriends && (() => {
+          const displayUsers = searchQuery ? searchResults : members.filter(m => m.email !== currentUserEmail);
+          return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#0B1C30]/40 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="w-full max-w-lg bg-white shadow-2xl rounded-2xl overflow-hidden border border-[#C6C6CD]">
+              <div className="p-8 pb-6 border-b border-[#C6C6CD]">
+                <div className="flex items-center justify-between mb-8">
                   <div>
-                    <h2 className="text-3xl font-black text-gray-900 tracking-tight">Connect with Team</h2>
-                    <p className="text-[11px] text-gray-400 font-bold uppercase tracking-[0.2em] mt-2">Enterprise Directory Search</p>
+                    <h2 className="text-2xl font-bold text-[#0B1C30] tracking-tight">Connect with Team</h2>
+                    <p className="text-[12px] text-[#76777D] font-medium mt-1">WORKSPACE DIRECTORY</p>
                   </div>
-                  <button onClick={() => setIsFindingFriends(false)} className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition-all shadow-sm border border-gray-100/50"><X size={20} strokeWidth={3} /></button>
+                  <button onClick={() => setIsFindingFriends(false)} className="w-10 h-10 rounded-xl bg-[#F8F9FF] flex items-center justify-center text-[#76777D] hover:text-red-500 hover:bg-red-50 transition-all border border-[#C6C6CD]"><X size={20} /></button>
                 </div>
                 <div className="relative group">
-                   <div className="absolute left-5 top-1/2 -translate-y-1/2 text-emerald-500"><Search size={22} strokeWidth={2.5} /></div>
+                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#76777D]"><Search size={20} /></div>
                    <input 
                     type="text" 
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Search name or @username..."
-                    className="w-full bg-gray-50 border-2 border-transparent focus:border-emerald-100 focus:bg-white rounded-3xl py-5 pl-16 pr-6 text-[13px] font-bold text-gray-900 outline-none transition-all shadow-inner"
+                    placeholder="Search name or email..."
+                    className="w-full bg-[#F8F9FF] border border-[#C6C6CD] focus:border-[#2170e4] focus:bg-white rounded-xl py-3 pl-12 pr-4 text-[14px] font-medium text-[#0B1C30] outline-none transition-all shadow-sm"
                   />
                 </div>
               </div>
-              <div className="p-10 pt-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-300 mb-6 px-4">
-                  {searching ? 'Querying database...' : searchResults.length > 0 ? `${searchResults.length} Teammates Found` : searchQuery.length > 1 ? 'Zero matches found' : 'Suggested for you'}
+              <div className="p-8 pt-6 bg-[#F8F9FF]">
+                <h3 className="text-[12px] font-bold uppercase tracking-wider text-[#76777D] mb-4">
+                  {searching ? 'Querying database...' : searchQuery ? `${displayUsers.length} Teammates Found` : 'All Teammates'}
                 </h3>
-                <div className="max-h-[400px] overflow-y-auto space-y-2 mb-4 custom-scrollbar pr-2">
-                  {searchResults.length > 0 ? (
-                    searchResults.map(user => (
+                <div className="max-h-[350px] overflow-y-auto space-y-2 mb-2 custom-scrollbar pr-2">
+                  {displayUsers.length > 0 ? (
+                    displayUsers.map(user => (
                       <button 
-                        key={user._id}
+                        key={user._id || user.email}
                         onClick={() => startChat(user)}
-                        className="w-full flex items-center justify-between p-5 rounded-[2rem] transition-all hover:bg-emerald-50 group border border-transparent hover:border-emerald-100 bg-gray-50/50 mb-2"
+                        className="w-full flex items-center justify-between p-4 rounded-xl transition-all hover:bg-[#dce9ff] group border border-[#C6C6CD] bg-white mb-2 shadow-sm"
                       >
-                        <div className="flex items-center gap-5">
-                          <div className="w-14 h-14 rounded-[1.2rem] overflow-hidden bg-white border-2 border-white shadow-xl group-hover:scale-105 transition-transform">
-                            <img 
-                              src={getUserPicture(user.name)} 
-                              alt={user.name} 
-                              className="w-full h-full object-cover"
-                            />
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-full overflow-hidden bg-[#2170e4] text-white flex items-center justify-center font-bold shadow-sm">
+                            {user.name ? user.name.charAt(0).toUpperCase() : '?'}
                           </div>
-                          <div className="text-left">
-                             <div className="text-sm font-black text-gray-900">{user.name}</div>
-                             <div className="text-[11px] text-emerald-500 font-bold tracking-tight">@{user.username}</div>
+                          <div className="text-left flex flex-col">
+                             <span className="text-[15px] font-semibold text-[#0B1C30]">{user.name || user.email}</span>
+                             <span className="text-[12px] text-[#76777D] font-medium">{user.email}</span>
                           </div>
                         </div>
-                        <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-emerald-500 opacity-0 group-hover:opacity-100 transition-all shadow-lg border border-emerald-50">
-                           <ArrowRight size={20} strokeWidth={3} />
+                        <div className="w-10 h-10 rounded-full bg-[#F8F9FF] flex items-center justify-center text-[#2170e4] opacity-0 group-hover:opacity-100 transition-all border border-[#C6C6CD]">
+                           <ArrowRight size={18} strokeWidth={2.5} />
                         </div>
                       </button>
                     ))
                   ) : (
-                    <div className="py-20 text-center flex flex-col items-center">
-                       <div className="w-20 h-20 bg-gray-50 rounded-3xl flex items-center justify-center text-gray-200 mb-4 border border-gray-100 shadow-inner">
-                         <Search size={32} />
+                    <div className="py-16 text-center flex flex-col items-center">
+                       <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-[#C6C6CD] mb-4 border border-[#C6C6CD] shadow-sm">
+                         <Search size={28} />
                        </div>
-                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.2em]">Start typing to find peers</p>
+                       <p className="text-[13px] text-[#76777D] font-medium">No team members found</p>
                     </div>
                   )}
                 </div>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Create Group Modal */}
-        {isCreatingGroup && (
+                {isAddingMembers && selected && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/10 backdrop-blur-md">
+            <div className="w-full max-w-md bg-white shadow-2xl rounded-[2.5rem] overflow-hidden border border-white p-2">
+              <div className="p-8 pb-4">
+                <div className="flex items-center justify-between mb-8">
+                  <h2 className="text-2xl font-black text-gray-900 tracking-tight">Add to Team</h2>
+                  <button onClick={() => setIsAddingMembers(false)} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:text-rose-500 transition-all"><X size={18} /></button>
+                </div>
+                <div className="space-y-4">
+                  <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider pl-4">Select Team Members</div>
+                  <div className="max-h-60 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+                    {members.filter(m => m.email !== currentUserEmail && !selected.members?.includes(m.email)).map(member => {
+                      const isSelected = selectedNewMembers.includes(member.email);
+                      return (
+                        <div key={member._id} onClick={() => setSelectedNewMembers(prev => isSelected ? prev.filter(e => e !== member.email) : [...prev, member.email])} className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all ${isSelected ? 'bg-blue-50/50 border-blue-100' : 'hover:bg-gray-50 border-transparent'} border`}>
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-[14px] transition-colors ${isSelected ? 'bg-blue-500 text-white' : 'bg-[#E34A56] text-white'}`}>
+                            {member.name?.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className={`font-bold truncate text-[14px] ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>{member.name}</h4>
+                            <p className="text-[12px] text-gray-400 truncate">{member.email}</p>
+                          </div>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'border-blue-500 bg-blue-500' : 'border-gray-200'}`}>
+                            {isSelected && <Check size={12} className="text-white" strokeWidth={3} />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {members.filter(m => m.email !== currentUserEmail && !selected.members?.includes(m.email)).length === 0 && (
+                      <div className="text-center py-4 text-gray-500 text-sm">All users are already in this group.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 pt-2">
+                <button disabled={selectedNewMembers.length === 0} onClick={handleAddMembersSubmit} className="w-full bg-[#C1D4F9] text-white font-bold py-4 rounded-[1.5rem] hover:bg-blue-600 hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-[#C1D4F9] disabled:hover:shadow-none">
+                  Add Members
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+{isCreatingGroup && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/10 backdrop-blur-md">
             <div className="w-full max-w-md bg-white shadow-2xl rounded-[2.5rem] overflow-hidden border border-white p-2">
               <div className="p-8 pb-4">
@@ -1356,13 +1526,13 @@ const ChatApp = () => {
                 </div>
                 <div className="space-y-4">
                   <div className="relative">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500"><Hash size={18} /></div>
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#2170E4]"><Hash size={18} /></div>
                     <input 
                       type="text" 
                       value={groupName}
                       onChange={e => setGroupName(e.target.value)}
                       placeholder="Group Name (e.g. Family, Project Team)"
-                      className="w-full bg-gray-50 border-none focus:ring-2 focus:ring-emerald-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-gray-900 outline-none transition-all"
+                      className="w-full bg-gray-50 border-none focus:ring-2 focus:ring-[#2170E4] rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-gray-900 outline-none transition-all"
                     />
                   </div>
                 </div>
@@ -1370,14 +1540,14 @@ const ChatApp = () => {
               <div className="p-8">
                 <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-300 mb-6 px-2">Select Friends</h3>
                 <div className="max-h-60 overflow-y-auto space-y-2 mb-8 custom-scrollbar pr-2">
-                  {channels.filter(ch => ch.type === 'dm').map(dm => {
+                  {channels.filter(ch => ['dm', 'direct'].includes(ch.type)).map(dm => {
                     const friendMobile = dm.members.find(m => m !== currentUserEmail);
                     const isSelected = selectedGroupMembers.includes(friendMobile);
                     return (
                       <button 
                         key={dm._id}
                         onClick={() => setSelectedGroupMembers(prev => isSelected ? prev.filter(m => m !== friendMobile) : [...prev, friendMobile])}
-                        className={`w-full flex items-center justify-between p-3 rounded-2xl transition-all ${isSelected ? 'bg-emerald-50 border border-emerald-100' : 'hover:bg-gray-50 border border-transparent'}`}
+                        className={`w-full flex items-center justify-between p-3 rounded-2xl transition-all ${isSelected ? 'bg-[#EFF4FF] border border-[#2170E4]' : 'hover:bg-gray-50 border border-transparent'}`}
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl overflow-hidden bg-gray-50">
@@ -1388,20 +1558,20 @@ const ChatApp = () => {
                              <div className="text-[9px] text-gray-400 font-bold">@{dm.displayUsername}</div>
                           </div>
                         </div>
-                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-gray-200'}`}>
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-[#2170E4] border-[#2170E4]' : 'border-gray-200'}`}>
                            {isSelected && <Check size={12} className="text-white" strokeWidth={4} />}
                         </div>
                       </button>
                     );
                   })}
-                  {channels.filter(ch => ch.type === 'dm').length === 0 && (
+                  {channels.filter(ch => ['dm', 'direct'].includes(ch.type)).length === 0 && (
                     <p className="text-center py-4 text-xs text-gray-400 font-medium">Find some friends first to start a group!</p>
                   )}
                 </div>
                 <button 
                   onClick={createGroup}
                   disabled={!groupName.trim() || selectedGroupMembers.length === 0}
-                  className="w-full py-4 bg-[#00C17E] text-white rounded-3xl font-black text-sm shadow-xl shadow-emerald-100 disabled:opacity-20 disabled:shadow-none transition-all hover:bg-[#00A36C] hover:scale-[1.02] active:scale-95"
+                  className="w-full py-4 bg-[#2170E4] text-white rounded-3xl font-black text-sm shadow-xl shadow-blue-100 disabled:opacity-20 disabled:shadow-none transition-all hover:bg-blue-700 hover:scale-[1.02] active:scale-95"
                 >
                   Create Group
                 </button>
@@ -1536,6 +1706,7 @@ const ChatApp = () => {
     </AppLayout>
   );
 };
+
 
 const RichInput = ({ value, onChange, onSend, placeholder }) => {
   const editor = useEditor({

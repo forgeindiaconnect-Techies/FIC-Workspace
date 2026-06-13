@@ -1,7 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import multer from 'multer';
-import { connectMongo, User, KuralConversation, KuralMessage, KuralStatus, Task, Doc } from '../shared/database.js';
+import { connectMongo, User, KuralConversation, KuralMessage, KuralStatus, Task, Doc, ThreadPost, ThreadComment, Project } from '../shared/database.js';
 import { authenticate } from '../shared/auth.js';
 import { uploadToCloudinary, resolveUploadName } from '../shared/cloudinary.js';
 import fs from 'fs';
@@ -116,9 +116,15 @@ app.get('/api/channels/:workspaceId', async (req, res) => {
 
     for (const member of members) {
       const conversation = await ensureDirectConversation(activeWorkspaceId, currentEmail, member.email);
+      
+      const lastMsg = await KuralMessage.findOne({ conversationId: conversation._id }).sort({ sentAt: -1 });
+      const hasMessages = !!lastMsg;
+
       channelsMap.set(conversation._id.toString(), {
         _id: conversation._id,
         isGroup: false,
+        type: 'dm',
+        members: conversation.members,
         displayName: member.name,
         name: member.name,
         email: member.email,
@@ -126,8 +132,9 @@ app.get('/api/channels/:workspaceId', async (req, res) => {
         role: member.role || 'Member',
         workspaceId: activeWorkspaceId,
         isOnline: true,
-        lastMessageContent: 'Start a secure Kural conversation',
-        lastMessageTime: conversation.createdAt
+        lastMessageContent: lastMsg ? lastMsg.content : 'Start a secure Kural conversation',
+        lastMessage: lastMsg ? lastMsg.sentAt : conversation.createdAt,
+        hasMessages: hasMessages
       });
     }
 
@@ -158,7 +165,8 @@ app.get('/api/channels/:workspaceId/groups', async (req, res) => {
       displayName: g.name,
       members: g.members,
       lastMessageContent: 'Start a group discussion',
-      lastMessageTime: g.createdAt,
+      lastMessage: g.createdAt,
+      hasMessages: false,
       unread: 0,
       isOnline: true
     })));
@@ -309,6 +317,45 @@ app.post('/api/chat/groups', async (req, res) => {
     res.status(201).json(conversation);
   } catch (err) {
     res.status(500).json({ error: 'Failed to create group.', details: err.message });
+  }
+});
+
+// Add members to an existing group
+app.post('/api/chat/group/:channelId/members', async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const { members = [] } = req.body;
+    
+    if (!mongoose.Types.ObjectId.isValid(channelId)) {
+      return res.status(400).json({ error: 'Invalid group ID.' });
+    }
+    
+    if (!members || members.length === 0) {
+      return res.status(400).json({ error: 'No members provided to add.' });
+    }
+
+    const currentEmail = normalizeEmail(req.user.email);
+    
+    // Find the group and ensure the user is part of it
+    const group = await KuralConversation.findOne({
+      _id: channelId,
+      isGroup: true,
+      members: currentEmail
+    });
+
+    if (!group) {
+      return res.status(404).json({ error: 'Group not found or you are not a member.' });
+    }
+
+    const newMemberEmails = members.map(normalizeEmail);
+    
+    // Add new members, avoiding duplicates
+    group.members = [...new Set([...group.members, ...newMemberEmails])];
+    await group.save();
+
+    res.status(200).json(group);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to add members to group.', details: err.message });
   }
 });
 
@@ -672,6 +719,360 @@ ${cachedExamples}
 // Health Endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', service: 'chat-collaboration-service' });
+});
+
+
+// ─── THREADS / SOCIAL FEED ───
+app.get('/api/threads/:workspaceId', async (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const { limit = 20, cursor } = req.query;
+
+    const query = { workspaceId };
+    if (cursor) {
+      query.createdAt = { $lt: new Date(cursor) };
+    }
+
+    const posts = await ThreadPost.find(query).sort({ createdAt: -1 }).limit(Number(limit)).lean();
+    
+    // Fetch comments for these posts
+    const postIds = posts.map(p => p._id);
+    const comments = await ThreadComment.find({ postId: { $in: postIds } }).sort({ createdAt: 1 }).lean();
+
+    const commentsByPostId = comments.reduce((acc, c) => {
+      const pId = c.postId.toString();
+      if (!acc[pId]) acc[pId] = [];
+      acc[pId].push(c);
+      return acc;
+    }, {});
+
+    const result = posts.map(post => ({
+      ...post,
+      comments: commentsByPostId[post._id.toString()] || []
+    }));
+
+    res.status(200).json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch threads', details: err.message });
+  }
+});
+
+app.post('/api/threads/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Missing file upload.' });
+    }
+
+    const result = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+    const originalName = resolveUploadName(req.file, result);
+    
+    const type = req.file.mimetype?.startsWith('video/') ? 'video' : req.file.mimetype?.startsWith('image/') ? 'image' : 'document';
+
+    res.json({
+      url: result.secure_url || result.url,
+      type,
+      name: originalName
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'File upload failed.', details: err.message });
+  }
+});
+
+app.post('/api/threads/create', async (req, res) => {
+  try {
+    const { workspaceId, content, mediaUrls = [], visibility = 'everyone', visibilityData = [] } = req.body;
+    const currentEmail = normalizeEmail(req.user.email);
+    const currentName = req.user.name || currentEmail;
+
+    if (!workspaceId || !content) return res.status(400).json({ error: 'workspaceId and content required' });
+
+    const post = await ThreadPost.create({
+      workspaceId,
+      authorEmail: currentEmail,
+      authorName: currentName,
+      content,
+      mediaUrls,
+      visibility,
+      visibilityData
+    });
+
+    try {
+      fetch('http://localhost:3105/internal/threads-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId, eventType: 'NEW_POST', payload: post })
+      }).catch(() => {});
+    } catch(e) {}
+
+    res.status(201).json(post);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create post', details: err.message });
+  }
+});
+
+app.post('/api/threads/:id/like', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const currentEmail = normalizeEmail(req.user.email);
+
+    const post = await ThreadPost.findById(id);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    const hasLiked = post.likes.includes(currentEmail);
+    if (hasLiked) {
+      post.likes = post.likes.filter(e => e !== currentEmail);
+    } else {
+      post.likes.push(currentEmail);
+    }
+    await post.save();
+
+    try {
+      fetch('http://localhost:3105/internal/threads-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: post.workspaceId, eventType: 'POST_LIKED', payload: { postId: id, likes: post.likes } })
+      }).catch(() => {});
+    } catch(e) {}
+
+    res.status(200).json({ likes: post.likes });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to toggle like', details: err.message });
+  }
+});
+
+app.delete('/api/threads/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const currentEmail = normalizeEmail(req.user.email);
+
+    const post = await ThreadPost.findById(id);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    if (post.authorEmail !== currentEmail && req.user.role !== 'Admin') {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    await ThreadComment.deleteMany({ postId: id });
+    await ThreadPost.findByIdAndDelete(id);
+
+    try {
+      fetch('http://localhost:3105/internal/threads-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: post.workspaceId, eventType: 'POST_DELETED', payload: { postId: id } })
+      }).catch(() => {});
+    } catch(e) {}
+
+    res.status(200).json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete post', details: err.message });
+  }
+});
+
+app.post('/api/threads/:id/comment', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content, parentCommentId } = req.body;
+    const currentEmail = normalizeEmail(req.user.email);
+    const currentName = req.user.name || currentEmail;
+
+    if (!content) return res.status(400).json({ error: 'content required' });
+
+    const post = await ThreadPost.findById(id);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    const comment = await ThreadComment.create({
+      postId: id,
+      parentCommentId: parentCommentId || null,
+      authorEmail: currentEmail,
+      authorName: currentName,
+      content
+    });
+
+    try {
+      fetch('http://localhost:3105/internal/threads-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: post.workspaceId, eventType: 'NEW_COMMENT', payload: comment })
+      }).catch(() => {});
+    } catch(e) {}
+
+    res.status(201).json(comment);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create comment', details: err.message });
+  }
+});
+
+app.post('/api/threads/comment/:commentId/like', async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const currentEmail = normalizeEmail(req.user.email);
+
+    const comment = await ThreadComment.findById(commentId);
+    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+    
+    const post = await ThreadPost.findById(comment.postId);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    const hasLiked = comment.likes.includes(currentEmail);
+    if (hasLiked) {
+      comment.likes = comment.likes.filter(e => e !== currentEmail);
+    } else {
+      comment.likes.push(currentEmail);
+    }
+    await comment.save();
+
+    try {
+      fetch('http://localhost:3105/internal/threads-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: post.workspaceId, eventType: 'COMMENT_LIKED', payload: { commentId, likes: comment.likes, postId: comment.postId } })
+      }).catch(() => {});
+    } catch(e) {}
+
+    res.status(200).json({ likes: comment.likes });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to toggle like', details: err.message });
+  }
+});
+
+app.delete('/api/threads/comment/:commentId', async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const currentEmail = normalizeEmail(req.user.email);
+
+    const comment = await ThreadComment.findById(commentId);
+    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+
+    if (comment.authorEmail !== currentEmail && req.user.role !== 'Admin') {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    
+    const post = await ThreadPost.findById(comment.postId);
+
+    await ThreadComment.deleteMany({ $or: [{ _id: commentId }, { parentCommentId: commentId }] });
+
+    if (post) {
+      try {
+        fetch('http://localhost:3105/internal/threads-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workspaceId: post.workspaceId, eventType: 'COMMENT_DELETED', payload: { commentId, postId: comment.postId } })
+        }).catch(() => {});
+      } catch(e) {}
+    }
+    res.status(200).json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete comment', details: err.message });
+  }
+});
+
+// ─── PROJECTS / FILES HUB ───
+app.get('/api/projects/:workspaceId', async (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const { status } = req.query;
+    const query = { workspaceId };
+    if (status && status !== 'all') query.status = status;
+    const projects = await Project.find(query).sort({ updatedAt: -1 });
+    // Strip credential values for listing
+    const safe = projects.map(p => {
+      const obj = p.toObject();
+      obj.credentials = (obj.credentials || []).map(c => ({ ...c, value: '••••••••' }));
+      return obj;
+    });
+    res.json(safe);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch projects', details: err.message });
+  }
+});
+
+app.get('/api/projects/:workspaceId/:projectId', async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    res.json(project);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch project', details: err.message });
+  }
+});
+
+app.post('/api/projects/create', async (req, res) => {
+  try {
+    const { workspaceId, name, description, icon, color, tags } = req.body;
+    const project = await Project.create({
+      workspaceId,
+      name,
+      description: description || '',
+      icon: icon || '📁',
+      color: color || '#2170E4',
+      tags: tags || [],
+      createdBy: req.user.email,
+      createdByName: req.user.name
+    });
+    res.status(201).json(project);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create project', details: err.message });
+  }
+});
+
+app.put('/api/projects/:projectId', async (req, res) => {
+  try {
+    const { name, description, icon, color, status, tags } = req.body;
+    const update = { updatedAt: new Date() };
+    if (name !== undefined) update.name = name;
+    if (description !== undefined) update.description = description;
+    if (icon !== undefined) update.icon = icon;
+    if (color !== undefined) update.color = color;
+    if (status !== undefined) update.status = status;
+    if (tags !== undefined) update.tags = tags;
+    const project = await Project.findByIdAndUpdate(req.params.projectId, update, { new: true });
+    res.json(project);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update project', details: err.message });
+  }
+});
+
+app.delete('/api/projects/:projectId', async (req, res) => {
+  try {
+    await Project.findByIdAndDelete(req.params.projectId);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete project', details: err.message });
+  }
+});
+
+// Sub-resource add/remove (generic pattern)
+const subResources = ['gitRepos', 'deployments', 'documentation', 'workflows', 'credentials'];
+subResources.forEach(resource => {
+  // Add item
+  app.post(`/api/projects/:projectId/${resource}`, async (req, res) => {
+    try {
+      const project = await Project.findById(req.params.projectId);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const item = { ...req.body, addedBy: req.user.email, addedAt: new Date() };
+      project[resource].push(item);
+      project.updatedAt = new Date();
+      await project.save();
+      res.status(201).json(project);
+    } catch (err) {
+      res.status(500).json({ error: `Failed to add ${resource}`, details: err.message });
+    }
+  });
+
+  // Remove item
+  app.delete(`/api/projects/:projectId/${resource}/:itemId`, async (req, res) => {
+    try {
+      const project = await Project.findById(req.params.projectId);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      project[resource] = project[resource].filter(i => i._id.toString() !== req.params.itemId);
+      project.updatedAt = new Date();
+      await project.save();
+      res.json(project);
+    } catch (err) {
+      res.status(500).json({ error: `Failed to remove ${resource} item`, details: err.message });
+    }
+  });
 });
 
 const PORT = 3104;

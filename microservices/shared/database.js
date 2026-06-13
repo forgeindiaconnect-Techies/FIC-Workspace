@@ -198,3 +198,92 @@ const TranscriptSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 export const Transcript = mongoose.models.Transcript || mongoose.model('Transcript', TranscriptSchema);
+
+// ─── THREAD POST SCHEMA ───
+const ThreadPostSchema = new mongoose.Schema({
+  workspaceId: { type: String, required: true },
+  authorEmail: { type: String, required: true },
+  authorName: { type: String, required: true },
+  content: { type: String, required: true },
+  mediaUrls: [{
+    url: String,
+    type: { type: String, enum: ['image', 'video', 'document'] },
+    name: String
+  }],
+  visibility: { type: String, enum: ['everyone', 'specific', 'channels'], default: 'everyone' },
+  visibilityData: [String],
+  likes: [{ type: String }], // Array of emails who liked it
+  createdAt: { type: Date, default: Date.now }
+});
+export const ThreadPost = mongoose.models.ThreadPost || mongoose.model('ThreadPost', ThreadPostSchema);
+
+// ─── THREAD COMMENT SCHEMA ───
+const ThreadCommentSchema = new mongoose.Schema({
+  postId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'ThreadPost' },
+  parentCommentId: { type: mongoose.Schema.Types.ObjectId, ref: 'ThreadComment', default: null },
+  authorEmail: { type: String, required: true },
+  authorName: { type: String, required: true },
+  content: { type: String, required: true },
+  likes: [{ type: String }], // Array of emails who liked it
+  createdAt: { type: Date, default: Date.now }
+});
+export const ThreadComment = mongoose.models.ThreadComment || mongoose.model('ThreadComment', ThreadCommentSchema);
+
+// ─── PROJECT SCHEMA ───
+const ProjectSchema = new mongoose.Schema({
+  workspaceId: { type: String, required: true, index: true },
+  name: { type: String, required: true },
+  description: { type: String, default: '' },
+  icon: { type: String, default: '📁' },
+  color: { type: String, default: '#2170E4' },
+  status: { type: String, enum: ['active', 'archived', 'completed', 'on_hold'], default: 'active' },
+  createdBy: { type: String, required: true },
+  createdByName: { type: String },
+  tags: [{ type: String }],
+  gitRepos: [{
+    name: { type: String, required: true },
+    url: { type: String, required: true },
+    branch: { type: String, default: 'main' },
+    provider: { type: String, enum: ['github', 'gitlab', 'bitbucket', 'other'], default: 'github' },
+    addedBy: { type: String },
+    addedAt: { type: Date, default: Date.now }
+  }],
+  deployments: [{
+    name: { type: String, required: true },
+    url: { type: String, required: true },
+    environment: { type: String, enum: ['production', 'staging', 'development', 'preview'], default: 'production' },
+    provider: { type: String, default: '' },
+    status: { type: String, enum: ['live', 'down', 'deploying', 'unknown'], default: 'live' },
+    addedBy: { type: String },
+    addedAt: { type: Date, default: Date.now }
+  }],
+  documentation: [{
+    title: { type: String, required: true },
+    url: { type: String },
+    content: { type: String },
+    type: { type: String, enum: ['link', 'markdown', 'file'], default: 'link' },
+    fileUrl: { type: String },
+    addedBy: { type: String },
+    addedAt: { type: Date, default: Date.now }
+  }],
+  workflows: [{
+    name: { type: String, required: true },
+    description: { type: String, default: '' },
+    steps: [{ type: String }],
+    status: { type: String, enum: ['active', 'inactive', 'draft'], default: 'active' },
+    addedBy: { type: String },
+    addedAt: { type: Date, default: Date.now }
+  }],
+  credentials: [{
+    label: { type: String, required: true },
+    username: { type: String, default: '' },
+    value: { type: String, required: true },
+    environment: { type: String, enum: ['production', 'staging', 'development', 'shared'], default: 'shared' },
+    notes: { type: String, default: '' },
+    addedBy: { type: String },
+    addedAt: { type: Date, default: Date.now }
+  }],
+  updatedAt: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now }
+});
+export const Project = mongoose.models.Project || mongoose.model('Project', ProjectSchema);

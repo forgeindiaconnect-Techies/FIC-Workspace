@@ -171,23 +171,6 @@ export async function channelRoutes(fastify: FastifyInstance) {
 
       const channelsMap = new Map();
 
-      for (const member of members) {
-        const conversation = await ensureDirectConversation(activeWorkspaceId, currentEmail, member.email);
-        channelsMap.set(conversation._id.toString(), {
-          _id: conversation._id,
-          type: conversation.type,
-          displayName: member.name,
-          name: member.name,
-          email: member.email,
-          avatar: initials(member.name),
-          role: member.role || 'Member',
-          workspaceId: activeWorkspaceId,
-          isOnline: true,
-          lastMessageContent: conversation.lastMessageContent || 'Start a secure Kural conversation',
-          lastMessageTime: conversation.lastMessageTime || conversation.updatedAt
-        });
-      }
-
       const conversations = await KuralConversation.find({
         type: 'direct',
         participantEmails: currentEmail

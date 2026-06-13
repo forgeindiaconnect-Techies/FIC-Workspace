@@ -21,6 +21,7 @@ const activeMailSockets = new Map(); // email -> ws
 const onlineCallUsers = new Map();   // email -> ws
 const webrtcRooms = new Map();       // meetingId -> Map(peerId -> { socket, name, avatarUrl })
 const webrtcRoomsMeta = new Map();   // meetingId -> { locked: boolean }
+const activeThreadSockets = new Map(); // workspaceId -> Set<ws>
 
 // Helper to send json
 function sendJson(ws, payload) {
@@ -52,6 +53,19 @@ app.post('/internal/chat-message', (req, res) => {
   res.json({ success: true });
 });
 
+// Threads service sends broadcasts here
+app.post('/internal/threads-event', (req, res) => {
+  const { workspaceId, eventType, payload } = req.body;
+  const sockets = activeThreadSockets.get(workspaceId);
+  if (sockets) {
+    const message = JSON.stringify({ type: eventType, payload });
+    sockets.forEach(socket => {
+      if (socket.readyState === 1) socket.send(message);
+    });
+  }
+  res.json({ success: true });
+});
+
 // Health Endpoint
 app.get('/health', (req, res) => {
   res.json({ 
@@ -70,6 +84,7 @@ const wssMail = new WebSocketServer({ noServer: true });
 const wssCalls = new WebSocketServer({ noServer: true });
 const wssWebRtc = new WebSocketServer({ noServer: true });
 const wssAudio = new WebSocketServer({ noServer: true });
+const wssThreads = new WebSocketServer({ noServer: true });
 
 // 0. AUDIO SOCKET HANDLER (Groq Whisper Transcription)
 wssAudio.on('connection', (ws, req) => {
@@ -143,6 +158,35 @@ wssAudio.on('connection', (ws, req) => {
   ws.on('error', (err) => {
     console.error('[Sockets] Audio socket error:', err.message);
   });
+});
+
+// 0.5 THREADS SOCKET HANDLER
+wssThreads.on('connection', (ws, req) => {
+  let workspaceId;
+  try {
+    const url = new URL(req.url, 'http://localhost');
+    workspaceId = url.searchParams.get('workspaceId');
+  } catch (e) {}
+
+  if (workspaceId) {
+    if (!activeThreadSockets.has(workspaceId)) {
+      activeThreadSockets.set(workspaceId, new Set());
+    }
+    activeThreadSockets.get(workspaceId).add(ws);
+    
+    ws.on('close', () => {
+      activeThreadSockets.get(workspaceId)?.delete(ws);
+      if (activeThreadSockets.get(workspaceId)?.size === 0) {
+        activeThreadSockets.delete(workspaceId);
+      }
+    });
+    
+    ws.on('error', () => {
+      activeThreadSockets.get(workspaceId)?.delete(ws);
+    });
+  } else {
+    ws.close(1008, 'workspaceId required');
+  }
 });
 
 // 1. MAIL SOCKET HANDLER
@@ -463,6 +507,10 @@ server.on('upgrade', (req, socket, head) => {
   } else if (pathname === '/ws/audio') {
     wssAudio.handleUpgrade(req, socket, head, (ws) => {
       wssAudio.emit('connection', ws, req);
+    });
+  } else if (pathname === '/ws/threads') {
+    wssThreads.handleUpgrade(req, socket, head, (ws) => {
+      wssThreads.emit('connection', ws, req);
     });
   } else {
     socket.destroy();

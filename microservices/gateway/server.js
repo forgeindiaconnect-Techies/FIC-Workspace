@@ -49,7 +49,9 @@ app.use((req, res, next) => {
     url.startsWith('/api/tasks') ||
     url.startsWith('/api/docs') ||
     url.startsWith('/api/show') ||
-    url.startsWith('/api/status')
+    url.startsWith('/api/status') ||
+    url.startsWith('/api/threads') ||
+    url.startsWith('/api/projects')
   ) {
     proxy.web(req, res, { target: SERVICES.chat });
   } else if (url.startsWith('/socket.io')) {
