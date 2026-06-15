@@ -359,11 +359,12 @@ const ThreadsTab = ({ workspaceId, currentUserEmail, currentUserName, activityMo
       const prompt = `You are a professional corporate graphic designer. Generate a visually stunning and modern SVG poster/ad.
 The poster must look "Professional Corporate".
 ${useRealisticPhotos 
-  ? 'CRITICAL: You MUST use the <image> tag to embed realistic photographs of people using this exact URL format: "https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=800". DO NOT use SVG paths to draw humans.' 
+  ? 'CRITICAL: You MUST use the <image> tag to embed realistic photographs of people using this exact URL format: "https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&amp;cs=tinysrgb&amp;w=800". DO NOT use SVG paths to draw humans.' 
   : 'Feature animated/illustrated persons/images (using SVG paths or embedded shapes).'}
 It MUST contain the company name "${aiCompanyName}" and prominently display the company logo image using this URL: "${aiCompanyLogo}".
 The topic/content of the poster is: "${aiPrompt}".
 Use a beautiful, vibrant color palette. Ensure text is readable. Make it standard poster size (e.g., 800x1200 or 1200x630).
+CRITICAL XML RULES: All ampersands (&) in URLs MUST be escaped as &amp;. If using preserveAspectRatio, use a valid value like "xMidYMid slice" (with a space).
 RETURN ONLY THE RAW SVG CODE. Do not include markdown code blocks (\`\`\`), just the raw <svg>...</svg>.`;
 
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
@@ -394,8 +395,14 @@ RETURN ONLY THE RAW SVG CODE. Do not include markdown code blocks (\`\`\`), just
 
   const handleAttachGeneratedPoster = () => {
     if (!generatedPoster) return;
+    
+    // Clean up unescaped ampersands to prevent XML parsing errors in downloaded SVG
+    let cleanedSvg = generatedPoster.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[a-fA-F0-9]+;)/g, '&amp;');
+    // Fix common AI hallucination for preserveAspectRatio
+    cleanedSvg = cleanedSvg.replace(/preserveAspectRatio="([^"\s]+)(meet|slice)"/gi, 'preserveAspectRatio="$1 $2"');
+    
     // Convert SVG string to Base64 data URL
-    const svgBase64 = btoa(unescape(encodeURIComponent(generatedPoster)));
+    const svgBase64 = btoa(unescape(encodeURIComponent(cleanedSvg)));
     const dataUrl = `data:image/svg+xml;base64,${svgBase64}`;
     
     setMediaAttachments(prev => [...prev, {
@@ -809,7 +816,7 @@ RETURN ONLY THE RAW SVG CODE. Do not include markdown code blocks (\`\`\`), just
                                 {renderImageOrSVG(media.url, "w-full h-auto object-contain rounded-xl border border-gray-100 bg-black/5 block")}
                                 <a
                                   href={media.url}
-                                  download={`attachment-${idx}`}
+                                  download={media.name || `attachment-${idx}`}
                                   target="_blank"
                                   rel="noreferrer"
                                   className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10 shadow-lg"
