@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Heart, MessageCircle, Send, MoreHorizontal, MessageSquarePlus, Image as ImageIcon, Smile, BarChart2, Video, FileText, X, Trash2, Pin, Flag, Loader2, Sparkles } from 'lucide-react';
+import { Heart, MessageCircle, Send, MoreHorizontal, MessageSquarePlus, Image as ImageIcon, Smile, BarChart2, Video, FileText, X, Trash2, Pin, Flag, Loader2, Sparkles, Download } from 'lucide-react';
 import { getApiUrl } from '../api';
 
 const getWsUrl = (path) => {
@@ -803,9 +803,24 @@ RETURN ONLY THE RAW SVG CODE. Do not include markdown code blocks (\`\`\`), just
                     {post.mediaUrls?.length > 0 && (
                       <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl overflow-hidden">
                         {post.mediaUrls.map((media, idx) => (
-                          <div key={idx} className={`${post.mediaUrls.length === 1 ? 'col-span-2' : ''}`}>
-                            {media.type === 'image' && renderImageOrSVG(media.url, "w-full h-auto max-h-[500px] object-contain rounded-xl border border-gray-100 bg-black/5")}
-                            {media.type === 'video' && <video src={media.url} controls className="w-full max-h-80 bg-black rounded-xl" />}
+                          <div key={idx} className={`relative group ${post.mediaUrls.length === 1 ? 'col-span-2' : ''}`}>
+                            {media.type === 'image' && (
+                              <>
+                                {renderImageOrSVG(media.url, "w-full h-auto object-contain rounded-xl border border-gray-100 bg-black/5 block")}
+                                <a
+                                  href={media.url}
+                                  download={`attachment-${idx}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10 shadow-lg"
+                                  title="Save Image"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Download size={18} />
+                                </a>
+                              </>
+                            )}
+                            {media.type === 'video' && <video src={media.url} controls className="w-full h-auto bg-black rounded-xl block" />}
                           </div>
                         ))}
                       </div>
