@@ -143,7 +143,19 @@ const ChatApp = () => {
       const res = await fetch(getApiUrl(`/api/channels/${workspaceId}?email=${currentUserEmail}`), {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await res.json();
+      let data = await res.json();
+      
+      try {
+        const groupsRes = await fetch(getApiUrl(`/api/channels/${workspaceId}/groups?email=${currentUserEmail}`), {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (groupsRes.ok) {
+          const groupsData = await groupsRes.json();
+          data = [...data, ...groupsData];
+        }
+      } catch (err) {
+        console.error('Failed to fetch groups:', err);
+      }
       
       if (res.ok) {
         // Manually verify messages for DMs to handle old backend payloads without 'hasMessages'
@@ -656,7 +668,7 @@ const ChatApp = () => {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
-          workspaceId: 'independent',
+          workspaceId: workspaceId,
           name: groupName,
           type: 'group',
           members: [...selectedGroupMembers, currentUserEmail],

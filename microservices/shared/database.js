@@ -204,7 +204,7 @@ const ThreadPostSchema = new mongoose.Schema({
   workspaceId: { type: String, required: true },
   authorEmail: { type: String, required: true },
   authorName: { type: String, required: true },
-  content: { type: String, required: true },
+  content: { type: String },
   mediaUrls: [{
     url: String,
     type: { type: String, enum: ['image', 'video', 'document'] },

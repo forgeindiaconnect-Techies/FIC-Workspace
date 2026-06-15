@@ -23,7 +23,7 @@ const ThreadPostSchema = new Schema<IThreadPost>({
   workspaceId: { type: String, required: true, index: true },
   authorEmail: { type: String, required: true },
   authorName: { type: String, required: true },
-  content: { type: String, required: true },
+  content: { type: String },
   mediaUrls: [{
     url: { type: String, required: true },
     type: { type: String, enum: ['image', 'video', 'document'], required: true },

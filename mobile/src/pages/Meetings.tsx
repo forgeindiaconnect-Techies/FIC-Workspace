@@ -629,7 +629,6 @@ export default function Meetings() {
           || (screenStreamId && incomingStream.id === screenStreamId)
           || event.track?.label?.toLowerCase().includes('screen') 
           || event.transceiver?.mid === 'screen'
-          || (event.track?.kind === 'video' && hasCameraVideo && existingCameraStream.id !== incomingStream.id)
           || pendingScreenShareRef.current.has(targetPeerId)
           || pendingScreenShareRef.current.has(peerKey);
 
@@ -801,10 +800,89 @@ export default function Meetings() {
   }, [activeRoom, isMuted, isVideoOff, sendSignal]);
 
   React.useEffect(() => {
-    localStreamRef.current?.getVideoTracks?.().forEach((track: any) => {
-      track.enabled = !isVideoOff;
-    });
-  }, [isVideoOff]);
+    let mounted = true;
+    const toggleVideo = async () => {
+      if (!localStreamRef.current) return;
+      
+      const stream = localStreamRef.current;
+      
+      // Handle turning video OFF
+      if (isVideoOff) {
+        stream.getVideoTracks().forEach((track: any) => {
+          track.enabled = false;
+          track.stop?.(); // Completely stop hardware
+          stream.removeTrack?.(track);
+        });
+        // Send state update
+        if (activeRoom) {
+          sendSignal('media-state', { audioEnabled: !isMuted, videoEnabled: false });
+        }
+      } 
+      // Handle turning video ON
+      else {
+        // Only request if we don't already have an active video track
+        const hasActiveVideo = stream.getVideoTracks().some((t: any) => t.readyState === 'live');
+        if (!hasActiveVideo) {
+          try {
+            const md = getMediaDevices() || (typeof navigator !== 'undefined' ? navigator.mediaDevices : null);
+            if (md?.getUserMedia) {
+              const newStream = await md.getUserMedia({
+                video: {
+                  facingMode: facing === 'front' ? 'user' : 'environment',
+                  width: { ideal: 640 },
+                  height: { ideal: 480 },
+                }
+              });
+              
+              if (!mounted) {
+                newStream.getTracks().forEach((t: any) => t.stop?.());
+                return;
+              }
+              
+              const newVideoTrack = newStream.getVideoTracks()[0];
+              if (newVideoTrack) {
+                stream.addTrack(newVideoTrack);
+                
+                // Replace the track in all existing peer connections
+                peerConnectionsRef.current.forEach((pc: any, peerId: string) => {
+                  try {
+                    const senders = pc.getSenders?.() || [];
+                    const cameraSender = senders.find((s: any) => 
+                      s.track && s.track.kind === 'video' && s.track.id !== screenTrackIdsRef.current.get(peerId)
+                    );
+                    
+                    if (cameraSender && cameraSender.replaceTrack) {
+                      cameraSender.replaceTrack(newVideoTrack).catch((e: any) => console.warn("Failed to replace video track:", e));
+                    } else if (pc.addTrack) {
+                      // Fallback if no sender exists (shouldn't happen usually)
+                      pc.addTrack(newVideoTrack, stream);
+                    }
+                  } catch (err) {
+                    console.warn("Error updating PC track:", err);
+                  }
+                });
+                
+                // Force state update to re-render local view
+                setLocalStream(null);
+                setLocalStream(stream);
+                
+                // Send state update
+                if (activeRoom) {
+                  sendSignal('media-state', { audioEnabled: !isMuted, videoEnabled: true });
+                }
+              }
+            }
+          } catch (err) {
+            console.error("Failed to re-acquire video track:", err);
+            if (mounted) setIsVideoOff(true); // Revert UI if failed
+          }
+        }
+      }
+    };
+    
+    toggleVideo();
+    return () => { mounted = false; };
+  }, [isVideoOff, facing, activeRoom, isMuted, sendSignal]);
 
   // Fetch meetings
   React.useEffect(() => {
@@ -2045,7 +2123,7 @@ export default function Meetings() {
           <TouchableOpacity style={[s.ctrlBtn, isSharing && s.ctrlBtnBlue]} onPress={async () => {
             if (!isSharing) {
               try {
-                const displayStream = await getDisplayMedia({ video: true });
+                const displayStream = await getDisplayMedia({ video: { displaySurface: 'browser' } });
                 setLocalScreenStream(displayStream);
                 setIsSharing(true);
                 

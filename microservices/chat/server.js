@@ -158,18 +158,25 @@ app.get('/api/channels/:workspaceId/groups', async (req, res) => {
       members: currentEmail
     }).sort({ createdAt: -1 });
 
-    res.json(groups.map(g => ({
-      _id: g._id,
-      isGroup: true,
-      name: g.name,
-      displayName: g.name,
-      members: g.members,
-      lastMessageContent: 'Start a group discussion',
-      lastMessage: g.createdAt,
-      hasMessages: false,
-      unread: 0,
-      isOnline: true
-    })));
+    const groupsWithMessages = await Promise.all(groups.map(async (g) => {
+      const lastMsg = await KuralMessage.findOne({ conversationId: g._id }).sort({ sentAt: -1 });
+      
+      return {
+        _id: g._id,
+        isGroup: true,
+        type: 'group',
+        name: g.name,
+        displayName: g.name,
+        members: g.members,
+        lastMessageContent: lastMsg ? lastMsg.content : 'Start a group discussion',
+        lastMessage: lastMsg ? lastMsg.sentAt : g.createdAt,
+        hasMessages: !!lastMsg,
+        unread: 0,
+        isOnline: true
+      };
+    }));
+
+    res.json(groupsWithMessages);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch groups.', details: err.message });
   }
@@ -781,16 +788,23 @@ app.post('/api/threads/upload', upload.single('file'), async (req, res) => {
 app.post('/api/threads/create', async (req, res) => {
   try {
     const { workspaceId, content, mediaUrls = [], visibility = 'everyone', visibilityData = [] } = req.body;
+    console.log('Incoming POST /api/threads/create:', { workspaceId, content, mediaUrlsLength: mediaUrls?.length });
     const currentEmail = normalizeEmail(req.user.email);
     const currentName = req.user.name || currentEmail;
 
-    if (!workspaceId || !content) return res.status(400).json({ error: 'workspaceId and content required' });
+    if (!workspaceId || (!content && (!mediaUrls || mediaUrls.length === 0))) {
+      console.log('Failing 400 due to validation:', { workspaceId, content, mediaUrlsLength: mediaUrls?.length });
+      return res.status(400).json({ error: 'workspaceId and either content or mediaUrls are required' });
+    }
+    
+    // Ensure content is at least an empty string if not provided
+    const safeContent = content || '';
 
     const post = await ThreadPost.create({
       workspaceId,
       authorEmail: currentEmail,
       authorName: currentName,
-      content,
+      content: safeContent,
       mediaUrls,
       visibility,
       visibilityData
@@ -806,6 +820,7 @@ app.post('/api/threads/create', async (req, res) => {
 
     res.status(201).json(post);
   } catch (err) {
+    console.error('Error creating post:', err);
     res.status(500).json({ error: 'Failed to create post', details: err.message });
   }
 });

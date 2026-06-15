@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Heart, MessageCircle, Send, MoreHorizontal, MessageSquarePlus, Image as ImageIcon, Smile, BarChart2, Video, FileText, X, Trash2, Pin, Flag, Loader2 } from 'lucide-react';
+import { Heart, MessageCircle, Send, MoreHorizontal, MessageSquarePlus, Image as ImageIcon, Smile, BarChart2, Video, FileText, X, Trash2, Pin, Flag, Loader2, Sparkles } from 'lucide-react';
 import { getApiUrl } from '../api';
 
 const getWsUrl = (path) => {
@@ -124,7 +124,17 @@ const ThreadsTab = ({ workspaceId, currentUserEmail, currentUserName, activityMo
   const [isLoadingFeed, setIsLoadingFeed] = useState(true);
   const [selectedUser, setSelectedUser] = useState(null);
   
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiCompanyName, setAiCompanyName] = useState('WorkspacePro');
+  const [aiCompanyLogo, setAiCompanyLogo] = useState('https://via.placeholder.com/150x50/2170E4/FFFFFF?text=Logo');
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [generatedPoster, setGeneratedPoster] = useState(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [useRealisticPhotos, setUseRealisticPhotos] = useState(false);
+  
   const fileInputRef = useRef(null);
+  const aiLogoInputRef = useRef(null);
   const socketRef = useRef(null);
 
   useEffect(() => {
@@ -277,6 +287,31 @@ const ThreadsTab = ({ workspaceId, currentUserEmail, currentUserName, activityMo
     }
   };
 
+  const handleAILogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingLogo(true);
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(getApiUrl('/api/threads/upload'), {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) setAiCompanyLogo(data.url);
+      }
+    } catch (err) {
+      console.error('Logo upload failed', err);
+    } finally {
+      setIsUploadingLogo(false);
+      if (aiLogoInputRef.current) aiLogoInputRef.current.value = '';
+    }
+  };
+
   const removeAttachment = (index) => {
     setMediaAttachments(prev => prev.filter((_, i) => i !== index));
   };
@@ -305,12 +340,71 @@ const ThreadsTab = ({ workspaceId, currentUserEmail, currentUserName, activityMo
         setNewPostContent('');
         setMediaAttachments([]);
         setVisibility('everyone');
+        setGeneratedPoster(null);
       }
     } catch (err) {
       console.error('Failed to create post:', err);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleGenerateAIPoster = async () => {
+    if (!aiPrompt.trim()) return;
+    setIsGeneratingAI(true);
+    setGeneratedPoster(null);
+    
+    try {
+      const apiKey = 'AIzaSyA3nfLFZhoElBN7i4Vtt8ah0x0odFDW1vg'; // Provided key
+      const prompt = `You are a professional corporate graphic designer. Generate a visually stunning and modern SVG poster/ad.
+The poster must look "Professional Corporate".
+${useRealisticPhotos 
+  ? 'CRITICAL: You MUST use the <image> tag to embed realistic photographs of people using this exact URL format: "https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=800". DO NOT use SVG paths to draw humans.' 
+  : 'Feature animated/illustrated persons/images (using SVG paths or embedded shapes).'}
+It MUST contain the company name "${aiCompanyName}" and prominently display the company logo image using this URL: "${aiCompanyLogo}".
+The topic/content of the poster is: "${aiPrompt}".
+Use a beautiful, vibrant color palette. Ensure text is readable. Make it standard poster size (e.g., 800x1200 or 1200x630).
+RETURN ONLY THE RAW SVG CODE. Do not include markdown code blocks (\`\`\`), just the raw <svg>...</svg>.`;
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7 }
+        })
+      });
+      
+      const data = await response.json();
+      if (data.candidates && data.candidates[0].content.parts[0].text) {
+        let svgCode = data.candidates[0].content.parts[0].text.trim();
+        if (svgCode.startsWith('\`\`\`xml')) svgCode = svgCode.replace(/^\`\`\`xml/, '').replace(/\`\`\`$/, '');
+        if (svgCode.startsWith('\`\`\`svg')) svgCode = svgCode.replace(/^\`\`\`svg/, '').replace(/\`\`\`$/, '');
+        if (svgCode.startsWith('\`\`\`html')) svgCode = svgCode.replace(/^\`\`\`html/, '').replace(/\`\`\`$/, '');
+        if (svgCode.startsWith('\`\`\`')) svgCode = svgCode.replace(/^\`\`\`/, '').replace(/\`\`\`$/, '');
+        setGeneratedPoster(svgCode.trim());
+      }
+    } catch (error) {
+      console.error('Failed to generate AI poster:', error);
+      alert('Failed to generate poster. Please try again.');
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const handleAttachGeneratedPoster = () => {
+    if (!generatedPoster) return;
+    // Convert SVG string to Base64 data URL
+    const svgBase64 = btoa(unescape(encodeURIComponent(generatedPoster)));
+    const dataUrl = `data:image/svg+xml;base64,${svgBase64}`;
+    
+    setMediaAttachments(prev => [...prev, {
+      type: 'image',
+      url: dataUrl,
+      name: 'AI_Generated_Poster.svg'
+    }]);
+    setShowAIModal(false);
+    setGeneratedPoster(null);
   };
 
   const handleToggleLike = async (postId) => {
@@ -413,12 +507,29 @@ const ThreadsTab = ({ workspaceId, currentUserEmail, currentUserName, activityMo
     });
   };
 
+  const renderImageOrSVG = (url, className) => {
+    if (url && url.startsWith('data:image/svg+xml;base64,')) {
+      try {
+        const svgContent = decodeURIComponent(escape(atob(url.split(',')[1])));
+        return (
+          <div 
+            className={`flex justify-center items-center overflow-hidden [&>svg]:w-full [&>svg]:h-full [&>svg]:object-contain ${className}`}
+            dangerouslySetInnerHTML={{ __html: svgContent }} 
+          />
+        );
+      } catch (e) {
+        return <img src={url} alt="attachment" className={className} />;
+      }
+    }
+    return <img src={url} alt="attachment" className={className} />;
+  };
+
   const renderMediaPreview = (media) => {
     return (
       <div className="flex gap-2 mt-3 flex-wrap">
         {media.map((item, idx) => (
           <div key={idx} className="relative rounded-xl overflow-hidden border border-[#E5E7EB] bg-gray-50 group">
-            {item.type === 'image' && <img src={item.url} alt="attachment" className="h-32 object-cover" />}
+            {item.type === 'image' && renderImageOrSVG(item.url, "h-32 w-auto object-contain rounded-xl bg-black/5")}
             {item.type === 'video' && <video src={item.url} className="h-32 object-cover bg-black" controls />}
             {item.type === 'document' && (
               <a href={item.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 p-4 h-32 w-32 bg-[#F8F9FF] hover:bg-[#F0F4FF]">
@@ -596,6 +707,9 @@ const ThreadsTab = ({ workspaceId, currentUserEmail, currentUserName, activityMo
               <button className="p-2 hover:bg-[#F0F4FF] hover:text-[#2170E4] rounded-full transition-colors">
                 <Smile size={20} />
               </button>
+              <button onClick={() => setShowAIModal(true)} className="p-2 hover:bg-amber-50 hover:text-amber-500 text-amber-400 rounded-full transition-colors flex items-center gap-1.5 tooltip-wrapper relative" title="AI Poster Designer">
+                <Sparkles size={20} />
+              </button>
             </div>
             
             <div className="flex items-center gap-3">
@@ -690,7 +804,7 @@ const ThreadsTab = ({ workspaceId, currentUserEmail, currentUserName, activityMo
                       <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl overflow-hidden">
                         {post.mediaUrls.map((media, idx) => (
                           <div key={idx} className={`${post.mediaUrls.length === 1 ? 'col-span-2' : ''}`}>
-                            {media.type === 'image' && <img src={media.url} className="w-full h-auto max-h-80 object-cover rounded-xl border border-gray-100" />}
+                            {media.type === 'image' && renderImageOrSVG(media.url, "w-full h-auto max-h-[500px] object-contain rounded-xl border border-gray-100 bg-black/5")}
                             {media.type === 'video' && <video src={media.url} controls className="w-full max-h-80 bg-black rounded-xl" />}
                           </div>
                         ))}
@@ -772,6 +886,119 @@ const ThreadsTab = ({ workspaceId, currentUserEmail, currentUserName, activityMo
         </div>
 
       </div>
+
+      {/* AI Poster Designer Modal */}
+      {showAIModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gradient-to-r from-amber-50 to-orange-50">
+              <h2 className="text-xl font-bold text-[#0B1C30] flex items-center gap-2">
+                <Sparkles className="text-amber-500" size={24} /> AI Poster Designer
+              </h2>
+              <button onClick={() => setShowAIModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors p-1 bg-white rounded-full">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-5 custom-scrollbar">
+              {!generatedPoster ? (
+                <>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-bold text-gray-700">What is the poster about?</label>
+                    <textarea 
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      placeholder="e.g. A new product launch for our marketing tool..."
+                      className="w-full border border-gray-200 rounded-xl p-4 text-[15px] outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 resize-none h-32 bg-gray-50/50"
+                    />
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="flex-1 flex flex-col gap-2">
+                      <label className="text-sm font-bold text-gray-700">Company Name</label>
+                      <input 
+                        type="text" 
+                        value={aiCompanyName}
+                        onChange={(e) => setAiCompanyName(e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl p-3 text-[14px] outline-none focus:border-amber-400"
+                      />
+                    </div>
+                    <div className="flex-1 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-bold text-gray-700">Logo URL</label>
+                        <input type="file" ref={aiLogoInputRef} onChange={handleAILogoUpload} accept="image/*" className="hidden" />
+                        <button onClick={() => aiLogoInputRef.current?.click()} disabled={isUploadingLogo} className="text-xs text-[#2170E4] hover:underline font-semibold flex items-center gap-1">
+                          {isUploadingLogo ? <Loader2 size={12} className="animate-spin" /> : <ImageIcon size={12} />} Upload Image
+                        </button>
+                      </div>
+                      <input 
+                        type="text" 
+                        value={aiCompanyLogo}
+                        onChange={(e) => setAiCompanyLogo(e.target.value)}
+                        placeholder="Paste URL or upload image"
+                        className="w-full border border-gray-200 rounded-xl p-3 text-[14px] outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <input 
+                      type="checkbox" 
+                      id="ai-realistic-photos"
+                      checked={useRealisticPhotos}
+                      onChange={(e) => setUseRealisticPhotos(e.target.checked)}
+                      className="w-4 h-4 text-amber-500 rounded border-gray-300 focus:ring-amber-500"
+                    />
+                    <label htmlFor="ai-realistic-photos" className="text-[14px] text-gray-700 font-medium cursor-pointer">
+                      Force AI to use Realistic Photos (instead of illustrations)
+                    </label>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col gap-4 items-center">
+                  <div className="w-full flex justify-between items-center bg-green-50 text-green-700 px-4 py-2 rounded-xl text-sm font-medium border border-green-100">
+                    <span>✨ Generation complete!</span>
+                    <button onClick={() => setGeneratedPoster(null)} className="text-green-800 hover:underline">Regenerate</button>
+                  </div>
+                  <div 
+                    className="w-full flex justify-center border border-gray-200 rounded-2xl shadow-sm overflow-hidden bg-gray-50/50 p-4 [&>svg]:w-auto [&>svg]:h-auto [&>svg]:max-w-full [&>svg]:max-h-[55vh]"
+                    dangerouslySetInnerHTML={{ __html: generatedPoster }} 
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 rounded-b-3xl">
+              <button 
+                onClick={() => setShowAIModal(false)}
+                className="px-6 py-2.5 rounded-full font-semibold text-gray-600 hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              
+              {!generatedPoster ? (
+                <button 
+                  onClick={handleGenerateAIPoster}
+                  disabled={!aiPrompt.trim() || isGeneratingAI}
+                  className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-8 py-2.5 rounded-full font-bold transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isGeneratingAI ? (
+                    <><Loader2 size={18} className="animate-spin" /> Designing...</>
+                  ) : (
+                    <><Sparkles size={18} /> Generate Poster</>
+                  )}
+                </button>
+              ) : (
+                <button 
+                  onClick={handleAttachGeneratedPoster}
+                  className="bg-[#2170E4] hover:bg-[#1A5BB8] text-white px-8 py-2.5 rounded-full font-bold transition-all shadow-md flex items-center gap-2"
+                >
+                  <ImageIcon size={18} /> Attach to Post
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
