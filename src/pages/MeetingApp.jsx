@@ -300,7 +300,7 @@ const MeetingApp = () => {
 
   const startLocalRecording = async () => {
     try {
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: "browser" }, audio: true });
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: "browser" }, audio: true, preferCurrentTab: true });
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const dest = audioCtx.createMediaStreamDestination();
       
