@@ -1282,12 +1282,20 @@ const m = Math.floor((seconds % 3600) / 60);
             
             peersRef.current.forEach(({ pc, peerID }) => {
               if (!pc) return;
-              const cameraSender = cameraSendersRef.current.get(peerID);
+              let cameraSender = cameraSendersRef.current.get(peerID);
+              if (!cameraSender) {
+                cameraSender = pc.getSenders().find(s => s.track && s.track.kind === 'video' && !s.track.label?.toLowerCase().includes('screen'));
+                if (cameraSender) cameraSendersRef.current.set(peerID, cameraSender);
+              }
               if (cameraSender) {
                 cameraSender.replaceTrack(newVideoTrack).catch(e => console.warn("Failed to replace video track:", e));
               } else {
-                const newSender = pc.addTrack(newVideoTrack, streamRef.current);
-                cameraSendersRef.current.set(peerID, newSender);
+                try {
+                  const newSender = pc.addTrack(newVideoTrack, streamRef.current);
+                  cameraSendersRef.current.set(peerID, newSender);
+                } catch (e) {
+                  console.warn("Failed to add new video track:", e);
+                }
               }
             });
           } catch (err) {
