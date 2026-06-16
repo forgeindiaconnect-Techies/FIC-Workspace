@@ -486,14 +486,14 @@ const MeetingApp = () => {
                    recorder.start();
                    setTimeout(() => {
                       if (recorder.state === 'recording') recorder.stop();
-                   }, 5000);
+                   }, 10000);
                 } catch(e) {
                    console.warn("AI recording cycle error:", e);
                 }
              }
           };
 
-          intervalId = setInterval(startRecordingCycle, 5000);
+          intervalId = setInterval(startRecordingCycle, 10000);
           startRecordingCycle();
 
           return () => {
