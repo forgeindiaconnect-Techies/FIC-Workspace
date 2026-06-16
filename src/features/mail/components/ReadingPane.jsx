@@ -22,6 +22,11 @@ const ReadingPane = () => {
   const queryClient = useQueryClient();
   const auth = getAuth();
 
+  const [inlineReplyText, setInlineReplyText] = useState('');
+  const [inlineAttachments, setInlineAttachments] = useState([]);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const inlineFileRef = React.useRef(null);
+
   const { data: mail, isLoading: isMailLoading } = useQuery({
     queryKey: ['mail', selectedId],
     queryFn: async () => {
@@ -152,6 +157,70 @@ const ReadingPane = () => {
       subject: mail.subject.startsWith('Fwd:') ? mail.subject : `Fwd: ${mail.subject}`,
       body: `<br><br><br><blockquote><p>---------- Forwarded message ---------</p><p>From: ${mail.sender} &lt;${mail.senderEmail}&gt;</p><p>Date: ${new Date(mail.timestamp).toLocaleString()}</p><p>Subject: ${mail.subject}</p><br>${mail.content}</blockquote>`
     });
+  };
+
+  // Reply Mutation
+  const sendReplyMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('token');
+      const body = {
+        to: [mail.senderEmail],
+        subject: mail.subject.startsWith('Re:') ? mail.subject : `Re: ${mail.subject}`,
+        body: inlineReplyText,
+        attachments: inlineAttachments.map(a => ({ name: a.name, url: a.url, size: a.size })),
+        isDraft: false,
+        threadId: mail.threadId || mail._id
+      };
+      const res = await fetch(getApiUrl('/api/mail/send'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error('Failed to send reply');
+      return res.json();
+    },
+    onSuccess: () => {
+      setInlineReplyText('');
+      setInlineAttachments([]);
+      queryClient.invalidateQueries(['mails']);
+      queryClient.invalidateQueries(['mail', selectedId]);
+    }
+  });
+
+  const handleInlineAttachmentUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingAttachment(true);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Data = reader.result.split(',')[1];
+        const token = localStorage.getItem('token');
+        const res = await fetch(getApiUrl('/api/mail/upload-attachment'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            fileBase64: base64Data,
+            fileName: file.name,
+            mimeType: file.type
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.url) {
+          setInlineAttachments(prev => [...prev, { name: file.name, url: data.url, size: file.size }]);
+        } else {
+          alert('Upload failed: ' + (data.error || 'Unknown error'));
+        }
+        setIsUploadingAttachment(false);
+        if (inlineFileRef.current) inlineFileRef.current.value = '';
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      alert('Upload failed');
+      setIsUploadingAttachment(false);
+      if (inlineFileRef.current) inlineFileRef.current.value = '';
+    }
   };
 
   useEffect(() => {
@@ -307,7 +376,7 @@ const ReadingPane = () => {
                  {smartReplyMutation.isPending ? (
                    <p className="text-[10px] font-bold text-[var(--text-secondary)] animate-pulse">Thinking...</p>
                  ) : smartReplyMutation.data?.replies?.map((reply, i) => (
-                   <button key={i} className="px-4 py-2 bg-[var(--surface-1)] border border-[var(--border)] rounded-xl text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--brand-light)] hover:border-[var(--brand-primary)] hover:text-[var(--brand-primary)] transition-all">
+                   <button key={i} onClick={() => setInlineReplyText(prev => prev ? prev + '\n' + reply : reply)} className="px-4 py-2 bg-[var(--surface-1)] border border-[var(--border)] rounded-xl text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--brand-light)] hover:border-[var(--brand-primary)] hover:text-[var(--brand-primary)] transition-all">
                      {reply}
                    </button>
                  ))}
@@ -322,16 +391,44 @@ const ReadingPane = () => {
                   <span className="text-xs font-bold text-[var(--text-secondary)]">Reply to <span className="text-[var(--text-primary)] font-black">{mail.sender}</span></span>
                 </div>
                 <textarea 
+                  value={inlineReplyText}
+                  onChange={(e) => setInlineReplyText(e.target.value)}
                   className="w-full bg-transparent border-none outline-none text-sm font-medium resize-none min-h-[120px]"
                   placeholder="Write your response..."
                 />
+                {inlineAttachments.length > 0 && (
+                  <div className="flex gap-2 flex-wrap mb-4 border-t border-[var(--border)] pt-4">
+                    {inlineAttachments.map((file, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-[var(--surface-2)] border border-[var(--border)] px-3 py-1.5 rounded-lg text-xs font-medium">
+                        <Paperclip size={12} className="text-[var(--text-secondary)]" />
+                        <span className="truncate max-w-[150px] text-[var(--text-primary)]">{file.name}</span>
+                        <button onClick={() => setInlineAttachments(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-rose-500 ml-1 font-bold">
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {isUploadingAttachment && (
+                  <div className="text-xs text-[var(--brand-primary)] font-bold mb-4">Uploading attachment...</div>
+                )}
                 <div className="flex items-center justify-between mt-4">
                    <div className="flex items-center gap-2">
+                     <input 
+                       type="file" 
+                       ref={inlineFileRef} 
+                       onChange={handleInlineAttachmentUpload} 
+                       style={{ display: 'none' }} 
+                     />
                      <button className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all"><Maximize2 size={16} /></button>
-                     <button className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all"><Paperclip size={16} /></button>
+                     <button onClick={() => inlineFileRef.current?.click()} className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all"><Paperclip size={16} /></button>
                    </div>
-                   <button className="btn btn-primary h-10 px-6 rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20">
-                     Send Reply
+                   <button 
+                     onClick={() => sendReplyMutation.mutate()} 
+                     disabled={sendReplyMutation.isPending || isUploadingAttachment || (!inlineReplyText.trim() && inlineAttachments.length === 0)}
+                     className="btn btn-primary h-10 px-6 rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                   >
+                     {sendReplyMutation.isPending ? 'Sending...' : 'Send Reply'}
                    </button>
                 </div>
               </div>
