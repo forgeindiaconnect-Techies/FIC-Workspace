@@ -171,6 +171,8 @@ const MeetingApp = () => {
   const [finalStats, setFinalStats] = useState({ duration: 0, participants: 0 });
   const [activeSpeakers, setActiveSpeakers] = useState([]); // Track recent speakers for SFU-style optimization
   const [performanceMode, setPerformanceMode] = useState(false);
+  const [confirmEndAll, setConfirmEndAll] = useState(false);
+  const [confirmKick, setConfirmKick] = useState(null);
 
   const {
     localStreamRef: streamRef,
@@ -1901,14 +1903,17 @@ const m = Math.floor((seconds % 3600) / 60);
                            <div className="space-y-2">
                               <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Meeting Actions</p>
                               <button onClick={() => {
-                                 if (window.confirm("Are you sure you want to end the meeting for everyone?")) {
-                                    if (sendWsRef.current) sendWsRef.current('end-meeting-all', {});
-                                    handleEndCall();
+                                 if (!confirmEndAll) {
+                                    setConfirmEndAll(true);
+                                    setTimeout(() => setConfirmEndAll(false), 3000);
+                                    return;
                                  }
+                                 if (sendWsRef.current) sendWsRef.current('end-meeting-all', {});
+                                 handleEndCall();
                               }} className="w-full flex items-center gap-4 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 transition-colors group">
                                  <div className="w-10 h-10 rounded-xl bg-rose-500 flex items-center justify-center"><PhoneOff size={18} className="text-white" /></div>
                                  <div className="text-left flex-1">
-                                    <p className="text-sm font-bold text-rose-500">End Meeting for All</p>
+                                    <p className="text-sm font-bold text-rose-500">{confirmEndAll ? 'Tap again to Confirm' : 'End Meeting for All'}</p>
                                     <p className="text-[10px] font-medium text-rose-500/70">Terminate the session for everyone</p>
                                  </div>
                                  <ChevronRight size={18} className="text-rose-500/50 group-hover:text-rose-500" />
@@ -1962,11 +1967,17 @@ const m = Math.floor((seconds % 3600) / 60);
                                  </div>
                                  <div className="flex gap-2">
                                     <button onClick={() => {
-                                       if (window.confirm(`Kick ${p.name}?`)) {
-                                          if (sendWsRef.current) sendWsRef.current('kick-peer', { targetPeerId: p.peerID });
-                                          setPeers(prev => prev.filter(peer => peer.peerID !== p.peerID));
+                                       if (confirmKick !== p.peerID) {
+                                          setConfirmKick(p.peerID);
+                                          setTimeout(() => setConfirmKick(null), 3000);
+                                          return;
                                        }
-                                    }} className="px-3 py-1 bg-white/10 rounded-lg text-[9px] font-black uppercase text-zinc-300 hover:text-white transition-colors">Kick</button>
+                                       if (sendWsRef.current) sendWsRef.current('kick-peer', { targetPeerId: p.peerID });
+                                       setPeers(prev => prev.filter(peer => peer.peerID !== p.peerID));
+                                       setConfirmKick(null);
+                                    }} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-colors ${confirmKick === p.peerID ? 'bg-rose-500 text-white' : 'bg-white/10 text-zinc-300 hover:text-white'}`}>
+                                       {confirmKick === p.peerID ? 'Confirm' : 'Kick'}
+                                    </button>
                                  </div>
                               </div>
                            ))}
