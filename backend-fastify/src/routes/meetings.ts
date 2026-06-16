@@ -70,6 +70,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         scheduledAt,
         startTime,
         recordingEnabled,
+        aiEnabled,
         inviteEmails
       } = request.body as any;
       if (!title) {
@@ -92,6 +93,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         scheduledAt: scheduledAt || startTime ? new Date(scheduledAt || startTime) : new Date(),
         durationMinutes: durationMinutes || duration || 60,
         recordingEnabled: !!recordingEnabled,
+        aiEnabled: !!aiEnabled,
         status: 'scheduled',
         participantIds: [new Types.ObjectId(request.user!.id)]
       });

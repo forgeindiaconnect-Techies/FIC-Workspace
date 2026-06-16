@@ -760,9 +760,6 @@ const m = Math.floor((seconds % 3600) / 60);
           setRoomError(null);
           setIsVerifying(false);
           setAppState('in-call');
-          if (meetingMetadata?.aiEnabled) {
-            setAiAssistantActive(true);
-          }
           const rawPeers = msg.existingPeers || [];
           const deduplicatedPeers = [];
           for (const p of rawPeers) {
@@ -851,10 +848,8 @@ const m = Math.floor((seconds % 3600) / 60);
              
              if (msg.name === 'Forge India Connect AI') {
                 const existingBot = filteredPrev.find(p => p.name === 'Forge India Connect AI');
-                if (existingBot && existingBot.peerID === 'ai-assistant-bot') {
-                   return filteredPrev.map(p => p.peerID === 'ai-assistant-bot' ? { ...p, peerID: msg.peerId, name: msg.name, userId: msg.userId } : p);
-                } else if (existingBot) {
-                   return filteredPrev;
+                if (existingBot) {
+                   return filteredPrev.map(p => p.name === 'Forge India Connect AI' ? { ...p, peerID: msg.peerId, name: msg.name, userId: msg.userId } : p);
                 }
              }
              if (filteredPrev.find(p => p.peerID === msg.peerId)) return filteredPrev;
