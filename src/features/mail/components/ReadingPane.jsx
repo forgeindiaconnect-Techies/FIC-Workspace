@@ -122,13 +122,34 @@ const ReadingPane = () => {
     }
   });
 
+  // Permanent Delete Mutation
+  const deleteMailMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('token');
+      const res = await fetch(getApiUrl(`/api/mail/${selectedId}`), {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to delete mail');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['mails']);
+      setSelectedId(null);
+    }
+  });
+
   const handleToggleStar = () => {
     updateMailMutation.mutate({ isStarred: !mail.isStarred });
   };
 
   const handleDelete = () => {
-    updateMailMutation.mutate({ isDeleted: true });
-    setSelectedId(null);
+    if (mail.folder === 'trash') {
+      deleteMailMutation.mutate();
+    } else {
+      updateMailMutation.mutate({ isDeleted: true });
+      setSelectedId(null);
+    }
   };
 
   const handleArchive = () => {
