@@ -367,7 +367,8 @@ const MeetingApp = () => {
       setIsRecording(true);
     } catch (e) {
       console.error("Failed to start recording", e);
-      alert("Failed to start recording. Please try again.");
+      setRoomError("Failed to start recording. Please try again.");
+      setTimeout(() => setRoomError(null), 5000);
     }
   };
 
