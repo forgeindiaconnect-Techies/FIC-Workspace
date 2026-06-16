@@ -640,7 +640,14 @@ const m = Math.floor((seconds % 3600) / 60);
         return;
       }
       try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        
+        // Ensure no audio tracks are accidentally kept from display media which could break microphone audio
+        stream.getAudioTracks().forEach(track => {
+          track.stop();
+          stream.removeTrack(track);
+        });
+
         screenStreamRef.current = stream;
         const screenTrack = stream.getVideoTracks()[0];
         
