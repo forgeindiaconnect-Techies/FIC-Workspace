@@ -831,16 +831,17 @@ const m = Math.floor((seconds % 3600) / 60);
         }
         if (msg.type === 'peer-joined') {
           if (msg.peerId === peerIdRef.current) return;
-          if (peersRef.current.find(p => p.peerID === msg.peerId)) return;
           
-          // Deduplicate ghost connections based on exact ID.
-          // Since the backend now uses unique session IDs, we don't aggressively filter out same-user connections
-          const oldPeerRefIndex = peersRef.current.findIndex(p => p.peerID === msg.peerId);
+          const existingPeerIdx = peersRef.current.findIndex(p => p.peerID === msg.peerId);
           
-          if (oldPeerRefIndex !== -1) {
-             const oldPeer = peersRef.current[oldPeerRefIndex];
-             if (oldPeer.pc) { try { oldPeer.pc.close(); } catch(e){} }
-             peersRef.current.splice(oldPeerRefIndex, 1);
+          if (existingPeerIdx !== -1) {
+             const existingPeer = peersRef.current[existingPeerIdx];
+             if (existingPeer.name === 'Participant' && msg.name && msg.name !== 'Participant') {
+                existingPeer.name = msg.name;
+                if (msg.userId) existingPeer.userId = msg.userId;
+                setPeers(prev => prev.map(p => p.peerID === msg.peerId ? { ...p, name: msg.name, userId: msg.userId || p.userId } : p));
+             }
+             return;
           }
           
           peersRef.current.push({ peerID: msg.peerId, pc: null, name: msg.name, userId: msg.userId });
