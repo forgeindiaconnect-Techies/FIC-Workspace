@@ -384,8 +384,8 @@ const MeetingApp = () => {
     audioDestinationRef.current = null;
   };
 
-  const handleStartAI = async (meetingOverride = null) => {
-     if (aiAssistantActive) return;
+  const handleStartAI = async (meetingOverride = null, force = false) => {
+     if (aiAssistantActive && !force) return;
      try {
         const activeMeeting = meetingOverride || meetingMetadata;
         const meetingId = activeMeeting?._id || activeMeeting?.meetingId || activeMeeting?.joinCode || id;
@@ -833,7 +833,7 @@ const m = Math.floor((seconds % 3600) / 60);
           
           if (existingPeerIdx !== -1) {
              const existingPeer = peersRef.current[existingPeerIdx];
-             if (existingPeer.name === 'Participant' && msg.name && msg.name !== 'Participant') {
+             if ((!existingPeer.name || existingPeer.name === 'Participant') && msg.name && msg.name !== 'Participant') {
                 existingPeer.name = msg.name;
                 if (msg.userId) existingPeer.userId = msg.userId;
                 setPeers(prev => prev.map(p => p.peerID === msg.peerId ? { ...p, name: msg.name, userId: msg.userId || p.userId } : p));
@@ -1488,7 +1488,7 @@ const m = Math.floor((seconds % 3600) / 60);
                         <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn) ? 'hidden' : ''} mirror`} />
                         {(!videoOn) && (
                           <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
-                            <span className="text-6xl md:text-8xl font-black text-white">{auth.user?.charAt(0).toUpperCase()}</span>
+                            <span className="text-6xl md:text-8xl font-black text-white">{auth.user?.charAt(0)?.toUpperCase()}</span>
                           </div>
                         )}
                         <div className="absolute bottom-4 left-4 right-4 z-20">
@@ -1570,7 +1570,7 @@ const m = Math.floor((seconds % 3600) / 60);
                         <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full ${isScreenSharing ? 'object-contain' : 'object-cover'} ${(!videoOn && !isScreenSharing) ? 'hidden' : ''} ${!isScreenSharing ? 'mirror' : ''}`} />
                         {(!videoOn && !isScreenSharing) && (
                           <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
-                            <span className="text-xl font-black text-white">{auth.user?.charAt(0).toUpperCase()}</span>
+                            <span className="text-xl font-black text-white">{auth.user?.charAt(0)?.toUpperCase()}</span>
                           </div>
                         )}
                         <div className="absolute bottom-1.5 left-1.5 right-1.5 z-20">
@@ -1766,7 +1766,7 @@ const m = Math.floor((seconds % 3600) / 60);
                   ) : (
                      <div className="flex-1 overflow-y-auto p-2">
                         <div className="flex items-center gap-3 p-3 mb-1">
-                           <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">{auth.user?.charAt(0).toUpperCase()}</div>
+                           <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">{auth.user?.charAt(0)?.toUpperCase()}</div>
                            <div className="flex-1">
                               <p className="text-sm font-bold text-white">{auth.user} (You)</p>
                               <p className="text-[10px] font-black uppercase text-blue-400">{isHost ? 'Host' : 'Attendee'}</p>
@@ -1774,7 +1774,7 @@ const m = Math.floor((seconds % 3600) / 60);
                         </div>
                         {peers.map(p => (
                            <div key={p.peerID} className="flex items-center gap-3 p-3 hover:bg-slate-900 rounded-xl transition-colors">
-                              <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold">{p.name?.charAt(0).toUpperCase()}</div>
+                              <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold">{p.name?.charAt(0)?.toUpperCase()}</div>
                               <div className="flex-1">
                                  <p className="text-sm font-bold text-white">{p.name}</p>
                                  <p className="text-[10px] font-black uppercase text-slate-500">{p.name === 'Forge India Connect AI' ? 'AI Bot' : (() => { const hostId = meetingMetadata?.host?._id?.toString?.() || meetingMetadata?.host?._id || meetingMetadata?.host?.toString?.(); return hostId && p.userId === hostId ? 'Host' : 'Attendee'; })()}</p>
@@ -1822,7 +1822,7 @@ const m = Math.floor((seconds % 3600) / 60);
                   <span className={`text-[9px] md:text-[10px] font-black tracking-widest uppercase hidden md:block ${isRecording ? 'text-red-400' : 'text-slate-400'}`}>{isRecording ? 'Stop Rec' : 'Record'}</span>
                </button>
 
-               <button onClick={handleStartAI} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0">
+               <button onClick={() => handleStartAI(null, true)} className="flex flex-col items-center gap-1 w-11 md:w-[60px] shrink-0">
                   <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all ${aiAssistantActive ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
                      <Wand2 size={18} />
                   </div>
