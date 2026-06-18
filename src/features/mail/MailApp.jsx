@@ -98,11 +98,12 @@ const MailApp = () => {
 
       const auth = JSON.parse(localStorage.getItem('auth') || '{}');
       const email = auth.email || auth.user?.email || '';
+      const token = auth.token || auth.user?.token || localStorage.getItem('token');
       if (!email) {
         console.warn('[Mail] No email found in auth, skipping WebSocket connection');
         return;
       }
-      const wsUrl = getSocketUrl().replace('http', 'ws') + `/ws/mail?email=${encodeURIComponent(email)}`;
+      const wsUrl = getSocketUrl().replace('http', 'ws') + `/ws/mail?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token || '')}`;
       const socket = new WebSocket(wsUrl);
       mailSocketRef.current = socket;
 

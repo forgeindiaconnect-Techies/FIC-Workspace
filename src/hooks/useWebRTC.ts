@@ -137,7 +137,8 @@ export const useWebRTC = ({
 
     const PeerConnection = getRTCPeerConnection();
     const pc = new PeerConnection({
-      iceServers: iceServersRef.current
+      iceServers: iceServersRef.current,
+      bundlePolicy: 'max-bundle'
     });
 
     // Add local camera and microphone tracks safely
@@ -171,16 +172,15 @@ export const useWebRTC = ({
     };
 
     pc.onnegotiationneeded = async () => {
-      // NOTE: shouldInitiateOfferRef logic is in MeetingApp, but here we just prevent tight loops
       if (isNegotiatingRef.current.get(peerId)) return; // prevent loop
-      if (pc.signalingState !== 'stable') return; // critical guard against loop
-      
       isNegotiatingRef.current.set(peerId, true);
+      
       try {
-        const offer = await pc.createOffer();
-        if (pc.signalingState !== 'stable') return; // check again after await
+        (pc as any).makingOffer = true;
+        await pc.setLocalDescription();
+        const offer = pc.localDescription;
+        if (!offer) return;
         
-        await pc.setLocalDescription(offer);
         const screenTrack = screenStreamRef.current?.getVideoTracks()[0];
         const screenTransceiver = screenTrack ? pc.getTransceivers().find((t: RTCRtpTransceiver) => t.sender.track === screenTrack) : undefined;
         socketRef.current?.send(JSON.stringify({
@@ -195,8 +195,14 @@ export const useWebRTC = ({
           }
         }));
       } catch (e) {
-        console.error('Negotiation error:', e);
+        if (e instanceof DOMException && e.name === 'InvalidStateError') {
+           // Expected during glare/perfect negotiation rollback
+           console.log('Negotiation rollback (glare handling).');
+        } else {
+           console.error('Negotiation error:', e);
+        }
       } finally {
+        (pc as any).makingOffer = false;
         isNegotiatingRef.current.set(peerId, false);
       }
     };

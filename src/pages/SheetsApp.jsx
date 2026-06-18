@@ -17,7 +17,11 @@ const SheetsApp = () => {
 
   const fetchSheets = async () => {
     try {
-      const response = await fetch(getApiUrl(`/api/docs/${workspaceId}?type=Sheet`));
+      const response = await fetch(getApiUrl(`/api/docs/${workspaceId}?type=Sheet`), {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
       const data = await response.json();
       if (response.ok) setSheets(data);
     } catch (err) {
@@ -35,7 +39,10 @@ const SheetsApp = () => {
     try {
       const response = await fetch(getApiUrl('/api/docs/create'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({
           workspaceId,
           owner: auth.user || 'User',
@@ -61,7 +68,10 @@ const SheetsApp = () => {
     try {
       const response = await fetch(getApiUrl(`/api/docs/${activeSheet._id}`), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({ content: activeSheet.content, title: activeSheet.title, lastModified: new Date() })
       });
       if (response.ok) {

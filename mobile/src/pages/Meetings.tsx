@@ -431,7 +431,14 @@ export default function Meetings() {
     setRemotePeers(prev => {
       const merged = new Map<string, RemotePeer>();
       prev.forEach(peer => merged.set(peer.id, peer));
-      peers.forEach(peer => merged.set(peer.id, { ...merged.get(peer.id), ...peer }));
+      peers.forEach(peer => {
+        const existing = merged.get(peer.id);
+        const updated = { ...existing, ...peer };
+        if (!peer.name || peer.name === 'Participant') {
+          updated.name = existing?.name || 'Participant';
+        }
+        merged.set(peer.id, updated);
+      });
       return Array.from(merged.values());
     });
   }, []);
@@ -542,6 +549,7 @@ export default function Meetings() {
     console.log(`[WebRTC] ICE servers (${dynamicIceServersRef.current?.length || 0}):`, JSON.stringify(dynamicIceServersRef.current?.map((s: any) => s.urls)));
     const pc = new rtcClass({
       iceServers: dynamicIceServersRef.current,
+      bundlePolicy: 'max-bundle'
     });
 
     peerConnectionsRef.current.set(targetPeerId, pc);
@@ -946,12 +954,30 @@ export default function Meetings() {
           console.log('[Signaling] Received:', msg.type);
           if (msg.type === 'joined') {
             peerIdRef.current = msg.peerId;
-            const peers = (msg.existingPeers || [])
+            const rawPeers = msg.existingPeers || [];
+            const deduplicatedPeers: any[] = [];
+            for (const p of rawPeers) {
+               if (p.userId && localUserId && p.userId === localUserId) continue;
+               if (!p.userId && p.name && user?.name && p.name === user?.name && p.name !== 'Participant') continue;
+               
+               if (p.name && p.name !== 'Participant') {
+                  const existingIdx = deduplicatedPeers.findIndex((dp: any) => dp.name === p.name);
+                  if (existingIdx !== -1) {
+                     deduplicatedPeers[existingIdx] = p;
+                  } else {
+                     deduplicatedPeers.push(p);
+                  }
+               } else {
+                  deduplicatedPeers.push(p);
+               }
+            }
+
+            const peers = deduplicatedPeers
               .filter((p: any) => String(p.userId || '') !== localUserId)
               .map((p: any) => {
                 const id = peerKeyFor(p);
                 if (p.peerId) remotePeerKeyRef.current.set(p.peerId, id);
-                return { id, peerId: p.peerId, userId: p.userId, name: p.name };
+                return { id, peerId: p.peerId, userId: p.userId, name: p.name || 'Participant' };
               });
             mergeRemotePeers(peers);
             sendSignal('media-state', { audioEnabled: !isMuted, videoEnabled: !isVideoOff });
@@ -994,13 +1020,25 @@ export default function Meetings() {
           if (msg.type === 'peer-joined') {
             const id = peerKeyFor(msg);
             if (msg.peerId) remotePeerKeyRef.current.set(msg.peerId, id);
+            
+            // Deduplicate ghost connection
+            if ((msg.userId && localUserId && msg.userId === localUserId) || (!msg.userId && msg.name && user?.name && msg.name === user.name && msg.name !== 'Participant')) {
+               return; // Skip connecting to our own ghost
+            }
+
             if (String(msg.userId || '') !== localUserId) {
-              setRemotePeers(prev => [...prev.filter(p => p.id !== id), { id, peerId: msg.peerId, userId: msg.userId, name: msg.name }]);
+              setRemotePeers(prev => {
+                const filteredPrev = prev.filter(p => !(
+                  (msg.userId && p.userId === msg.userId) || 
+                  (!msg.userId && p.name === msg.name && msg.name && msg.name !== 'Participant')
+                ));
+                return [...filteredPrev.filter(p => p.id !== id), { id, peerId: msg.peerId, userId: msg.userId, name: msg.name || 'Participant' }];
+              });
               const createPC = createPeerConnectionRef.current;
               if (createPC && msg.peerId) {
                 const shouldOffer = shouldInitiateOfferRef.current(msg.peerId);
                 console.log(`[WebRTC] PC for new peer ${msg.peerId}, shouldOffer=${shouldOffer}, myPeerId=${peerIdRef.current}`);
-                createPC(msg.peerId, { id, peerId: msg.peerId, userId: msg.userId, name: msg.name }, shouldOffer)
+                createPC(msg.peerId, { id, peerId: msg.peerId, userId: msg.userId, name: msg.name || 'Participant' }, shouldOffer)
                   .then((pc: any) => {
                     if (pc && !shouldOffer) {
                       setTimeout(async () => {

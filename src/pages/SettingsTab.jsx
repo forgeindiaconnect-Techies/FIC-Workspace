@@ -8,6 +8,11 @@ import {
 } from 'lucide-react';
 
 const SettingsTab = () => {
+  const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+  const profileAvatar = auth.avatarUrl || auth.profilePicture;
+  const profileName = auth.user || auth.name || 'User';
+  const profileInitial = profileName.charAt(0).toUpperCase();
+
   const [activeTab, setActiveTab] = useState('Meeting');
   const [settings, setSettings] = useState({
     autoRecord: false,
@@ -96,7 +101,11 @@ const SettingsTab = () => {
                           <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-zinc-100 dark:border-white/5 shadow-sm flex items-center gap-8">
                              <div className="relative group cursor-pointer">
                                 <div className="w-24 h-24 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-2xl font-black text-zinc-400 overflow-hidden border-4 border-white dark:border-zinc-800 shadow-xl">
-                                   S
+                                   {profileAvatar ? (
+                                     <img src={profileAvatar} alt={profileName} className="w-full h-full object-cover" />
+                                   ) : (
+                                     profileInitial
+                                   )}
                                 </div>
                                 <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
                                    <Camera size={24} />

@@ -14,6 +14,11 @@ const MeetingLayout = ({ children }) => {
   const navigate = useNavigate();
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
 
+  const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+  const profileAvatar = auth.avatarUrl || auth.profilePicture;
+  const profileName = auth.user || auth.name || 'User';
+  const profileInitial = profileName.charAt(0).toUpperCase();
+
   const handleLogout = () => {
     localStorage.removeItem('auth');
     localStorage.removeItem('token');
@@ -59,7 +64,13 @@ const MeetingLayout = ({ children }) => {
            <div className="w-px h-6 bg-zinc-200 dark:bg-white/10 mx-1" />
 
            <div className="flex items-center gap-3 pl-2">
-              <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-xs font-black">S</div>
+              <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-xs font-black overflow-hidden shrink-0">
+                {profileAvatar ? (
+                  <img src={profileAvatar} alt={profileName} className="w-full h-full object-cover" />
+                ) : (
+                  profileInitial
+                )}
+              </div>
               <button 
                 onClick={() => setIsSwitcherOpen(true)}
                 className="p-2 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-lg transition-all text-zinc-500"
