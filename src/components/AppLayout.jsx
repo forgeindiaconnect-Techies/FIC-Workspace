@@ -31,16 +31,16 @@ export const AppSwitcher = ({ workspaceId }) => {
   }, []);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative w-full">
       <div
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-3 px-4 py-2 rounded-2xl transition-all cursor-pointer ${open ? 'bg-emerald-50 text-emerald-600 shadow-inner' : 'hover:bg-slate-50 text-slate-400 hover:text-slate-600'}`}
+        className={`w-full flex items-center gap-3 px-3 py-2 rounded-2xl transition-all cursor-pointer ${open ? 'bg-emerald-50 text-emerald-600 shadow-inner' : 'hover:bg-slate-50 text-slate-400 hover:text-slate-600'}`}
       >
-        <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${open ? 'bg-emerald-500 text-white rotate-90 shadow-lg' : 'bg-slate-100'}`}>
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all ${open ? 'bg-emerald-500 text-white rotate-90 shadow-lg' : 'bg-slate-100'}`}>
           <Grid size={18} strokeWidth={2.5} />
         </div>
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] hidden lg:block">Launchpad</span>
-        <ChevronDown size={14} className={`transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] hidden lg:block flex-1 text-left">Launchpad</span>
+        <ChevronDown size={14} className={`transition-transform duration-300 hidden lg:block shrink-0 ${open ? 'rotate-180' : ''}`} />
       </div>
 
       <AnimatePresence>
@@ -114,16 +114,18 @@ export const SidebarProfile = () => {
   };
 
   return (
-    <div className="p-4 mt-auto border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-white dark:bg-zinc-900 shrink-0">
-      <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold overflow-hidden shrink-0">
-          {profileAvatar ? <img src={profileAvatar} className="w-full h-full object-cover" /> : profileInitial}
-        </div>
-        <div className="text-sm font-bold text-zinc-900 dark:text-white truncate max-w-[80px]">{profileName}</div>
-      </div>
-      <div className="flex items-center gap-2">
+    <div className="p-4 mt-auto border-t border-zinc-100 dark:border-zinc-800 flex flex-col gap-2 bg-white dark:bg-zinc-900 shrink-0">
+      <div className="w-full mb-1">
         <AppSwitcher workspaceId={workspaceId} />
-        <button onClick={handleLogout} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all" title="Logout">
+      </div>
+      <div className="flex items-center justify-between w-full">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold overflow-hidden shrink-0">
+            {profileAvatar ? <img src={profileAvatar} className="w-full h-full object-cover" /> : profileInitial}
+          </div>
+          <div className="text-sm font-bold text-zinc-900 dark:text-white truncate max-w-[110px]">{profileName}</div>
+        </div>
+        <button onClick={handleLogout} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all shrink-0" title="Logout">
           <LogOut size={16} />
         </button>
       </div>
