@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import AppLayout from '../components/AppLayout';
+import AppLayout, { SidebarProfile } from '../components/AppLayout';
 import { Presentation, Search, MoreVertical, Upload, Share2, Download, Play, Plus, Type, Image as ImageIcon, Layout, Video, Settings2, Loader2, Sparkles, Wand2, X, ChevronRight, ChevronLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import pptxgen from 'pptxgenjs';
@@ -478,6 +478,7 @@ const ShowApp = () => {
                 <Share2 size={16} /> Shared with me
               </button>
             </div>
+            <SidebarProfile />
           </div>
 
           {/* Main Content */}

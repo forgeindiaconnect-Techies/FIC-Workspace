@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getApiUrl } from '../api';
-import AppLayout from '../components/AppLayout';
+import AppLayout, { SidebarProfile } from '../components/AppLayout';
 import { FileSpreadsheet, Search, MoreVertical, Plus, Share2, Download, Printer, Bold, Italic, Underline, DollarSign, Percent, Trash2, Loader2, Save } from 'lucide-react';
 
 const SheetsApp = () => {
@@ -184,6 +184,7 @@ const SheetsApp = () => {
                    <Share2 size={18} /> Shared Sheets
                 </button>
              </div>
+             <SidebarProfile />
           </div>
 
           {/* Main Content */}

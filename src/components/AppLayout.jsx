@@ -97,6 +97,40 @@ export const AppSwitcher = ({ workspaceId }) => {
   );
 };
 
+/* ─── Sidebar Profile Component ──────────────────────── */
+export const SidebarProfile = () => {
+  const { workspaceId } = useParams();
+  const navigate = useNavigate();
+  const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+  const profileName = auth.user || auth.name || 'Account';
+  const profileAvatar = auth.avatarUrl || auth.profilePicture;
+  const profileInitial = profileName?.charAt(0)?.toUpperCase() || 'A';
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth');
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    navigate('/');
+  };
+
+  return (
+    <div className="p-4 mt-auto border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-white dark:bg-zinc-900 shrink-0">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold overflow-hidden shrink-0">
+          {profileAvatar ? <img src={profileAvatar} className="w-full h-full object-cover" /> : profileInitial}
+        </div>
+        <div className="text-sm font-bold text-zinc-900 dark:text-white truncate max-w-[80px]">{profileName}</div>
+      </div>
+      <div className="flex items-center gap-2">
+        <AppSwitcher workspaceId={workspaceId} />
+        <button onClick={handleLogout} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all" title="Logout">
+          <LogOut size={16} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 /* ─── Standalone App Layout ─────────────────────────── */
 const AppLayout = ({ children, appName, appIcon: AppIcon, appColor = '#00C17E' }) => {
   const { workspaceId } = useParams();

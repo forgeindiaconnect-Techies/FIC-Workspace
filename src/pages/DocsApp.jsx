@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getApiUrl } from '../api';
-import AppLayout from '../components/AppLayout';
+import AppLayout, { SidebarProfile } from '../components/AppLayout';
 import { 
   FileText, Plus, Search, MoreVertical, Upload, Share2, Download, Printer, 
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -641,6 +641,7 @@ const DocsApp = () => {
                 <Share2 size={18} /> Shared Space
               </button>
             </div>
+            <SidebarProfile />
           </div>
 
           {/* Main Content */}
