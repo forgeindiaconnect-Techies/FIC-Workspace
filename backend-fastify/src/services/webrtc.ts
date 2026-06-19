@@ -4,6 +4,8 @@ import { Participant } from '../models/Participant';
 import { User } from '../models/User';
 import { Meeting } from '../models/Meeting';
 import { Types } from 'mongoose';
+import { stopAIBot } from './aiBot';
+import { summarizeMeeting } from './summarizer';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'nexus-jwt-secret-key';
 
@@ -237,12 +239,48 @@ async function cleanupPeer(roomId: string, pid: string) {
 
   broadcastToRoom(roomId, pid, { type: 'peer-left', peerId: pid });
 
-  await Participant.findOneAndUpdate(
-    { meetingId: roomId, userId: pid },
-    { leftAt: new Date() }
-  ).catch((e) => {
+  const baseUserId = pid.split('_')[0];
+
+  try {
+    let meetingQuery: any = { _id: roomId };
+    if (!Types.ObjectId.isValid(roomId)) {
+      meetingQuery = { joinCode: roomId };
+    }
+
+    const meeting = await Meeting.findOne(meetingQuery);
+    if (!meeting) return;
+
+    await Participant.findOneAndUpdate(
+      { meetingId: meeting._id, userId: baseUserId, leftAt: { $exists: false } },
+      { leftAt: new Date() }
+    );
+
+    const aiBotUser = await User.findOne({ email: 'ai-assistant@nexus.app' });
+    const query: any = {
+      meetingId: meeting._id,
+      leftAt: { $exists: false }
+    };
+    if (aiBotUser) {
+      query.userId = { $ne: aiBotUser._id };
+    }
+
+    const activeParticipantCount = await Participant.countDocuments(query);
+
+    if (activeParticipantCount === 0 && meeting.status !== 'ended') {
+      meeting.status = 'ended';
+      await meeting.save();
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      if (meeting.aiEnabled) {
+        await stopAIBot(meeting._id.toString());
+      } else {
+        summarizeMeeting(meeting._id.toString()).catch((err) => {
+          console.warn('[WebRTC] Summary generation failed:', err.message);
+        });
+      }
+    }
+  } catch (e) {
     console.error('[WebRTC] cleanupPeer DB update error:', e);
-  });
+  }
 }
 
 // Heartbeat mechanism to reap dead sockets
