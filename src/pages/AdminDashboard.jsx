@@ -29,7 +29,10 @@ const AdminOverview = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch(getApiUrl(`/api/members/${workspaceId}`));
+      const token = localStorage.getItem('token');
+      const response = await fetch(getApiUrl(`/api/members/${workspaceId}`), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const data = await response.json();
       if (response.ok) setUsers(data);
     } catch (err) {
@@ -41,24 +44,19 @@ const AdminOverview = () => {
 
   useEffect(() => {
     fetchUsers();
-    
-    // Fetch actual domain from tenant settings
-    fetch(getApiUrl('/api/tenants'))
-      .then(res => res.json())
-      .then(data => {
-        const tenant = data.find(t => t.workspaceId === workspaceId);
-        if (tenant && tenant.domain) setActiveDomain(tenant.domain);
-      })
-      .catch(err => console.error('Failed to fetch tenant domain:', err));
   }, [workspaceId]);
 
   const handleAddUser = async (e) => {
     e.preventDefault();
     setAdding(true);
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(getApiUrl('/api/members/add'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           workspaceId,
           name: newUser.name,

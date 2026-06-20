@@ -18,7 +18,10 @@ const SuperAdmin = () => {
 
   const fetchTenants = async () => {
     try {
-      const response = await fetch(getApiUrl('/api/tenants'));
+      const token = localStorage.getItem('token');
+      const response = await fetch(getApiUrl('/api/superadmin/tenants'), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const data = await response.json();
       if (response.ok) setCompanies(data);
     } catch (err) {
