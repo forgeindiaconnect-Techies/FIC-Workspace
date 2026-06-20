@@ -200,6 +200,10 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   // 2. RESOLVE JOIN CODE -> MEETING DOC
   fastify.get('/join/:code', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      if (request.user?.role === 'demo') {
+        return reply.code(403).send({ error: 'Demo accounts cannot join meetings.' });
+      }
+
       const { code } = request.params as any;
       const { passcode } = request.query as any;
       
@@ -395,6 +399,10 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   // 3. FETCH SINGLE MEETING WITH PARTICIPANT COUNT
   fastify.get('/:id', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      if (request.user?.role === 'demo') {
+        return reply.code(403).send({ error: 'Demo accounts cannot join meetings.' });
+      }
+
       const { id } = request.params as any;
       if (!Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: 'Invalid meeting ID format.' });

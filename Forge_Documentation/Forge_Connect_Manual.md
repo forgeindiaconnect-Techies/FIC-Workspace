@@ -12,6 +12,15 @@ Forge Connect is designed to unify team collaboration, document management, unif
 
 ---
 
+## 💻 Technologies Used
+The Forge India Workspace Web Application is built on a modern, high-performance web stack:
+- **Frontend**: React 19, Vite (Build Tool), TailwindCSS v4 (Styling), Zustand (State Management), Framer Motion (Animations).
+- **Backend & Real-Time**: Node.js, Fastify (API Server), Socket.io (WebSockets for chat/presence).
+- **Database & Storage**: MongoDB (Mongoose ORM) for persistent data, Cloudinary/AWS for media.
+- **Core Integrations**: WebRTC & Simple-Peer (Video/Audio), TipTap (Rich-Text Docs), React Data Grid (Sheets), and Google Generative AI / Groq / OpenAI (Meeting summarization and AI assistants).
+
+---
+
 ## 1. Mail (Secure Email Application)
 **Endpoint Route**: `/w/:workspaceId/mail`
 

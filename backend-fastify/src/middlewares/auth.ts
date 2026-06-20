@@ -44,6 +44,11 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       role: decoded.role,
       workspaceId: decoded.workspaceId
     };
+
+    // Block write/edit operations for Demo Account
+    if (decoded.role === 'demo' && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method.toUpperCase())) {
+      return reply.code(403).send({ error: 'Demo accounts have read-only access.' });
+    }
   } catch (err: any) {
     console.error('JWT Verification failed! Error:', err.message);
     return reply.code(401).send({ error: 'Unauthorized: Session authentication failed.' });

@@ -1,10 +1,43 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { Mail, Video, MessageSquare, FileText, FileSpreadsheet, Presentation, Shield, Zap, Server, BarChart2, Layout, Users, ChevronRight, CheckCircle2, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Mail, Video, MessageSquare, FileText, FileSpreadsheet, Presentation, Shield, Zap, Server, BarChart2, Layout, Users, ChevronRight, CheckCircle2, Sparkles, Loader2 } from 'lucide-react';
 import LogoImage from '../assets/landing-logo.png';
 import AIEcosystemCircle from '../components/AIEcosystemCircle';
+import { getApiUrl } from '../api';
 
 const LandingPage = () => {
+  const navigate = useNavigate();
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  const startDemoAccount = async () => {
+    if (demoLoading) return;
+    setDemoLoading(true);
+    try {
+      const response = await fetch(getApiUrl('/api/auth/demo'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to start demo');
+
+      localStorage.setItem('token', data.accessToken || data.token);
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+      localStorage.setItem('auth', JSON.stringify({
+        role: data.user?.role || data.role,
+        user: data.user?.name || data.user,
+        email: data.user?.email || data.email,
+        workspaceId: data.user?.workspaceId || data.workspaceId,
+        avatarUrl: data.user?.avatarUrl
+      }));
+      
+      navigate(`/w/${data.user?.workspaceId || data.workspaceId || 'demo-workspace'}/mail`);
+    } catch (err) {
+      console.error('Demo account error:', err);
+      alert('Unable to start demo account right now. Please try again later.');
+    } finally {
+      setDemoLoading(false);
+    }
+  };
   return (
     <div className="min-h-screen w-full bg-slate-50 font-['Inter',sans-serif] text-slate-900">
       
@@ -43,9 +76,9 @@ const LandingPage = () => {
             Unify your communication, collaboration, and document management in a single, secure platform designed for scale and reliability.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/login" className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 text-white px-8 py-3.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors text-base shadow-sm">
-              Start Free Trial <ChevronRight size={18} />
-            </Link>
+            <button onClick={startDemoAccount} disabled={demoLoading} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 text-white px-8 py-3.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors text-base shadow-sm disabled:opacity-70 disabled:cursor-not-allowed">
+              {demoLoading ? <Loader2 size={18} className="animate-spin" /> : 'Start Free Trial'} {!demoLoading && <ChevronRight size={18} />}
+            </button>
             <button className="w-full sm:w-auto bg-white text-slate-700 border border-slate-300 px-8 py-3.5 rounded-lg font-semibold hover:bg-slate-50 transition-colors text-base shadow-sm">
               Contact Sales
             </button>
@@ -198,9 +231,9 @@ const LandingPage = () => {
             Join thousands of organizations that rely on Forge to power their daily operations. Get started today or contact our sales team for a custom deployment plan.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/login" className="w-full sm:w-auto bg-white text-blue-700 px-8 py-3.5 rounded-lg font-bold hover:bg-blue-50 transition-colors text-base shadow-lg">
-              Start Your Free Trial
-            </Link>
+            <button onClick={startDemoAccount} disabled={demoLoading} className="w-full sm:w-auto bg-white text-blue-700 px-8 py-3.5 rounded-lg font-bold hover:bg-blue-50 transition-colors text-base shadow-lg disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+              {demoLoading ? <Loader2 size={18} className="animate-spin" /> : 'Start Your Free Trial'}
+            </button>
             <button className="w-full sm:w-auto bg-blue-600 border border-blue-500 text-white px-8 py-3.5 rounded-lg font-semibold hover:bg-blue-800 transition-colors text-base shadow-sm">
               Contact Sales
             </button>

@@ -158,27 +158,16 @@ async function bootstrap() {
   await server.register(statusRoutes, { prefix: '/api/status' });
   await server.register(threadsRoutes, { prefix: '/api/threads' });
 
-  // 3b. ICE / TURN server config endpoint (public  returns STUN + Metered TURN via REST API)
+  // 3b. ICE / TURN server config endpoint
   server.get('/api/meet/ice-servers', async () => {
-    try {
-      const apiKey = process.env.TURN_API_KEY || '5b2b016149c3a46ecddbca3d89feffb889b2';
-      const meteredDomain = process.env.TURN_DOMAIN || 'meetspace.metered.live';
-      
-      const response = await fetch(`https://${meteredDomain}/api/v1/turn/credentials?apiKey=${apiKey}`);
-      if (response.ok) {
-        const iceServers = await response.json();
-        return iceServers;
-      } else {
-        server.log.warn(`Metered API error: ${response.status}`);
-      }
-    } catch (err: any) {
-      server.log.error(err, 'Metered TURN fetch failed:');
-    }
-    
-    // Fallback if the API call fails
     return [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
+      {
+        urls: "turn:free.expressturn.com:3478",
+        username: "000000002097290800",
+        credential: "XnOg5DVFwGY/30tgW+PnfhmXv0c="
+      }
     ];
   });
 

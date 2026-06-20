@@ -136,6 +136,56 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({ error: 'Failed to create subscription.', details: err.message });
     }
   });
+  // 1B. START DEMO ACCOUNT
+  fastify.post('/demo', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      if (!isMongoConnected()) {
+        return reply.code(503).send({ error: 'Database is not connected.' });
+      }
+
+      const email = 'demo@nexus.app';
+      const workspaceId = 'demo-workspace';
+
+      // Ensure demo-workspace Tenant exists
+      let tenant = await Tenant.findOne({ workspaceId });
+      if (!tenant) {
+        tenant = await Tenant.create({
+          name: 'Demo Workspace',
+          organisationName: 'Forge India Connect Demo',
+          workspaceId,
+          domain: 'demo.nexus.app',
+          adminEmail: email,
+          password: await bcrypt.hash('demo_password_123!@#', 10),
+          paymentStatus: 'active',
+          subscriptionTier: 'enterprise',
+          maxUsers: 99999,
+          subscriptionExpiryDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 10) // 10 years
+        });
+      }
+
+      // Ensure demo user exists
+      let user = await User.findOne({ email });
+      if (!user) {
+        user = await User.create({
+          name: 'Demo User',
+          email,
+          passwordHash: await bcrypt.hash('demo_password_123!@#', 10),
+          workspaceId,
+          role: 'demo',
+          avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=DemoUser`,
+          mfaEnabled: false,
+        });
+      } else if (user.role !== 'demo') {
+        user.role = 'demo';
+        await user.save();
+      }
+
+      const tokenBundle = await issueTokens(user);
+      return reply.code(200).send(tokenBundle);
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to create or login to demo account.', details: err.message });
+    }
+  });
 
   // 1. SIGNUP
   fastify.post('/signup', async (request: FastifyRequest, reply: FastifyReply) => {

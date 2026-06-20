@@ -372,11 +372,11 @@ export default function Meetings() {
 
   const configureCallAudio = React.useCallback(async () => {
     try {
-      const { setAudioModeAsync } = require('expo-audio');
-      await setAudioModeAsync({
+      const { Audio } = require('expo-av');
+      await Audio.setAudioModeAsync({
         allowsRecording: true,
-        playsInSilentMode: true,
-        interruptionMode: 'doNotMix',
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
         shouldRouteThroughEarpiece: false,
       });
     } catch (err) {
@@ -386,11 +386,11 @@ export default function Meetings() {
 
   const resetCallAudio = React.useCallback(async () => {
     try {
-      const { setAudioModeAsync } = require('expo-audio');
-      await setAudioModeAsync({
+      const { Audio } = require('expo-av');
+      await Audio.setAudioModeAsync({
         allowsRecording: false,
-        playsInSilentMode: true,
-        interruptionMode: 'mixWithOthers',
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
         shouldRouteThroughEarpiece: false,
       });
     } catch (err) {
@@ -508,11 +508,7 @@ export default function Meetings() {
     }
 
     const constraints = {
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
+      audio: true,
       video: !isVideoOff
         ? {
             facingMode: facing === 'front' ? 'user' : 'environment',
@@ -548,7 +544,17 @@ export default function Meetings() {
     const stream = await ensureLocalStream();
     console.log(`[WebRTC] ICE servers (${dynamicIceServersRef.current?.length || 0}):`, JSON.stringify(dynamicIceServersRef.current?.map((s: any) => s.urls)));
     const pc = new rtcClass({
-      iceServers: dynamicIceServersRef.current,
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        {
+          urls: "turn:free.expressturn.com:3478",
+          username: "000000002097290800",
+          credential: "XnOg5DVFwGY/30tgW+PnfhmXv0c="
+        },
+        ...(dynamicIceServersRef.current || [])
+      ],
       bundlePolicy: 'max-bundle'
     });
 
@@ -648,10 +654,8 @@ export default function Meetings() {
             incomingStream.getTracks().forEach((t: any) => {
               try { existingScreen.addTrack(t); } catch {}
             });
-            const MSClass = getMediaStreamClass();
-            const newStream = MSClass ? new MSClass(existingScreen.getTracks()) : existingScreen;
-            remoteScreenStreamsRef.current[peerKey] = newStream;
-            setRemoteScreenStreams(prev => ({ ...prev, [peerKey]: newStream }));
+            remoteScreenStreamsRef.current[peerKey] = existingScreen;
+            setRemoteScreenStreams(prev => ({ ...prev, [peerKey]: existingScreen }));
           } else {
             remoteScreenStreamsRef.current[peerKey] = incomingStream;
             setRemoteScreenStreams(prev => ({ ...prev, [peerKey]: incomingStream }));
@@ -662,10 +666,8 @@ export default function Meetings() {
             incomingStream.getTracks().forEach((t: any) => {
               try { existing.addTrack(t); } catch {}
             });
-            const MSClass = getMediaStreamClass();
-            const newStream = MSClass ? new MSClass(existing.getTracks()) : existing;
-            remoteStreamsRef.current[peerKey] = newStream;
-            setRemoteStreams(prev => ({ ...prev, [peerKey]: newStream }));
+            remoteStreamsRef.current[peerKey] = existing;
+            setRemoteStreams(prev => ({ ...prev, [peerKey]: existing }));
           } else {
             remoteStreamsRef.current[peerKey] = incomingStream;
             setRemoteStreams(prev => ({ ...prev, [peerKey]: incomingStream }));
@@ -1017,7 +1019,7 @@ export default function Meetings() {
               });
             mergeRemotePeers(peers);
           }
-          if (msg.type === 'peer-joined') {
+          if (msg.type === 'user-joined') {
             const id = peerKeyFor(msg);
             if (msg.peerId) remotePeerKeyRef.current.set(msg.peerId, id);
             
@@ -1058,7 +1060,7 @@ export default function Meetings() {
             }
             console.log('[Signaling] Peer joined:', msg.name);
           }
-          if (msg.type === 'peer-left') {
+          if (msg.type === 'user-left') {
             const id = peerKeyFor(msg);
             setRemotePeers(prev => prev.filter(p => p.id !== id && p.id !== msg.peerId && p.peerId !== msg.peerId && p.userId !== msg.peerId));
             // Auto-unpin if the pinned user left
@@ -1864,7 +1866,7 @@ export default function Meetings() {
         <View style={s.roomBody}>
 
           {/* VIDEO GRID */}
-          <View style={pinnedUser ? s.videoGridPinned : s.videoGrid}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={pinnedUser ? [s.videoGridPinned, { flex: undefined }] : [s.videoGrid, { flex: undefined }]}>
             {(() => {
               const totalTiles = displayPeers.length + 1;
               let tileStyle: ViewStyle = displayPeers.length === 0 ? s.videoTileFull : s.videoTileHalf;
@@ -2046,7 +2048,7 @@ export default function Meetings() {
               </View>
             )}
 
-          </View>
+          </ScrollView>
 
           {/* SIDE PANEL */}
           {sidePanel && (
@@ -2161,7 +2163,7 @@ export default function Meetings() {
           <TouchableOpacity style={[s.ctrlBtn, isSharing && s.ctrlBtnBlue]} onPress={async () => {
             if (!isSharing) {
               try {
-                const displayStream = await getDisplayMedia({ video: { displaySurface: 'browser' } });
+                const displayStream = await getDisplayMedia({ video: true });
                 setLocalScreenStream(displayStream);
                 setIsSharing(true);
                 
@@ -2176,22 +2178,10 @@ export default function Meetings() {
                     }));
                   }
                   
-                  peerConnectionsRef.current.forEach((pc: any, peerId: string) => {
-                    pc.addTrack(screenTrack, displayStream);
-                    pc.createOffer().then((offer: any) => {
-                      return pc.setLocalDescription(offer).then(() => {
-                        const screenSender = pc.getSenders().find((s: any) => s.track === screenTrack);
-                        const screenTransceiver = screenSender ? pc.getTransceivers().find((t: any) => t.sender === screenSender) : null;
-                        sendSignalRef.current('offer', { 
-                          targetPeerId: peerId, 
-                          sdp: offer, 
-                          isScreenShare: true,
-                          screenTrackId: screenTrack.id,
-                          screenMid: screenTransceiver?.mid,
-                          screenStreamId: displayStream.id
-                        });
-                      });
-                    }).catch((e: any) => console.warn('Renegotiation failed', e));
+                  peerConnectionsRef.current.forEach((pc: any) => {
+                    const senders = pc.getSenders?.() || [];
+                    const sender = senders.find((s: any) => s.track && s.track.kind === "video");
+                    if (sender && sender.replaceTrack) sender.replaceTrack(screenTrack).catch((e:any) => console.warn('replaceTrack failed:', e));
                   });
 
                   screenTrack.onended = () => {
@@ -2204,17 +2194,11 @@ export default function Meetings() {
                          data: { isScreenSharing: false }
                        }));
                      }
-                     peerConnectionsRef.current.forEach((pc: any, peerId: string) => {
-                        const senders = pc.getSenders();
-                        const screenSender = senders.find((s: any) => s.track === screenTrack);
-                        if (screenSender) {
-                          pc.removeTrack(screenSender);
-                          pc.createOffer().then((offer: any) => {
-                            return pc.setLocalDescription(offer).then(() => {
-                              sendSignalRef.current('offer', { targetPeerId: peerId, sdp: offer });
-                            });
-                          }).catch((e: any) => console.warn('Renegotiation failed', e));
-                        }
+                     const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
+                     peerConnectionsRef.current.forEach((pc: any) => {
+                        const senders = pc.getSenders?.() || [];
+                        const sender = senders.find((s: any) => s.track && s.track.kind === "video");
+                        if (sender && sender.replaceTrack && cameraTrack) sender.replaceTrack(cameraTrack).catch((e:any) => console.warn('replaceTrack failed:', e));
                      });
                   };
                 }
@@ -2239,17 +2223,11 @@ export default function Meetings() {
                    }));
                  }
                  
-                 peerConnectionsRef.current.forEach((pc: any, peerId: string) => {
-                    const senders = pc.getSenders();
-                    const screenSender = senders.find((s: any) => s.track === screenTrack);
-                    if (screenSender) {
-                      pc.removeTrack(screenSender);
-                      pc.createOffer().then((offer: any) => {
-                        return pc.setLocalDescription(offer).then(() => {
-                          sendSignalRef.current('offer', { targetPeerId: peerId, sdp: offer });
-                        });
-                      }).catch((e: any) => console.warn('Renegotiation failed', e));
-                    }
+                 const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
+                 peerConnectionsRef.current.forEach((pc: any) => {
+                    const senders = pc.getSenders?.() || [];
+                    const sender = senders.find((s: any) => s.track && s.track.kind === "video");
+                    if (sender && sender.replaceTrack && cameraTrack) sender.replaceTrack(cameraTrack).catch((e:any) => console.warn('replaceTrack failed:', e));
                  });
                }
             }
