@@ -1294,11 +1294,20 @@ const m = Math.floor((seconds % 3600) / 60);
                 if (cameraSender) cameraSendersRef.current.set(peerID, cameraSender);
               }
               if (cameraSender) {
-                cameraSender.replaceTrack(newVideoTrack).catch(e => console.warn("Failed to replace video track:", e));
+                cameraSender.replaceTrack(newVideoTrack).then(() => {
+                  pc.createOffer().then(offer => {
+                    pc.setLocalDescription(offer);
+                    if (sendWsRef.current) sendWsRef.current('offer', { targetPeerId: peerID, sdp: offer });
+                  }).catch(e => console.warn("Failed to create offer after replaceTrack:", e));
+                }).catch(e => console.warn("Failed to replace video track:", e));
               } else {
                 try {
                   const newSender = pc.addTrack(newVideoTrack, streamRef.current);
                   cameraSendersRef.current.set(peerID, newSender);
+                  pc.createOffer().then(offer => {
+                    pc.setLocalDescription(offer);
+                    if (sendWsRef.current) sendWsRef.current('offer', { targetPeerId: peerID, sdp: offer });
+                  }).catch(e => console.warn("Failed to create offer after addTrack:", e));
                 } catch (e) {
                   console.warn("Failed to add new video track:", e);
                 }

@@ -712,8 +712,10 @@ export default function Meetings() {
             incomingStream.getTracks().forEach((t: any) => {
               try { existingScreen.addTrack(t); } catch {}
             });
-            remoteScreenStreamsRef.current[peerKey] = existingScreen;
-            setRemoteScreenStreams(prev => ({ ...prev, [peerKey]: existingScreen }));
+            const MSClass = getMediaStreamClass();
+            const newStream = MSClass ? new MSClass(existingScreen.getTracks()) : existingScreen;
+            remoteScreenStreamsRef.current[peerKey] = newStream;
+            setRemoteScreenStreams(prev => ({ ...prev, [peerKey]: newStream }));
           } else {
             remoteScreenStreamsRef.current[peerKey] = incomingStream;
             setRemoteScreenStreams(prev => ({ ...prev, [peerKey]: incomingStream }));
@@ -724,8 +726,10 @@ export default function Meetings() {
             incomingStream.getTracks().forEach((t: any) => {
               try { existing.addTrack(t); } catch {}
             });
-            remoteStreamsRef.current[peerKey] = existing;
-            setRemoteStreams(prev => ({ ...prev, [peerKey]: existing }));
+            const MSClass = getMediaStreamClass();
+            const newStream = MSClass ? new MSClass(existing.getTracks()) : existing;
+            remoteStreamsRef.current[peerKey] = newStream;
+            setRemoteStreams(prev => ({ ...prev, [peerKey]: newStream }));
           } else {
             remoteStreamsRef.current[peerKey] = incomingStream;
             setRemoteStreams(prev => ({ ...prev, [peerKey]: incomingStream }));
@@ -920,10 +924,19 @@ export default function Meetings() {
                     );
                     
                     if (cameraSender && cameraSender.replaceTrack) {
-                      cameraSender.replaceTrack(newVideoTrack).catch((e: any) => console.warn("Failed to replace video track:", e));
+                      cameraSender.replaceTrack(newVideoTrack).then(() => {
+                         pc.createOffer().then((offer: any) => {
+                            pc.setLocalDescription(offer);
+                            sendSignal('offer', { targetPeerId: peerId, sdp: offer });
+                         }).catch((e: any) => console.warn("Renegotiation failed:", e));
+                      }).catch((e: any) => console.warn("Failed to replace video track:", e));
                     } else if (pc.addTrack) {
                       // Fallback if no sender exists (shouldn't happen usually)
                       pc.addTrack(newVideoTrack, stream);
+                      pc.createOffer().then((offer: any) => {
+                         pc.setLocalDescription(offer);
+                         sendSignal('offer', { targetPeerId: peerId, sdp: offer });
+                      }).catch((e: any) => console.warn("Renegotiation failed:", e));
                     }
                   } catch (err) {
                     console.warn("Error updating PC track:", err);
