@@ -12,7 +12,8 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') }); // Fallback if run from microservices/sockets
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'nexus-jwt-secret-key';
 
@@ -272,6 +273,14 @@ wssCalls.on('connection', (ws) => {
       const targetWs = onlineCallUsers.get(targetEmail);
       if (targetWs) {
         sendJson(targetWs, { type: 'call_declined', calleeEmail: registeredEmail });
+      }
+      return;
+    }
+
+    if (type === 'call_ended') {
+      const targetWs = onlineCallUsers.get(targetEmail);
+      if (targetWs) {
+        sendJson(targetWs, { type: 'call_ended', fromEmail: registeredEmail });
       }
       return;
     }

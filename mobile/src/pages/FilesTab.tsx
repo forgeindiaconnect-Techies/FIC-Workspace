@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Modal, TextInput, Platform } from 'react-native';
 import tw from 'twrnc';
 import { api, getSession } from '../lib/api';
 import { FolderGit2, GitBranch, Rocket, BookOpen, Workflow, KeyRound, Plus, X, Search, ChevronRight, MoreVertical, Trash2 } from 'lucide-react-native';
@@ -22,6 +22,14 @@ export default function FilesTab() {
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Project Details State
+  const [selectedProject, setSelectedProject] = useState<any>(null);
+  const [showResourceModal, setShowResourceModal] = useState(false);
+  const [resourceType, setResourceType] = useState('gitRepos'); // gitRepos, deployments, documentation
+  const [resourceName, setResourceName] = useState('');
+  const [resourceUrl, setResourceUrl] = useState('');
+  const [isAddingResource, setIsAddingResource] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -63,6 +71,17 @@ export default function FilesTab() {
   };
 
   const handleDeleteProject = async (id: string) => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Delete Project? Are you sure?')) {
+        try {
+          await api.projects.deleteProject(id);
+          fetchProjects();
+        } catch (e) {
+          console.warn('Failed to delete', e);
+        }
+      }
+      return;
+    }
     Alert.alert('Delete Project', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
@@ -72,6 +91,28 @@ export default function FilesTab() {
         } catch {}
       }}
     ]);
+  };
+
+  const handleAddResource = async () => {
+    if (!resourceName.trim() || !resourceUrl.trim() || !selectedProject) return;
+    setIsAddingResource(true);
+    try {
+      await api.projects.addSubResource(selectedProject._id, resourceType, {
+        name: resourceName,
+        url: resourceUrl
+      });
+      setShowResourceModal(false);
+      setResourceName('');
+      setResourceUrl('');
+      // Optimistic update
+      fetchProjects();
+      const updatedProject = await api.projects.getProject(workspaceId, selectedProject._id);
+      setSelectedProject(updatedProject);
+    } catch (e) {
+      Alert.alert('Error', 'Could not add details');
+    } finally {
+      setIsAddingResource(false);
+    }
   };
 
   const filteredProjects = projects.filter(p => p.name?.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -104,13 +145,17 @@ export default function FilesTab() {
         ) : (
           filteredProjects.map(project => {
             const badge = STATUS_BADGES[project.status] || STATUS_BADGES.active;
-            const itemsCount = (project.gitRepos?.length || 0) + (project.deployments?.length || 0) + (project.documentation?.length || 0);
             
             return (
-              <View key={project._id} style={tw`bg-white p-4 rounded-2xl mb-4 border border-gray-100 shadow-sm`}>
+              <TouchableOpacity 
+                key={project._id} 
+                activeOpacity={0.7}
+                onPress={() => setSelectedProject(project)}
+                style={tw`bg-white p-4 rounded-2xl mb-4 border border-gray-100 shadow-sm`}
+              >
                 <View style={tw`flex-row justify-between items-start mb-3`}>
                   <View style={tw`flex-row items-center gap-3 flex-1`}>
-                    <View style={tw`w-12 h-12 rounded-xl items-center justify-center`} style={[tw`w-12 h-12 rounded-xl items-center justify-center`, { backgroundColor: `${project.color || '#2170E4'}15` }]}>
+                    <View style={[tw`w-12 h-12 rounded-xl items-center justify-center`, { backgroundColor: `${project.color || '#2170E4'}15` }]}>
                       <Text style={tw`text-2xl`}>{project.icon || '📁'}</Text>
                     </View>
                     <View style={tw`flex-1`}>
@@ -142,8 +187,16 @@ export default function FilesTab() {
                     <BookOpen size={14} color="#4b5563" />
                     <Text style={tw`text-xs text-gray-600`}>{project.documentation?.length || 0}</Text>
                   </View>
+                  <View style={tw`flex-row items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg`}>
+                    <Workflow size={14} color="#4b5563" />
+                    <Text style={tw`text-xs text-gray-600`}>{project.workflows?.length || 0}</Text>
+                  </View>
+                  <View style={tw`flex-row items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg`}>
+                    <KeyRound size={14} color="#4b5563" />
+                    <Text style={tw`text-xs text-gray-600`}>{project.credentials?.length || 0}</Text>
+                  </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
@@ -185,6 +238,113 @@ export default function FilesTab() {
               style={tw`bg-[#2170E4] py-3.5 rounded-xl items-center opacity-${(isSubmitting || !newProjectName.trim()) ? '50' : '100'}`}
             >
               {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={tw`text-white font-bold text-[15px]`}>Create Project</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Project Details Modal */}
+      <Modal visible={!!selectedProject} animationType="slide" transparent>
+        <View style={tw`flex-1 bg-black/50 justify-end`}>
+          <View style={tw`bg-white rounded-t-3xl p-6 h-[85%]`}>
+            <View style={tw`flex-row justify-between items-center mb-6`}>
+              <View style={tw`flex-row items-center gap-3`}>
+                <View style={[tw`w-10 h-10 rounded-xl items-center justify-center`, { backgroundColor: `${selectedProject?.color || '#2170E4'}15` }]}>
+                  <Text style={tw`text-xl`}>{selectedProject?.icon || '📁'}</Text>
+                </View>
+                <Text style={tw`font-bold text-xl text-[#0B1C30]`}>{selectedProject?.name}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedProject(null)}><X size={24} color="#000" /></TouchableOpacity>
+            </View>
+            
+            <ScrollView showsVerticalScrollIndicator={false} style={tw`flex-1`}>
+              <Text style={tw`text-gray-600 mb-6`}>{selectedProject?.description || 'No description provided.'}</Text>
+              
+              <View style={tw`flex-row justify-between items-center mb-4`}>
+                <Text style={tw`font-bold text-[16px] text-[#0B1C30]`}>Project Details</Text>
+                <TouchableOpacity onPress={() => setShowResourceModal(true)} style={tw`bg-blue-50 px-3 py-1.5 rounded-lg flex-row items-center gap-1`}>
+                  <Plus size={16} color="#2170E4" />
+                  <Text style={tw`text-[#2170E4] font-bold text-sm`}>Add Link</Text>
+                </TouchableOpacity>
+              </View>
+
+              {['gitRepos', 'deployments', 'documentation', 'workflows', 'credentials'].map((resourceGroup) => {
+                const items = selectedProject?.[resourceGroup] || [];
+                if (items.length === 0) return null;
+                
+                let icon = <GitBranch size={16} color="#4b5563" />;
+                let title = 'Git Repositories';
+                if (resourceGroup === 'deployments') { icon = <Rocket size={16} color="#4b5563" />; title = 'Deployments'; }
+                if (resourceGroup === 'documentation') { icon = <BookOpen size={16} color="#4b5563" />; title = 'Documentation'; }
+                if (resourceGroup === 'workflows') { icon = <Workflow size={16} color="#4b5563" />; title = 'Workflows'; }
+                if (resourceGroup === 'credentials') { icon = <KeyRound size={16} color="#4b5563" />; title = 'Credentials'; }
+
+                return (
+                  <View key={resourceGroup} style={tw`mb-4`}>
+                    <View style={tw`flex-row items-center gap-2 mb-2`}>
+                      {icon}
+                      <Text style={tw`font-semibold text-gray-700`}>{title}</Text>
+                    </View>
+                    {items.map((item: any, idx: number) => (
+                      <View key={idx} style={tw`bg-gray-50 p-3 rounded-xl mb-2 flex-row justify-between items-center`}>
+                        <View style={tw`flex-1`}>
+                          <Text style={tw`font-bold text-sm text-[#0B1C30]`}>{item.name}</Text>
+                          <Text style={tw`text-xs text-blue-600 mt-0.5`} numberOfLines={1}>{item.url}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Resource Modal */}
+      <Modal visible={showResourceModal} animationType="fade" transparent>
+        <View style={tw`flex-1 bg-black/50 justify-center items-center px-4`}>
+          <View style={tw`bg-white rounded-2xl w-full max-w-sm p-6`}>
+            <View style={tw`flex-row justify-between items-center mb-4`}>
+              <Text style={tw`font-bold text-lg text-[#0B1C30]`}>Add Project Detail</Text>
+              <TouchableOpacity onPress={() => setShowResourceModal(false)}><X size={20} color="#000" /></TouchableOpacity>
+            </View>
+
+            <View style={tw`flex-row flex-wrap gap-2 mb-4`}>
+              {['gitRepos', 'deployments', 'documentation', 'workflows', 'credentials'].map(type => (
+                <TouchableOpacity 
+                  key={type}
+                  onPress={() => setResourceType(type)}
+                  style={tw`px-3 py-1.5 rounded-lg border mb-1 ${resourceType === type ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}
+                >
+                  <Text style={tw`text-xs font-semibold ${resourceType === type ? 'text-blue-600' : 'text-gray-500 capitalize'}`}>
+                    {type === 'gitRepos' ? 'Repo' : type === 'deployments' ? 'Deploy' : type === 'documentation' ? 'Docs' : type === 'workflows' ? 'CI/CD' : 'Keys'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              style={tw`border border-gray-200 rounded-xl px-4 py-3 text-[14px] mb-3`}
+              placeholder="Name (e.g. Frontend App)"
+              value={resourceName}
+              onChangeText={setResourceName}
+            />
+            <TextInput
+              style={tw`border border-gray-200 rounded-xl px-4 py-3 text-[14px] mb-6`}
+              placeholder="URL (https://...)"
+              value={resourceUrl}
+              onChangeText={setResourceUrl}
+              autoCapitalize="none"
+              keyboardType="url"
+            />
+
+            <TouchableOpacity 
+              onPress={handleAddResource}
+              disabled={isAddingResource || !resourceName.trim() || !resourceUrl.trim()}
+              style={tw`bg-[#2170E4] py-3 rounded-xl items-center opacity-${(isAddingResource || !resourceName.trim() || !resourceUrl.trim()) ? '50' : '100'}`}
+            >
+              {isAddingResource ? <ActivityIndicator color="#fff" /> : <Text style={tw`text-white font-bold text-[14px]`}>Save Link</Text>}
             </TouchableOpacity>
           </View>
         </View>

@@ -793,10 +793,18 @@ async sendMessage(workspaceId: string, channelId: string, content: string, fileD
       return request(`/api/status/${statusId}`, { method: 'DELETE' });
     },
     async uploadFile(fileUri: string, mimeType: string, originalName: string) {
-      const response = await fetch(fileUri);
-      const blob = await response.blob();
       const form = new FormData();
-      form.append('file', blob, originalName);
+      if (Platform.OS === 'web') {
+        const response = await fetch(fileUri);
+        const blob = await response.blob();
+        form.append('file', blob, originalName || 'upload.jpg');
+      } else {
+        form.append('file', {
+          uri: Platform.OS === 'android' ? fileUri : fileUri.replace('file://', ''),
+          type: mimeType || 'image/jpeg',
+          name: originalName || 'upload.jpg',
+        } as any);
+      }
       
       const data = await request('/api/chat/upload', {
         method: 'POST',
@@ -885,10 +893,18 @@ async sendMessage(workspaceId: string, channelId: string, content: string, fileD
       return request(`/api/threads/comment/${commentId}`, { method: 'DELETE' });
     },
     async uploadThreadFile(fileUri: string, mimeType: string, originalName: string) {
-      const response = await fetch(fileUri);
-      const blob = await response.blob();
       const form = new FormData();
-      form.append('file', blob, originalName);
+      if (Platform.OS === 'web') {
+        const response = await fetch(fileUri);
+        const blob = await response.blob();
+        form.append('file', blob, originalName || 'upload.jpg');
+      } else {
+        form.append('file', {
+          uri: Platform.OS === 'android' ? fileUri : fileUri.replace('file://', ''),
+          type: mimeType || 'image/jpeg',
+          name: originalName || 'upload.jpg',
+        } as any);
+      }
       
       const data = await request('/api/threads/upload', {
         method: 'POST',
@@ -900,6 +916,12 @@ async sendMessage(workspaceId: string, channelId: string, content: string, fileD
         originalName: data?.originalName || originalName || 'Attachment',
         type: data?.type || mimeType || 'application/octet-stream',
       };
+    },
+    async generatePoster(prompt: string) {
+      return request('/api/threads/poster', {
+        method: 'POST',
+        body: JSON.stringify({ prompt }),
+      });
     }
   },
 

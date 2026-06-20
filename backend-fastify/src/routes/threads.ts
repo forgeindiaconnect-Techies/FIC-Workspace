@@ -293,4 +293,28 @@ export async function threadsRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Generate AI Poster
+  fastify.post('/poster', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { prompt } = request.body as any;
+      const geminiKey = process.env.GEMINI_API_KEY;
+      
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7 }
+        })
+      });
+      
+      const data: any = await response.json();
+      if (data.error) throw new Error(data.error.message || 'Gemini error');
+      
+      return reply.code(200).send({ svg: data.candidates?.[0]?.content?.parts?.[0]?.text || '' });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to generate poster', details: err.message });
+    }
+  });
+
 }

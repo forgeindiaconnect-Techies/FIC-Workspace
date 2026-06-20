@@ -22,7 +22,8 @@ try {
 }
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Multer middleware — stores file in memory buffer for Cloudinary upload
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }); // 25MB max
@@ -782,6 +783,74 @@ app.post('/api/threads/upload', upload.single('file'), async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'File upload failed.', details: err.message });
+  }
+});
+
+app.post('/api/threads/poster', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    const geminiKey = process.env.GEMINI_API_KEY;
+    
+    if (!geminiKey) {
+      throw new Error('GEMINI_API_KEY is not configured');
+    }
+    
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Origin': 'http://localhost:8081',
+        'Referer': 'http://localhost:8081/'
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.7 }
+      })
+    });
+    
+    const data = await response.json();
+    if (data.error) {
+      console.error('[Gemini API Error]:', data.error);
+      throw new Error(data.error.message || 'Gemini error');
+    }
+    
+    let svgCode = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    // Extract only the SVG part, ignoring conversational text
+    const svgMatch = svgCode.match(/<svg[\s\S]*?<\/svg>/i);
+    if (svgMatch) {
+      svgCode = svgMatch[0];
+    } else {
+      svgCode = svgCode.replace(/^\`\`\`xml/, '').replace(/^\`\`\`svg/, '').replace(/^\`\`\`html/, '').replace(/^\`\`\`/, '').replace(/\`\`\`$/, '').trim();
+    }
+    
+    // [FIX]: Browsers block external images inside an SVG loaded via a Data URI (which <Image> uses).
+    // We must fetch external images on the server and inject them as Base64 Data URIs directly into the SVG!
+    const urlMatches = [...svgCode.matchAll(/(?:xlink:)?href="([^"]+)"/g)];
+    for (const match of urlMatches) {
+      const url = match[1];
+      if (url.startsWith('http')) {
+        try {
+          const cleanUrl = url.replace(/&amp;/g, '&'); // Unescape URLs
+          const imgRes = await fetch(cleanUrl);
+          if (imgRes.ok) {
+            const arrayBuffer = await imgRes.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
+            const base64Url = `data:${mimeType};base64,${buffer.toString('base64')}`;
+            // Replace the URL with the base64 string in the SVG code
+            svgCode = svgCode.split(url).join(base64Url);
+          }
+        } catch (e) {
+          console.error('[Base64 Image Fetch Error]:', url, e.message);
+        }
+      }
+    }
+    
+    res.status(200).json({ svg: svgCode });
+  } catch (err) {
+    console.error('[Poster Generation Error]:', err.message);
+    res.status(500).json({ error: 'Failed to generate poster', details: err.message });
   }
 });
 

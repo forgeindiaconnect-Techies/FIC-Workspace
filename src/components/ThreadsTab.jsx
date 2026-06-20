@@ -355,7 +355,7 @@ const ThreadsTab = ({ workspaceId, currentUserEmail, currentUserName, activityMo
     setGeneratedPoster(null);
     
     try {
-      const apiKey = 'AIzaSyA3nfLFZhoElBN7i4Vtt8ah0x0odFDW1vg'; // Provided key
+      const apiKey = ''; // Provided key
       const prompt = `You are a professional corporate graphic designer. Generate a visually stunning and modern SVG poster/ad.
 The poster must look "Professional Corporate".
 ${useRealisticPhotos 
