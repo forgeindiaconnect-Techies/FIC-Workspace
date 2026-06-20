@@ -255,8 +255,8 @@ const MailRow = ({ mail, isSelected, isBulkSelected, onSelect, onBulkToggle }) =
           <span className={cn("text-xs truncate", !mail.isRead ? "font-black text-[var(--text-primary)]" : "font-semibold text-[var(--text-secondary)]")}>
             {mail.sender}
           </span>
-          <span className="text-[10px] font-bold text-[var(--text-secondary)] opacity-60 font-mono">
-            {new Date(mail.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          <span className="text-[10px] font-bold text-[var(--text-secondary)] opacity-60 font-mono whitespace-nowrap">
+            {new Date(mail.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })} {new Date(mail.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
         <div className="flex items-center gap-1.5 mb-1">
