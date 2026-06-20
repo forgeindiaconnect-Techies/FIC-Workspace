@@ -114,7 +114,7 @@ export const SidebarProfile = () => {
   };
 
   return (
-    <div className="p-4 mt-auto border-t border-zinc-100 dark:border-zinc-800 flex flex-col gap-2 bg-white dark:bg-zinc-900 shrink-0">
+    <div className="p-4 mt-auto border-t border-[#C6C6CD]/30 flex flex-col gap-2 bg-transparent shrink-0">
       <div className="w-full mb-1">
         <AppSwitcher workspaceId={workspaceId} />
       </div>
