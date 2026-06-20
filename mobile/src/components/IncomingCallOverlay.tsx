@@ -5,12 +5,14 @@ import {
 import { Phone, PhoneOff } from 'lucide-react-native';
 import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { callManager, CallState, CallerInfo } from '../lib/callManager';
+import { RTCView } from '../lib/webrtc';
 
 const RING_TIMEOUT_MS = 30_000;
 
 export default function IncomingCallOverlay() {
   const [callState, setCallState] = useState<CallState>('idle');
   const [caller, setCaller] = useState<CallerInfo | null>(null);
+  const [remoteStream, setRemoteStream] = useState<any>(null);
   const ringRef = useRef<AudioPlayer | null>(null);
   const timeoutRef = useRef<any>(null);
 
@@ -48,7 +50,10 @@ export default function IncomingCallOverlay() {
           break;
         case 'state_change':
           setCallState(event.state);
-          if (event.state === 'idle') { stopRing(); setCaller(null); }
+          if (event.state === 'idle') { stopRing(); setCaller(null); setRemoteStream(null); }
+          break;
+        case 'remote_stream':
+          setRemoteStream(event.stream);
           break;
       }
     };
@@ -184,6 +189,12 @@ export default function IncomingCallOverlay() {
 
           {callState === 'ended' && (
             <Text style={{ color: '#9ca3af', marginTop: 24 }}>Disconnected</Text>
+          )}
+
+          {remoteStream && (
+            <View style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
+              <RTCView stream={remoteStream} style={{ width: 0, height: 0 }} />
+            </View>
           )}
         </View>
       </View>

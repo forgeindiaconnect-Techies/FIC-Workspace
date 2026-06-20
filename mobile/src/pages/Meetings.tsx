@@ -2,14 +2,14 @@ import React from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Dimensions, Platform, Modal, TextInput, ActivityIndicator,
-  Alert, StatusBar, useWindowDimensions, ViewStyle,
+  Alert, StatusBar, useWindowDimensions, ViewStyle, DeviceEventEmitter,
 } from 'react-native';
 import RenderHtml from 'react-native-render-html';
 import {
   Video, Calendar, Clock, Users, Play, Bell, BellRing, User,
   Mic, MicOff, VideoOff, PhoneOff, Copy, Lock, Shield,
   X, Send, MessageSquare, LogIn, ChevronRight, Wifi, Maximize2, Minimize2,
-  FlipHorizontal, MonitorUp, Settings, Sparkles, Wand2, Globe, PhoneForwarded, MoreVertical, Link as LinkIcon, Check, Plus, Trash2
+  FlipHorizontal, MonitorUp, Settings, Sparkles, Wand2, Globe, PhoneForwarded, MoreVertical, Link as LinkIcon, Check, Plus, Trash2, Volume2, Headphones, Bluetooth, Smartphone
 } from 'lucide-react-native';
 import { api, getSession, SOCKET_URL } from '../lib/api';
 import {
@@ -35,6 +35,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const MOCK_MEETINGS: any[] = [];
 const MOCK_HISTORY: any[] = [];
+
+let InCallManager: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    InCallManager = require('react-native-incall-manager').default;
+  } catch (e) {
+    console.warn("InCallManager not found. Ensure react-native-incall-manager is installed and native project is rebuilt.");
+  }
+}
 
 const fmtDur = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -82,6 +91,11 @@ export default function Meetings() {
   const [preventUnmute, setPreventUnmute] = React.useState(false);
   const [participantMenuTarget, setParticipantMenuTarget] = React.useState<any>(null);
   const [transferHostModal, setTransferHostModal] = React.useState(false);
+
+  // Audio Output
+  const [audioOutputModal, setAudioOutputModal] = React.useState(false);
+  const [currentAudioRoute, setCurrentAudioRoute] = React.useState('SPEAKER_PHONE');
+  const [availableAudioRoutes, setAvailableAudioRoutes] = React.useState<string[]>(['SPEAKER_PHONE', 'EARPIECE']);
 
   // Form fields
   const [meetTitle, setMeetTitle] = React.useState('');
@@ -421,11 +435,53 @@ export default function Meetings() {
     return () => clearInterval(t);
   }, [activeRoom, isMuted]);
 
-  // Fullscreen flag
   React.useEffect(() => {
     (global as any).isFullScreenMeetingActive = !!activeRoom;
-    return () => { (global as any).isFullScreenMeetingActive = false; };
+    
+    // Manage InCallManager audio session
+    if (Platform.OS !== 'web' && InCallManager) {
+      if (activeRoom) {
+        InCallManager.start({ media: 'video' });
+        InCallManager.setForceSpeakerphoneOn(true);
+        setCurrentAudioRoute('SPEAKER_PHONE');
+      } else {
+        InCallManager.stop();
+      }
+    }
+    
+    return () => { 
+      (global as any).isFullScreenMeetingActive = false; 
+    };
   }, [activeRoom]);
+
+  // Listen to Audio Device changes
+  React.useEffect(() => {
+    if (Platform.OS === 'web' || !InCallManager) return;
+    
+    const listener = DeviceEventEmitter.addListener('onAudioDeviceChanged', (data) => {
+      if (data.availableAudioDeviceList) {
+        // usually comma separated string: "SPEAKER_PHONE,EARPIECE,BLUETOOTH"
+        let devices: string[] = [];
+        try {
+          if (typeof data.availableAudioDeviceList === 'string') {
+             try {
+                devices = JSON.parse(data.availableAudioDeviceList); // InCallManager sometimes passes stringified JSON array
+             } catch {
+                devices = data.availableAudioDeviceList.split(',');
+             }
+          } else if (Array.isArray(data.availableAudioDeviceList)) {
+             devices = data.availableAudioDeviceList;
+          }
+          if (devices.length > 0) setAvailableAudioRoutes(devices);
+        } catch {}
+      }
+      if (data.selectedAudioDevice) {
+        setCurrentAudioRoute(data.selectedAudioDevice);
+      }
+    });
+
+    return () => listener.remove();
+  }, []);
 
   const mergeRemotePeers = React.useCallback((peers: RemotePeer[]) => {
     setRemotePeers(prev => {
@@ -2132,11 +2188,25 @@ export default function Meetings() {
         {/* CONTROL DOCK */}
         <View style={s.controlDockWrapper}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.controlDock}>
-            {/* MUTE */}
+          {/* MUTE */}
           <TouchableOpacity style={[s.ctrlBtn, isMuted && s.ctrlBtnRed]} onPress={() => setIsMuted(p => !p)}>
             {isMuted ? <MicOff size={20} color="#ef4444" /> : <Mic size={20} color="#fff" />}
             <Text style={[s.ctrlLabel, isMuted && { color: '#ef4444' }]}>{isMuted ? 'Unmute' : 'Mute'}</Text>
           </TouchableOpacity>
+
+          {/* AUDIO ROUTE */}
+          {Platform.OS !== 'web' && InCallManager && (
+            <TouchableOpacity style={s.ctrlBtn} onPress={() => setAudioOutputModal(true)}>
+              {currentAudioRoute === 'SPEAKER_PHONE' ? (
+                <Volume2 size={20} color="#fff" />
+              ) : currentAudioRoute === 'EARPIECE' ? (
+                <Smartphone size={20} color="#fff" />
+              ) : (
+                <Bluetooth size={20} color="#fff" />
+              )}
+              <Text style={s.ctrlLabel}>Audio</Text>
+            </TouchableOpacity>
+          )}
 
           {/* CAMERA ON/OFF */}
           <TouchableOpacity style={[s.ctrlBtn, isVideoOff && s.ctrlBtnRed]} onPress={async () => {
@@ -2599,6 +2669,48 @@ export default function Meetings() {
         </View>
       </Modal>
 
+      {/* AUDIO OUTPUT MODAL */}
+      <Modal visible={audioOutputModal} transparent animationType="slide" onRequestClose={() => setAudioOutputModal(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.bottomSheet}>
+            <View style={s.sheetHeader}>
+              <Text style={s.sheetTitle}>Audio Output</Text>
+              <TouchableOpacity onPress={() => setAudioOutputModal(false)}>
+                <X size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 16 }}>
+              {[
+                { id: 'SPEAKER_PHONE', label: 'Speaker', icon: Volume2 },
+                { id: 'EARPIECE', label: 'Phone', icon: Smartphone },
+                { id: 'BLUETOOTH', label: 'Bluetooth / Headset', icon: Bluetooth },
+                { id: 'WIRED_HEADSET', label: 'Wired Headset', icon: Headphones },
+              ].filter(opt => availableAudioRoutes.includes(opt.id) || opt.id === 'SPEAKER_PHONE' || opt.id === 'EARPIECE').map(opt => (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[s.audioOptBtn, currentAudioRoute === opt.id && s.audioOptBtnActive]}
+                  onPress={() => {
+                    setCurrentAudioRoute(opt.id);
+                    if (InCallManager) {
+                       InCallManager.chooseAudioRoute(opt.id);
+                    }
+                    setAudioOutputModal(false);
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <opt.icon size={20} color={currentAudioRoute === opt.id ? '#3b82f6' : '#64748b'} />
+                    <Text style={[s.audioOptText, currentAudioRoute === opt.id && { color: '#3b82f6', fontWeight: '600' }]}>
+                      {opt.label}
+                    </Text>
+                  </View>
+                  {currentAudioRoute === opt.id && <Check size={20} color="#3b82f6" />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* SUMMARY */}
       <Modal visible={summaryModal} animationType="slide" transparent onRequestClose={() => setSummaryModal(false)}>
         <View style={s.modalOverlay}><View style={[s.modalCard,{maxHeight:'80%'}]}>
@@ -2679,6 +2791,12 @@ const getStyles = (width: number, height: number, isMobile: boolean) => StyleShe
   loadingText: { fontSize: 14, color: '#64748b', fontWeight: '700' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   modalCard: { width: '100%', maxWidth: 440, backgroundColor: '#fff', borderRadius: 24, padding: 24, gap: 14 },
+  bottomSheet: { width: '100%', maxWidth: 440, backgroundColor: '#fff', borderRadius: 24, paddingBottom: 16, overflow: 'hidden' },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  sheetTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a' },
+  audioOptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 12, backgroundColor: '#f8fafc', marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
+  audioOptBtnActive: { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' },
+  audioOptText: { fontSize: 14, fontWeight: '700', color: '#475569' },
   modalTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalTitle: { fontSize: 20, fontWeight: '900', color: '#0f172a' },
   formGroup: { gap: 6 },

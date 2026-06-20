@@ -138,7 +138,7 @@ class CallManager {
     }
 
     this.ws.onopen = () => {
-      this.send({ type: 'register', email: this.userEmail, token: this.token });
+      this.send({ type: 'register', data: { email: this.userEmail, token: this.token } });
     };
 
     this.ws.onmessage = (event) => {

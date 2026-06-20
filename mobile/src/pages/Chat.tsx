@@ -19,6 +19,9 @@ import { api, getSession, SOCKET_URL } from '../lib/api';
 import { getRTCPeerConnectionClass, getMediaDevices, getIceServers, RTCView } from '../lib/webrtc';
 import { callManager } from '../lib/callManager';
 
+import ThreadsTab from './ThreadsTab';
+import FilesTab from './FilesTab';
+
 
 
 /* --- helpers ----------------------------------------------- */
@@ -164,7 +167,7 @@ export default function Chat() {
   const navigate = useNavigate();
   
   /* -- state -- */
-  const [tab, setTab] = React.useState<'chats'|'groups'|'calls'>('chats');
+  const [tab, setTab] = React.useState<'chats'|'groups'|'calls'|'threads'|'files'>('chats');
   const [selectedChat, setSelectedChat] = React.useState<any>(null);
   const [directMessages, setDirectMessages] = React.useState<any[]>([]);
   const [groupMessages, setGroupMessages] = React.useState<any[]>([]);
@@ -1357,6 +1360,10 @@ export default function Chat() {
       {/* List */}
       {loadingChannels ? (
         <View style={tw`flex-1 p-8 items-center justify-center`}><ActivityIndicator color="#0053B2" size="large" /></View>
+      ) : tab === 'threads' ? (
+        <View style={tw`flex-1 pb-[80px]`}><ThreadsTab /></View>
+      ) : tab === 'files' ? (
+        <View style={tw`flex-1 pb-[80px]`}><FilesTab /></View>
       ) : tab === 'calls' ? (
         <ScrollView style={tw`flex-1 bg-white`} contentContainerStyle={tw`pb-[90px]`}>
           {filteredCallLogs.map((log: any, idx: number) => {
@@ -1440,24 +1447,36 @@ export default function Chat() {
       )}
 
       {/* Bottom Navbar */}
-      <View style={tw`absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-[#D1D7DB] flex-row justify-around items-center px-2 pb-2 z-40`}>
-        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('chats')}>
-          <View style={tw`w-16 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
+      <View style={tw`absolute bottom-0 left-0 right-0 h-[80px] bg-white border-t border-[#D1D7DB] flex-row justify-around items-center px-2 pb-2 z-40`}>
+        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => { setTab('chats'); setSelectedChat(null); }}>
+          <View style={tw`w-12 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
             <MessageSquare size={20} color={tab === 'chats' ? '#0053B2' : '#667781'} fill={tab === 'chats' ? '#0053B2' : 'transparent'} />
           </View>
-          <Text style={tw`text-[12px] font-medium ${tab === 'chats' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Chats</Text>
+          <Text style={tw`text-[10px] font-medium ${tab === 'chats' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Chats</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('groups')}>
-          <View style={tw`w-16 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
+        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => { setTab('groups'); setSelectedChat(null); }}>
+          <View style={tw`w-12 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
             <Users size={22} color={tab === 'groups' ? '#0053B2' : '#667781'} />
           </View>
-          <Text style={tw`text-[12px] font-medium ${tab === 'groups' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Groups</Text>
+          <Text style={tw`text-[10px] font-medium ${tab === 'groups' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Groups</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => setTab('calls')}>
-          <View style={tw`w-16 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
+        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => { setTab('threads'); setSelectedChat(null); }}>
+          <View style={tw`w-12 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
+             <Hash size={20} color={tab === 'threads' ? '#0053B2' : '#667781'} />
+          </View>
+          <Text style={tw`text-[10px] font-medium ${tab === 'threads' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Threads</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => { setTab('files'); setSelectedChat(null); }}>
+          <View style={tw`w-12 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
+             <FileText size={20} color={tab === 'files' ? '#0053B2' : '#667781'} />
+          </View>
+          <Text style={tw`text-[10px] font-medium ${tab === 'files' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Files</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={tw`items-center p-2 mt-1`} onPress={() => { setTab('calls'); setSelectedChat(null); }}>
+          <View style={tw`w-12 h-8 bg-transparent rounded-full items-center justify-center mb-1`}>
              <PhoneOff size={20} color={tab === 'calls' ? '#0053B2' : '#667781'} />
           </View>
-          <Text style={tw`text-[12px] font-medium ${tab === 'calls' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Calls</Text>
+          <Text style={tw`text-[10px] font-medium ${tab === 'calls' ? 'text-[#0053B2] font-bold' : 'text-[#667781]'}`}>Calls</Text>
         </TouchableOpacity>
       </View>
     </View>

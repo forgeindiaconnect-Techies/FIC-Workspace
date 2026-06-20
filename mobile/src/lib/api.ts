@@ -170,7 +170,7 @@ export const checkBackendHealth = async (): Promise<{ ok: boolean; message?: str
 // If you need a fully custom backend for release builds, replace PRODUCTION_API_URL with your hosted backend domain.
 
 // Client Session Token Storage using global persistence for robust hot-reload & cross-platform support
-export const setSession = (token: string, user: any, refreshToken?: string) => {
+export const setSession = async (token: string, user: any, refreshToken?: string) => {
   (global as any).nexus_token = token;
   (global as any).nexus_user = user;
   if (refreshToken) {
@@ -189,10 +189,10 @@ export const setSession = (token: string, user: any, refreshToken?: string) => {
     }
   } else {
     try {
-      AsyncStorage.setItem('nexus_token', token).catch(e => console.warn(e));
-      AsyncStorage.setItem('nexus_user', JSON.stringify(user)).catch(e => console.warn(e));
+      await AsyncStorage.setItem('nexus_token', token);
+      await AsyncStorage.setItem('nexus_user', JSON.stringify(user));
       if (refreshToken) {
-        AsyncStorage.setItem('nexus_refresh_token', refreshToken).catch(e => console.warn(e));
+        await AsyncStorage.setItem('nexus_refresh_token', refreshToken);
       }
     } catch (e) {
       console.warn("AsyncStorage persistence blocked:", e);
@@ -386,14 +386,14 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
         if (refreshResponse.ok) {
           const data = await refreshResponse.json();
           console.log('[Request] Token rotation succeeded! Retrying original request.');
-          setSession(data.accessToken, data.user, data.refreshToken);
+          await setSession(data.accessToken, data.user, data.refreshToken);
           isRefreshing = false;
           
           // Retry the original request transparently with the new token
           return request(path, options);
         } else {
-          console.warn('[Request] Token rotation rejected by server. Clearing session.');
-          clearSession();
+          console.warn('[Request] Token rotation rejected by server. Skipping clearSession to maintain persistent login.');
+          // clearSession();
         }
       } catch (err) {
         console.error('[Request] Silent token rotation failed:', err);
@@ -441,7 +441,7 @@ export const api = {
         workspaceId: data.workspaceId,
         email: data.email || email
       };
-      setSession(token, userObj, data.refreshToken);
+      await setSession(token, userObj, data.refreshToken);
       return data;
     },
     async signup(name: string, email: string, password: string) {
@@ -451,7 +451,7 @@ export const api = {
       });
       const token = data.token || data.accessToken;
       if (token) {
-        setSession(token, data.user, data.refreshToken);
+        await setSession(token, data.user, data.refreshToken);
       }
       return data;
     },
@@ -462,7 +462,7 @@ export const api = {
       });
       const token = data.token || data.accessToken;
       if (token) {
-        setSession(token, data.user, data.refreshToken);
+        await setSession(token, data.user, data.refreshToken);
       }
       return data;
     },
@@ -472,7 +472,7 @@ export const api = {
         body: JSON.stringify({ avatarUrl }),
       });
       if (data.accessToken) {
-        setSession(data.accessToken, data.user, data.refreshToken);
+        await setSession(data.accessToken, data.user, data.refreshToken);
       }
       return data;
     },
@@ -852,6 +852,90 @@ async sendMessage(workspaceId: string, channelId: string, content: string, fileD
   superadmin: {
     async getTenants() {
       return request('/api/superadmin/tenants');
+    }
+  },
+
+  // Threads Module
+  threads: {
+    async getThreads(workspaceId: string) {
+      return request(`/api/threads/${workspaceId}`);
+    },
+    async createThread(data: any) {
+      return request('/api/threads/create', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    async likePost(postId: string) {
+      return request(`/api/threads/${postId}/like`, { method: 'POST' });
+    },
+    async deletePost(postId: string) {
+      return request(`/api/threads/${postId}`, { method: 'DELETE' });
+    },
+    async addComment(postId: string, content: string) {
+      return request(`/api/threads/${postId}/comment`, {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      });
+    },
+    async likeComment(commentId: string) {
+      return request(`/api/threads/comment/${commentId}/like`, { method: 'POST' });
+    },
+    async deleteComment(commentId: string) {
+      return request(`/api/threads/comment/${commentId}`, { method: 'DELETE' });
+    },
+    async uploadThreadFile(fileUri: string, mimeType: string, originalName: string) {
+      const response = await fetch(fileUri);
+      const blob = await response.blob();
+      const form = new FormData();
+      form.append('file', blob, originalName);
+      
+      const data = await request('/api/threads/upload', {
+        method: 'POST',
+        body: form as any,
+      });
+
+      return {
+        ...data,
+        originalName: data?.originalName || originalName || 'Attachment',
+        type: data?.type || mimeType || 'application/octet-stream',
+      };
+    }
+  },
+
+  // Projects / Files Module
+  projects: {
+    async getProjects(workspaceId: string, status: string = 'all') {
+      return request(`/api/projects/${workspaceId}?status=${status}`);
+    },
+    async getProject(workspaceId: string, projectId: string) {
+      return request(`/api/projects/${workspaceId}/${projectId}`);
+    },
+    async createProject(data: any) {
+      return request('/api/projects/create', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    async updateProjectStatus(id: string, status: string) {
+      return request(`/api/projects/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status }),
+      });
+    },
+    async deleteProject(id: string) {
+      return request(`/api/projects/${id}`, { method: 'DELETE' });
+    },
+    async addSubResource(projectId: string, resource: string, data: any) {
+      return request(`/api/projects/${projectId}/${resource}`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    async removeSubResource(projectId: string, resource: string, itemId: string) {
+      return request(`/api/projects/${projectId}/${resource}/${itemId}`, {
+        method: 'DELETE',
+      });
     }
   }
 };
