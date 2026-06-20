@@ -442,7 +442,9 @@ export default function Meetings() {
     if (Platform.OS !== 'web' && InCallManager) {
       if (activeRoom) {
         InCallManager.start({ media: 'video' });
-        InCallManager.setForceSpeakerphoneOn(true);
+        if (typeof InCallManager.setSpeakerphoneOn === 'function') InCallManager.setSpeakerphoneOn(true);
+        if (typeof InCallManager.setForceSpeakerphoneOn === 'function') InCallManager.setForceSpeakerphoneOn(true);
+        if (typeof InCallManager.chooseAudioRoute === 'function') InCallManager.chooseAudioRoute('SPEAKER_PHONE');
         setCurrentAudioRoute('SPEAKER_PHONE');
       } else {
         InCallManager.stop();
@@ -1094,7 +1096,7 @@ export default function Meetings() {
               });
               const createPC = createPeerConnectionRef.current;
               if (createPC && msg.peerId) {
-                const shouldOffer = shouldInitiateOfferRef.current(msg.peerId);
+                const shouldOffer = false; // The new peer (who received 'joined') always creates the offer
                 console.log(`[WebRTC] PC for new peer ${msg.peerId}, shouldOffer=${shouldOffer}, myPeerId=${peerIdRef.current}`);
                 createPC(msg.peerId, { id, peerId: msg.peerId, userId: msg.userId, name: msg.name || 'Participant' }, shouldOffer)
                   .then((pc: any) => {
@@ -2691,7 +2693,14 @@ export default function Meetings() {
                   style={[s.audioOptBtn, currentAudioRoute === opt.id && s.audioOptBtnActive]}
                   onPress={() => {
                     setCurrentAudioRoute(opt.id);
-                    if (InCallManager) {
+                     if (InCallManager) {
+                       if (opt.id === 'SPEAKER_PHONE') {
+                         if (typeof InCallManager.setSpeakerphoneOn === 'function') InCallManager.setSpeakerphoneOn(true);
+                         if (typeof InCallManager.setForceSpeakerphoneOn === 'function') InCallManager.setForceSpeakerphoneOn(true);
+                       } else if (opt.id === 'EARPIECE') {
+                         if (typeof InCallManager.setSpeakerphoneOn === 'function') InCallManager.setSpeakerphoneOn(false);
+                         if (typeof InCallManager.setForceSpeakerphoneOn === 'function') InCallManager.setForceSpeakerphoneOn(false);
+                       }
                        InCallManager.chooseAudioRoute(opt.id);
                     }
                     setAudioOutputModal(false);

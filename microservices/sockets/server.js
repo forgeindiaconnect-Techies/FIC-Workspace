@@ -360,7 +360,7 @@ wssWebRtc.on('connection', (ws) => {
 
       room.set(peerId, {
         socket: ws,
-        userId: peerId,
+        userId: user._id.toString(),
         name: user.name,
         avatarUrl: user.avatarUrl,
         audioEnabled: true,
@@ -385,7 +385,7 @@ wssWebRtc.on('connection', (ws) => {
       broadcastToRoom(peerId, {
         type: 'peer-joined',
         peerId,
-        userId: peerId,
+        userId: user._id.toString(),
         name: user.name,
         avatarUrl: user.avatarUrl,
         audioEnabled: true,
