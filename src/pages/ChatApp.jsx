@@ -5,7 +5,7 @@ import { getApiUrl, getSocketUrl } from '../api';
 if (typeof window !== 'undefined') {
   window.RTCPeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
 }
-import AppLayout from '../components/AppLayout';
+import AppLayout, { SidebarProfile } from '../components/AppLayout';
 import LogoImage from '../assets/landing-logo.png';
 import { 
   Send, Plus, Hash, Search, Smile, Paperclip, 
@@ -1011,6 +1011,10 @@ const ChatApp = () => {
                          )
                        })}
                     </div>
+                 </div>
+                 {/* Sidebar Footer with Logout & Profile */}
+                 <div className="w-full mt-auto">
+                   <SidebarProfile />
                  </div>
               </div>
 
