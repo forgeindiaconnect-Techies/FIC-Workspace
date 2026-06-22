@@ -458,6 +458,9 @@ const ChatApp = () => {
             })));
           } else if (data.type === 'new-channel') {
             fetchChannels();
+          } else if (data.type === 'group-deleted') {
+            setChannels(prev => prev.filter(c => c._id !== data.payload.groupId));
+            setSelected(prev => prev?._id === data.payload.groupId ? null : prev);
           } else if (data.type === 'meeting-update') {
             setMeetingUpdateTrigger(prev => prev + 1);
           }
@@ -692,6 +695,32 @@ const ChatApp = () => {
     localStorage.setItem('chat_read_timestamps', JSON.stringify(readTimestamps));
     // Clear unread count locally when opened
     setChannels(prev => prev.map(c => c._id === ch._id ? { ...c, unreadCount: 0 } : c));
+  };
+
+  const deleteGroup = async (groupId, groupName) => {
+    if (!window.confirm(`Are you sure you want to permanently delete the group "${groupName}" and all its messages?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(getApiUrl(`/api/chat/groups/${groupId}`), {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (res.ok) {
+        setChannels(prev => prev.filter(c => c._id !== groupId));
+        if (selected?._id === groupId) {
+          setSelected(null);
+        }
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || 'Failed to delete group');
+      }
+    } catch (err) {
+      console.error('Delete group error:', err);
+      alert('An error occurred while deleting the group.');
+    }
   };
 
   const createGroup = async () => {
@@ -1038,12 +1067,19 @@ const ChatApp = () => {
                        {channels.filter(ch => ch.type === 'group').map(ch => {
                          const isSelected = selected?._id === ch._id;
                          return (
-                           <button key={ch._id} onClick={() => setSelected(ch)} className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-all ${isSelected ? 'bg-blue-100 text-[#0B1C30] font-semibold' : 'text-[#45464D] hover:bg-black/5 font-medium'}`}>
-                             <div className="flex items-center gap-2">
-                               <Hash size={16} />
-                               <span className="text-[12px] truncate">{ch.name}</span>
-                             </div>
-                           </button>
+                             <button key={ch._id} onClick={() => setSelected(ch)} className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-all group ${isSelected ? 'bg-blue-100 text-[#0B1C30] font-semibold' : 'text-[#45464D] hover:bg-black/5 font-medium'}`}>
+                               <div className="flex items-center gap-2 truncate">
+                                 <Hash size={16} className="shrink-0" />
+                                 <span className="text-[12px] truncate">{ch.name}</span>
+                               </div>
+                               {(ch.createdBy === currentUserEmail || ch.createdByEmail === currentUserEmail) && (
+                                 <Trash2 
+                                   size={14} 
+                                   className="text-gray-400 hover:text-red-500 transition-colors hidden group-hover:block shrink-0" 
+                                   onClick={(e) => { e.stopPropagation(); deleteGroup(ch._id, ch.name); }} 
+                                 />
+                               )}
+                             </button>
                          )
                        })}
                     </div>
@@ -1120,9 +1156,18 @@ const ChatApp = () => {
                                             <div className="flex-1 min-w-0 text-left">
                                                <div className="flex justify-between items-center mb-0.5">
                                                   <span className={`text-[14px] truncate ${isSelected ? 'font-semibold text-[#0B1C30]' : 'font-medium text-[#45464D] group-hover:text-[#0B1C30]'}`}>{name}</span>
-                                                  <span className="text-[10px] text-[#76777D] font-medium mt-0.5">
-                                                     {ch.lastMessage ? formatTime(ch.lastMessage) : ''}
-                                                  </span>
+                                                  <div className="flex items-center gap-2">
+                                                    {(ch.type === 'group' || ch.isGroup) && (ch.createdBy === currentUserEmail || ch.createdByEmail === currentUserEmail) && (
+                                                      <Trash2 
+                                                        size={14} 
+                                                        className="text-gray-400 hover:text-red-500 transition-colors hidden group-hover:block" 
+                                                        onClick={(e) => { e.stopPropagation(); deleteGroup(ch._id, name); }} 
+                                                      />
+                                                    )}
+                                                    <span className="text-[10px] text-[#76777D] font-medium mt-0.5">
+                                                       {ch.lastMessage ? formatTime(ch.lastMessage) : ''}
+                                                    </span>
+                                                  </div>
                                                </div>
                                                <p className="text-[12px] text-[#76777D] truncate font-medium">
                                                   {stripHtml(ch.lastMessageContent) || 'No messages yet'}

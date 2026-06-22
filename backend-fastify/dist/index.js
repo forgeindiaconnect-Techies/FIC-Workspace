@@ -2726,6 +2726,40 @@ async function kuralRoutes(fastify2) {
       return reply.code(500).send({ error: "Failed to update group avatar.", details: err.message });
     }
   });
+  fastify2.delete("/groups/:groupId", async (request, reply) => {
+    try {
+      const { groupId } = request.params;
+      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) {
+        return reply.code(400).send({ error: "Invalid group id." });
+      }
+      const currentEmail = normalizeEmail(request.user?.email || "");
+      const conversation = await KuralConversation.findOne({
+        _id: groupId,
+        type: "channel"
+      });
+      if (!conversation) {
+        return reply.code(404).send({ error: "Group not found." });
+      }
+      if (conversation.createdByEmail !== currentEmail) {
+        return reply.code(403).send({ error: "Only the group creator can delete this group." });
+      }
+      await KuralMessage.deleteMany({ conversationId: conversation._id });
+      await KuralConversation.findByIdAndDelete(conversation._id);
+      const { activeMailSockets: activeMailSockets2 } = (init_mailSockets(), __toCommonJS(mailSockets_exports));
+      if (activeMailSockets2) {
+        const msgStr = JSON.stringify({ type: "group-deleted", payload: { groupId: conversation._id } });
+        conversation.participantEmails.forEach((email) => {
+          if (activeMailSockets2.has(email)) {
+            activeMailSockets2.get(email)?.send(msgStr);
+          }
+        });
+      }
+      return reply.code(200).send({ message: "Group deleted successfully." });
+    } catch (err) {
+      console.error("Delete group error:", err);
+      return reply.code(500).send({ error: "Failed to delete group.", details: err.message });
+    }
+  });
   fastify2.delete("/groups/:groupId/members/:email", async (request, reply) => {
     try {
       const { groupId, email } = request.params;

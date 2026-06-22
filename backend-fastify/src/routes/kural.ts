@@ -450,6 +450,50 @@ export async function kuralRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Delete Group
+  fastify.delete('/groups/:groupId', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { groupId } = request.params as any;
+      if (!Types.ObjectId.isValid(groupId)) {
+        return reply.code(400).send({ error: 'Invalid group id.' });
+      }
+
+      const currentEmail = normalizeEmail(request.user?.email || '');
+      const conversation = await KuralConversation.findOne({
+        _id: groupId,
+        type: 'channel'
+      });
+
+      if (!conversation) {
+        return reply.code(404).send({ error: 'Group not found.' });
+      }
+
+      // Check authorization: must be creator
+      if (conversation.createdByEmail !== currentEmail) {
+        return reply.code(403).send({ error: 'Only the group creator can delete this group.' });
+      }
+
+      await KuralMessage.deleteMany({ conversationId: conversation._id });
+      await KuralConversation.findByIdAndDelete(conversation._id);
+
+      // Broadcast 'group-deleted'
+      const { activeMailSockets } = require('../services/mailSockets');
+      if (activeMailSockets) {
+        const msgStr = JSON.stringify({ type: 'group-deleted', payload: { groupId: conversation._id } });
+        conversation.participantEmails.forEach((email: string) => {
+          if (activeMailSockets.has(email)) {
+            activeMailSockets.get(email)?.send(msgStr);
+          }
+        });
+      }
+
+      return reply.code(200).send({ message: 'Group deleted successfully.' });
+    } catch (err: any) {
+      console.error('Delete group error:', err);
+      return reply.code(500).send({ error: 'Failed to delete group.', details: err.message });
+    }
+  });
+
   // Remove member from group
   fastify.delete('/groups/:groupId/members/:email', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
