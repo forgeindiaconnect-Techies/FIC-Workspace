@@ -1,0 +1,75 @@
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><title>Forge Connect Mobile Manual</title></head><body><hr>
+<h2>title: Forge India Workspace - Mobile Application Documentation
+author: Forge Connect Inc.
+date: 2026-06-19</h2>
+<h1>Forge India Workspace - Mobile Application Documentation</h1>
+<p>Welcome to the comprehensive technical and operational guide for the <strong>Forge India Workspace Mobile Application</strong>. This document outlines the mobile architecture, core application features, technologies utilized, and user workflows designed for team collaboration on the go.</p>
+<p>The mobile application acts as the portable counterpart to the web workspace, specializing in high-fidelity Unified Communications (Video Conferencing and Chat) while maintaining strict enterprise security.</p>
+<hr>
+<h2>💻 Technologies Used</h2>
+<p>The Forge India Workspace Mobile Application is engineered for cross-platform performance using modern frameworks:</p>
+<ul>
+<li><strong>Core Framework</strong>: React Native &amp; Expo SDK (Cross-platform iOS and Android).</li>
+<li><strong>Styling</strong>: Tailwind CSS (via <code>twrnc</code> for native compilation) allowing consistent design language with the web application.</li>
+<li><strong>Real-Time Communication</strong>: <code>react-native-webrtc</code> (Video/Audio streams), Socket.io-client (Signaling and Chat).</li>
+<li><strong>Hardware Integrations</strong>: <code>expo-av</code> (Audio session and speaker routing), <code>expo-camera</code> (Device cameras).</li>
+<li><strong>Backend</strong>: Integrates with the central Node.js/Fastify server and MongoDB infrastructure.</li>
+</ul>
+<hr>
+<h2>1. Meetings (Video Conferencing)</h2>
+<p>The core offering of the mobile application is the highly optimized WebRTC Meetings experience.</p>
+<h3>Deep Dive: Core Functions &amp; Capabilities</h3>
+<ul>
+<li><strong>Native WebRTC Integration</strong>: Leverages low-level WebRTC bindings for hardware-accelerated video decoding and low-latency audio transmission over mobile networks.</li>
+<li><strong>Adaptive UI &amp; Scrollable Grids</strong>: The mobile interface utilizes flexible <code>ScrollView</code> components to gracefully handle large participant counts (gallery view) without freezing or overflowing smaller screens.</li>
+<li><strong>Advanced Audio Management</strong>: Background audio and interruption handling are strictly controlled using Expo AV to ensure call audio persists cleanly, even if the device screen locks.</li>
+<li><strong>Host Controls</strong>: Full suite of moderation features accessible directly from the mobile app. Hosts can mute all participants, lock rooms, admit guests from a waiting room, and transfer presenter privileges.</li>
+<li><strong>Local Screen Sharing</strong>: Native screen capturing allowing mobile users to broadcast their entire phone screen to the meeting room.</li>
+</ul>
+<h3>End-to-End User Workflow</h3>
+<ol>
+<li><strong>Joining a Call</strong>: Users open the app and paste a secure Room ID (or tap a deep link) to immediately enter the meeting lobby.</li>
+<li><strong>In-Call Engagement</strong>: Inside the meeting, users can toggle their camera and microphone, flip between front and back-facing cameras, and view the active speaker dynamically highlighted.</li>
+<li><strong>Navigating Participants</strong>: Users can swipe through the vertical grid of participant tiles or pin a specific user (such as a presenter) to maximize their video feed on the screen.</li>
+<li><strong>Moderation (As Host)</strong>: A host taps the &quot;Host Controls&quot; tab to enforce room lock, preventing unauthorized attendees from joining late.</li>
+</ol>
+<hr>
+<h2>2. Real-Time Chat &amp; Communications</h2>
+<p>The mobile app also provides a robust interface for synchronous messaging to ensure teams stay connected away from their desks.</p>
+<h3>Deep Dive: Core Functions &amp; Capabilities</h3>
+<ul>
+<li><strong>Instant Messaging</strong>: Seamless integration with the web platform&#39;s chat infrastructure. Direct Messages (DMs) and Channel messages sync instantly via WebSockets.</li>
+<li><strong>Presence Indicators</strong>: Users can view the online/offline status of colleagues directly from the mobile directory.</li>
+<li><strong>Push Notifications</strong>: Real-time push alerts for <code>@mentions</code> and direct messages ensure critical communications are never missed.</li>
+</ul>
+<h3>End-to-End User Workflow</h3>
+<ol>
+<li><strong>Triaging Messages</strong>: The user opens the Chat tab to view a chronologically sorted list of recent conversations, with bold indicators for unread threads.</li>
+<li><strong>Responding</strong>: The user taps a thread, reads the history, and uses the native keyboard to quickly send a response, complete with emoji support.</li>
+</ol>
+<hr>
+<h2>3. Mail, Docs, Sheets &amp; Show</h2>
+<p>To ensure full feature parity with the web platform, the mobile application provides dedicated tabs for accessing the core workspace productivity apps.</p>
+<h3>Deep Dive: Core Functions &amp; Capabilities</h3>
+<ul>
+<li><strong>Web-to-Mobile Continuity</strong>: The Mail, Docs, Sheets, and Show applications are integrated into the mobile shell via responsive, touch-friendly interfaces, providing a seamless transition from desktop to mobile.</li>
+<li><strong>Mail App</strong>: View your inbox, read secure enterprise emails, and compose messages on the go with responsive reading panes.</li>
+<li><strong>Docs &amp; Sheets App</strong>: View and collaboratively edit Rich-Text documents and Data Grids in real-time. The UI adapts to touch controls for selecting cells and formatting text.</li>
+<li><strong>Show App</strong>: Review presentations and slide decks directly from your mobile device before heading into a meeting.</li>
+<li><strong>Unified Navigation</strong>: Users can seamlessly tab between active meetings, chat channels, and their documents without losing state.</li>
+</ul>
+<h3>End-to-End User Workflow</h3>
+<ol>
+<li><strong>Quick Document Review</strong>: While commuting, a user taps the &quot;Docs&quot; tab, navigates to the &quot;Q3 Campaign&quot; folder, and reviews the latest changes made by their team.</li>
+<li><strong>Checking Spreadsheets</strong>: The user opens the &quot;Sheets&quot; tab to quickly verify a financial figure in the active workspace spreadsheet, ensuring they have the correct data before an ad-hoc video call.</li>
+<li><strong>Reading Mail</strong>: The user triages new messages from the &quot;Mail&quot; tab, marking important items for follow-up later on their desktop.</li>
+</ol>
+<hr>
+<h2>4. Testing &amp; Deployment (EAS)</h2>
+<p>The application leverages Expo Application Services (EAS) for streamlined building and over-the-air updates.</p>
+<ul>
+<li><strong>Development</strong>: Local testing is done via Metro bundler (<code>npm start</code>). However, due to native WebRTC dependencies, an Expo Dev Client or standalone APK must be compiled for testing camera/audio features instead of standard Expo Go.</li>
+<li><strong>Building for Production</strong>: Executing <code>eas build -p android --profile preview</code> generates a standalone Android APK.</li>
+<li><strong>Over-The-Air (OTA) Updates</strong>: For pure JavaScript/TypeScript logic updates (such as UI tweaks or layout fixes), the mobile app downloads updates seamlessly without requiring users to reinstall an APK.</li>
+</ul>
+</body></html>

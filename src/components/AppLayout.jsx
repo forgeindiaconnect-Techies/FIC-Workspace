@@ -11,10 +11,10 @@ import LogoImage from '../assets/landing-logo.png';
 
 const APPS = [
   { icon: Mail,            label: 'Mail',     path: 'mail',      color: '#7C3AED', desc: 'Secure email' },
+  { icon: FileText,        label: 'Docs',     path: 'docs',      color: '#3B82F6', desc: 'Word processing' },
   { icon: Video,           label: 'Meet',     path: 'meet',      color: '#059669', desc: 'Video huddles' },
   { icon: MessageSquare,   label: 'Kural',    path: 'chat',      color: '#00C17E', desc: 'Team chat' },
   { icon: Presentation,    label: 'Show',     path: 'show',      color: '#F59E0B', desc: 'Slide decks' },
-  { icon: Settings,        label: 'Settings', path: 'settings',  color: '#6366F1', desc: 'Workspace preferences' },
   { icon: FileSpreadsheet, label: 'Sheets',   path: 'sheets',    color: '#10B981', desc: 'Data grids' },
   { icon: Shield,          label: 'Admin',    path: 'admin',     color: '#EF4444', desc: 'User management' },
 ];
@@ -23,6 +23,8 @@ const APPS = [
 export const AppSwitcher = ({ workspaceId }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+  const isAdmin = auth.role?.toLowerCase() === 'admin' || ['admin@fic.com', 'agila@fic.com'].includes(auth.email?.toLowerCase());
 
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -63,7 +65,7 @@ export const AppSwitcher = ({ workspaceId }) => {
             </div>
             
             <div className="grid grid-cols-2 gap-4">
-              {APPS.map(({ icon: Icon, label, path, color, desc }) => (
+              {APPS.filter(app => app.path !== 'admin' || isAdmin).map(({ icon: Icon, label, path, color, desc }) => (
                 <Link
                   key={path}
                   to={`/w/${workspaceId}/${path}`}

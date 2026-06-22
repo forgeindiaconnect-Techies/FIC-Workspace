@@ -349,22 +349,18 @@ app.post('/api/meetings/:id/summarize', authenticate, async (req, res) => {
 
     let summaryHtml;
 
-    if (hasTranscripts && process.env.GROQ_API_KEY) {
+    if (hasTranscripts && (process.env.GEMINI_API_KEY || process.env.GROQ_API_KEY)) {
       // ── Build transcript text from real data ──
       const fullText = transcripts.map(t => `[${t.speakerName}]: ${t.text}`).join('\n');
       console.log(`[Summarizer] Summarizing ${transcripts.length} transcript chunks (${fullText.length} chars) for meeting "${meeting.title}"...`);
 
-      // ── Call Groq AI for real summarization ──
-      const { default: Groq } = await import('groq-sdk');
-      const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
-      const prompt = `You are an expert Executive Assistant. Summarize the following meeting transcript.
+      const prompt = `You are an expert Executive Assistant. Summarize the following meeting transcript perfectly.
 Your response MUST be formatted in clean HTML suitable for an email body.
-Do NOT use markdown. Use bold tags, lists, and headers (h2, h3).
+Do NOT use markdown (no asterisks, no hash signs, no code blocks). Use pure HTML tags (e.g., <h2>, <ul>, <li>, <strong>, <p>).
 Include the following sections exactly:
 
 <h2>Executive Summary</h2>
-(Brief 2-3 sentences overview of what was discussed)
+<p>(Brief 2-3 sentences overview of what was discussed)</p>
 
 <h2>Main Topics Discussed</h2>
 <ul><li>Topic 1</li></ul>
@@ -384,17 +380,43 @@ Participants: ${participants.map(p => p.name).join(', ')}
 Here is the meeting transcript:
 ${fullText}`;
 
-      try {
-        const chatCompletion = await groq.chat.completions.create({
-          messages: [{ role: 'user', content: prompt }],
-          model: 'llama-3.3-70b-versatile',
-          temperature: 0.2,
-          max_tokens: 2500,
-        });
+      let aiSummaryContent = '';
 
-        const aiSummaryContent = chatCompletion.choices[0]?.message?.content || '';
+      if (process.env.GEMINI_API_KEY) {
+        try {
+          const { GoogleGenerativeAI } = await import('@google/generative-ai');
+          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+          const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+          
+          const result = await model.generateContent(prompt);
+          aiSummaryContent = result.response.text();
+          // Clean up potential markdown code block markers
+          aiSummaryContent = aiSummaryContent.replace(/```html\n?/g, '').replace(/```\n?/g, '');
+        } catch (geminiErr) {
+          console.error('[Summarizer] Gemini AI failed:', geminiErr.message);
+        }
+      }
+
+      if (!aiSummaryContent && process.env.GROQ_API_KEY) {
+        try {
+          const { default: Groq } = await import('groq-sdk');
+          const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+          const chatCompletion = await groq.chat.completions.create({
+            messages: [{ role: 'user', content: prompt }],
+            model: 'llama-3.3-70b-versatile',
+            temperature: 0.2,
+            max_tokens: 2500,
+          });
+          aiSummaryContent = chatCompletion.choices[0]?.message?.content || '';
+          aiSummaryContent = aiSummaryContent.replace(/```html\n?/g, '').replace(/```\n?/g, '');
+        } catch (groqErr) {
+          console.error('[Summarizer] Groq AI failed:', groqErr.message);
+        }
+      }
+
+      if (aiSummaryContent) {
         console.log(`[Summarizer] AI summary generated (${aiSummaryContent.length} chars).`);
-
         summaryHtml = `
           <div style="font-family: 'Segoe UI', sans-serif; max-width: 640px; margin: 0 auto; color: #111827;">
             <div style="background: linear-gradient(135deg, #1e40af, #7c3aed); padding: 24px 28px; border-radius: 12px 12px 0 0;">
@@ -411,10 +433,6 @@ ${fullText}`;
             </div>
             <p style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 16px;">Sent by Forge India Connect AI · This summary was AI-generated from the live meeting audio.</p>
           </div>`;
-      } catch (aiErr) {
-        console.error('[Summarizer] Groq AI failed:', aiErr.message);
-        // Fall through to the no-transcript path
-        summaryHtml = null;
       }
     }
 

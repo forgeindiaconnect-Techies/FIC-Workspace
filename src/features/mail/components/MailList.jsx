@@ -87,38 +87,38 @@ const MailList = () => {
   }, [emails, folder, activeFilter, sortBy, email]);
 
   return (
-    <div className="w-full md:w-[380px] h-full flex flex-col bg-[var(--surface-1)] border-r border-[var(--border)] shrink-0">
+    <div className="w-full md:w-[400px] h-full flex flex-col bg-white border-r border-slate-200 shrink-0">
       {/* Header */}
-      <div className="h-16 flex items-center justify-between px-6 border-b border-[var(--border)] shrink-0">
+      <div className="h-16 flex items-center justify-between px-6 border-b border-slate-200 shrink-0 bg-white">
         <div className="flex items-center gap-2">
-          <button onClick={() => setMobileMenuOpen(true)} className="md:hidden p-2 -ml-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)]">
+          <button onClick={() => setMobileMenuOpen(true)} className="md:hidden p-1.5 -ml-1 hover:bg-slate-100 rounded-md text-slate-500 transition-colors">
             <Menu size={20} />
           </button>
-          <h2 className="text-sm font-black uppercase tracking-[0.2em] text-[var(--text-primary)]">
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
             {folder}
           </h2>
         </div>
         <div className="flex items-center gap-1">
-          <button className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all">
-            <ArrowUpDown size={14} />
+          <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
+            <ArrowUpDown size={18} />
           </button>
-          <button className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all">
-            <Filter size={14} />
+          <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
+            <Filter size={18} />
           </button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="px-6 py-3 flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-[var(--border)]">
+      <div className="px-4 py-2 flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-slate-200 bg-white">
         {filters.map(f => (
           <button
             key={f}
             onClick={() => setActiveFilter(f)}
             className={cn(
-              "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap",
+              "px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap border",
               activeFilter === f 
-                ? "bg-[var(--brand-primary)] text-white shadow-md shadow-blue-500/20" 
-                : "bg-[var(--surface-2)] text-[var(--text-secondary)] hover:bg-[var(--surface-0)] border border-[var(--border)]"
+                ? "bg-slate-100 text-slate-800 border-slate-300" 
+                : "bg-white text-slate-500 hover:bg-slate-50 border-transparent"
             )}
           >
             {f}
@@ -209,19 +209,19 @@ const MailRow = ({ mail, isSelected, isBulkSelected, onSelect, onBulkToggle }) =
       onMouseLeave={() => setIsHovered(false)}
       onClick={onSelect}
       className={cn(
-        "group relative flex items-start gap-4 px-6 py-4 border-b border-[var(--border)] cursor-grab active:cursor-grabbing transition-all",
-        !mail.isRead ? "bg-[var(--surface-0)]" : "bg-transparent",
-        isSelected && "bg-[var(--brand-light)] border-l-4 border-l-[var(--brand-primary)]",
-        isBulkSelected && "bg-[var(--brand-light)]"
+        "group relative flex items-start gap-3 px-5 py-4 border-b border-slate-100 cursor-default transition-all duration-200",
+        !mail.isRead ? "bg-white" : "bg-[#F8FAFC]/50",
+        isSelected && "bg-blue-50/50 shadow-[inset_4px_0_0_0_#2563EB]",
+        isBulkSelected && "bg-blue-50/50"
       )}
     >
       {/* Unread Indicator */}
-      {!mail.isRead && (
-        <div className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-[var(--brand-primary)]" />
+      {!mail.isRead && !isSelected && (
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" />
       )}
 
       {/* Avatar / Checkbox */}
-      <div className="relative w-10 h-10 shrink-0" onClick={(e) => { e.stopPropagation(); onBulkToggle(); }}>
+      <div className="relative w-9 h-9 shrink-0 mt-0.5" onClick={(e) => { e.stopPropagation(); onBulkToggle(); }}>
         <AnimatePresence mode="wait">
           {isHovered || isBulkSelected ? (
             <motion.div
@@ -229,8 +229,8 @@ const MailRow = ({ mail, isSelected, isBulkSelected, onSelect, onBulkToggle }) =
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               className={cn(
-                "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all",
-                isBulkSelected ? "bg-[var(--brand-primary)] border-[var(--brand-primary)]" : "bg-white border-[var(--border)]"
+                "w-9 h-9 rounded-full flex items-center justify-center border transition-colors cursor-pointer",
+                isBulkSelected ? "bg-blue-600 border-blue-600" : "bg-white border-slate-300"
               )}
             >
               {isBulkSelected && <CheckCircle size={16} className="text-white" strokeWidth={3} />}
@@ -240,7 +240,7 @@ const MailRow = ({ mail, isSelected, isBulkSelected, onSelect, onBulkToggle }) =
               key="avatar"
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-black"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold"
               style={{ background: avatarBg }}
             >
               {initials}
@@ -252,60 +252,60 @@ const MailRow = ({ mail, isSelected, isBulkSelected, onSelect, onBulkToggle }) =
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1">
-          <span className={cn("text-xs truncate", !mail.isRead ? "font-black text-[var(--text-primary)]" : "font-semibold text-[var(--text-secondary)]")}>
+          <span className={cn("text-[14px] truncate", !mail.isRead ? "font-bold text-slate-900" : "font-medium text-slate-700")}>
             {mail.sender}
           </span>
-          <span className="text-[10px] font-bold text-[var(--text-secondary)] opacity-60 font-mono whitespace-nowrap">
-            {new Date(mail.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })} {new Date(mail.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          <span className={cn("text-[11px] whitespace-nowrap ml-2", !mail.isRead ? "font-bold text-blue-600" : "font-medium text-slate-400")}>
+            {new Date(mail.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 mb-1">
-           {mail.priority === 'high' && <Zap size={10} className="text-[var(--brand-primary)] fill-[var(--brand-primary)]" />}
-           <h3 className={cn("text-xs truncate", !mail.isRead ? "font-bold text-[var(--text-primary)]" : "font-medium text-[var(--text-secondary)]")}>
+        <div className="flex items-center gap-1.5 mb-1.5">
+           {mail.priority === 'high' && <Zap size={14} className="text-red-500 fill-red-500" />}
+           <h3 className={cn("text-[14px] truncate", !mail.isRead ? "font-bold text-slate-900" : "font-medium text-slate-600")}>
              {mail.subject}
            </h3>
         </div>
-        <p className="text-[11px] text-[var(--text-secondary)] line-clamp-1 opacity-70 leading-relaxed">
+        <p className="text-[13px] text-slate-500 line-clamp-2 leading-snug pr-6 font-normal">
           {mail.snippet}
         </p>
       </div>
 
       {/* Hover Actions */}
       {isHovered && !isBulkSelected && (
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-[var(--surface-0)] border border-[var(--border)] p-1 rounded-xl shadow-xl z-10 animate-fade">
-          <button onClick={(e) => { e.stopPropagation(); }} className="p-1.5 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all">
-            <Archive size={14} />
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-lg z-10 animate-in fade-in zoom-in-95 duration-100">
+          <button onClick={(e) => { e.stopPropagation(); }} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors" title="Archive">
+            <Archive size={16} />
           </button>
-          <button onClick={(e) => { e.stopPropagation(); }} className="p-1.5 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all">
-            <Trash2 size={14} />
+          <button onClick={(e) => { e.stopPropagation(); }} className="p-1.5 hover:bg-red-50 rounded-lg text-slate-500 hover:text-red-600 transition-colors" title="Delete">
+            <Trash2 size={16} />
           </button>
-          <button onClick={(e) => { e.stopPropagation(); }} className="p-1.5 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all">
-            <Clock size={14} />
+          <button onClick={(e) => { e.stopPropagation(); }} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors" title="Snooze">
+            <Clock size={16} />
           </button>
-          <button onClick={(e) => { e.stopPropagation(); }} className="p-1.5 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all">
-            <Star size={14} className={cn(mail.isStarred && "text-amber-400 fill-amber-400")} />
+          <button onClick={(e) => { e.stopPropagation(); }} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors" title="Star">
+            <Star size={16} className={cn(mail.isStarred && "text-amber-400 fill-amber-400")} />
           </button>
         </div>
       )}
 
       {/* Attachments Indicator */}
       {mail.hasAttachments && !isHovered && (
-        <Paperclip size={12} className="absolute right-6 bottom-4 text-[var(--text-secondary)] opacity-40" />
+        <Paperclip size={14} className="absolute right-3 bottom-3 text-slate-400" />
       )}
     </div>
   );
 };
 
 const MailSkeleton = () => (
-  <div className="px-6 py-4 border-b border-[var(--border)] animate-pulse flex items-start gap-4">
-    <div className="w-10 h-10 rounded-full bg-[var(--surface-2)] shrink-0" />
-    <div className="flex-1 min-w-0 space-y-2">
+  <div className="px-4 py-3 border-b border-slate-200 animate-pulse flex items-start gap-3">
+    <div className="w-9 h-9 rounded-full bg-slate-200 shrink-0" />
+    <div className="flex-1 min-w-0 space-y-2 py-1">
       <div className="flex justify-between">
-        <div className="h-3 w-20 bg-[var(--surface-2)] rounded" />
-        <div className="h-2 w-12 bg-[var(--surface-2)] rounded" />
+        <div className="h-3 w-24 bg-slate-200 rounded" />
+        <div className="h-3 w-10 bg-slate-200 rounded" />
       </div>
-      <div className="h-3 w-40 bg-[var(--surface-2)] rounded" />
-      <div className="h-2 w-full bg-[var(--surface-2)] rounded opacity-50" />
+      <div className="h-3 w-3/4 bg-slate-200 rounded" />
+      <div className="h-3 w-full bg-slate-100 rounded" />
     </div>
   </div>
 );

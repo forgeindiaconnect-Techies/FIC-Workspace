@@ -54,22 +54,32 @@ __export(transcription_exports, {
   transcribeChunk: () => transcribeChunk
 });
 async function transcribeChunk(meetingId, userId, speakerName, filePath) {
-  if (!process.env.GROQ_API_KEY) {
-    console.warn("[Transcription] GROQ_API_KEY is not set. Skipping transcription.");
+  if (!process.env.GROQ_API_KEY || !groq) {
+    console.warn("[Transcription] GROQ_API_KEY is not set or groq client is not initialized. Skipping transcription.");
     return null;
   }
   try {
     const transcription = await groq.audio.transcriptions.create({
       file: import_fs.default.createReadStream(filePath),
       model: "whisper-large-v3",
-      prompt: "Meeting conversation. Transcribe accurately.",
-      response_format: "json",
-      language: "en"
+      prompt: "Meeting conversation in Tamil and English. Transcribe accurately.",
+      temperature: 0,
+      response_format: "verbose_json"
     });
     const text = transcription.text.trim();
     const lowerText = text.toLowerCase();
-    const isHallucination = lowerText.includes("meeting conversation. transcribe accurately") || lowerText === "thank you." || lowerText === "thank you" || lowerText === "thanks." || lowerText === "subscribe." || lowerText === "subscribe";
-    if (text && !isHallucination) {
+    const cleanText = lowerText.replace(/[^a-z0-9\s]/g, "").trim();
+    const segments = transcription.segments || [];
+    let avgNoSpeechProb = 0;
+    if (segments.length > 0) {
+      avgNoSpeechProb = segments.reduce((acc, seg) => acc + (seg.no_speech_prob || 0), 0) / segments.length;
+    }
+    if (avgNoSpeechProb > 0.6) {
+      console.log(`[Transcription] Ignored silent chunk (no_speech_prob: ${avgNoSpeechProb.toFixed(2)})`);
+      return null;
+    }
+    const isHallucination = cleanText.includes("meeting conversation in tamil and english transcribe accurately") || cleanText.includes("meeting conversation transcribe accurately") || cleanText.includes("transcribe accurately") || cleanText.includes("tanscribe accurately") || cleanText.includes("we go on") || cleanText.includes("were going to go on") || cleanText.includes("you see were getting some different individuals") || cleanText === "thank you" || cleanText === "thanks" || cleanText === "subscribe" || cleanText === "terima kasih";
+    if (text && !isHallucination && cleanText.length > 0) {
       await Transcript.create({
         meetingId,
         userId,
@@ -92,7 +102,62 @@ var init_transcription = __esm({
     import_fs = __toESM(require("fs"));
     import_groq_sdk = __toESM(require("groq-sdk"));
     init_Transcript();
-    groq = new import_groq_sdk.default({ apiKey: process.env.GROQ_API_KEY });
+    groq = null;
+    if (process.env.GROQ_API_KEY) {
+      groq = new import_groq_sdk.default({ apiKey: process.env.GROQ_API_KEY });
+    }
+  }
+});
+
+// src/services/mailSockets.ts
+var mailSockets_exports = {};
+__export(mailSockets_exports, {
+  activeMailSockets: () => activeMailSockets,
+  handleMailSocket: () => handleMailSocket
+});
+function handleMailSocket(socket, req) {
+  const logFile = import_path2.default.join(__dirname, "../../socket_debug.log");
+  const log = (msg) => {
+    try {
+      import_fs3.default.appendFileSync(logFile, `[${(/* @__PURE__ */ new Date()).toISOString()}] ${msg}
+`);
+    } catch (e) {
+    }
+  };
+  log(`New connection attempt. req.url: "${req.url}", req.query: ${JSON.stringify(req.query)}`);
+  let email = req.query?.email;
+  if (!email && req.url) {
+    try {
+      const url = new URL(req.url, "http://localhost");
+      email = url.searchParams.get("email") || void 0;
+      log(`Parsed email from URL: "${email}"`);
+    } catch (e) {
+      log(`Failed to parse URL: ${e.message}`);
+    }
+  }
+  if (email) {
+    log(`Successfully established Mail Socket for user: ${email}`);
+    activeMailSockets.set(email, socket);
+    socket.on("close", (code, reason) => {
+      log(`Mail Socket closed for user: ${email}. Code: ${code}, Reason: "${reason ? reason.toString() : ""}"`);
+      activeMailSockets.delete(email);
+    });
+    socket.on("error", (err) => {
+      log(`Mail Socket error for user ${email}: ${err.message}`);
+      activeMailSockets.delete(email);
+    });
+  } else {
+    log(`Closing socket: Email identifier missing or empty.`);
+    socket.close(1008, "Email identifier required");
+  }
+}
+var import_fs3, import_path2, activeMailSockets;
+var init_mailSockets = __esm({
+  "src/services/mailSockets.ts"() {
+    "use strict";
+    import_fs3 = __toESM(require("fs"));
+    import_path2 = __toESM(require("path"));
+    activeMailSockets = /* @__PURE__ */ new Map();
   }
 });
 
@@ -122,8 +187,8 @@ var import_fastify = __toESM(require("fastify"));
 var import_cors = __toESM(require("@fastify/cors"));
 var import_websocket = __toESM(require("@fastify/websocket"));
 var import_dotenv2 = __toESM(require("dotenv"));
-var import_fs4 = __toESM(require("fs"));
-var import_path3 = __toESM(require("path"));
+var import_fs5 = __toESM(require("fs"));
+var import_path4 = __toESM(require("path"));
 var import_multipart = __toESM(require("@fastify/multipart"));
 
 // src/routes/auth.ts
@@ -198,6 +263,9 @@ async function authenticate(request, reply) {
       role: decoded.role,
       workspaceId: decoded.workspaceId
     };
+    if (decoded.role === "demo" && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase())) {
+      return reply.code(403).send({ error: "Demo accounts have read-only access." });
+    }
   } catch (err) {
     console.error("JWT Verification failed! Error:", err.message);
     return reply.code(401).send({ error: "Unauthorized: Session authentication failed." });
@@ -457,6 +525,50 @@ async function authRoutes(fastify2) {
       return reply.code(201).send(tokenBundle);
     } catch (err) {
       return reply.code(500).send({ error: "Failed to create subscription.", details: err.message });
+    }
+  });
+  fastify2.post("/demo", async (request, reply) => {
+    try {
+      if (!isMongoConnected()) {
+        return reply.code(503).send({ error: "Database is not connected." });
+      }
+      const email = "demo@nexus.app";
+      const workspaceId = "demo-workspace";
+      let tenant = await Tenant.findOne({ workspaceId });
+      if (!tenant) {
+        tenant = await Tenant.create({
+          name: "Demo Workspace",
+          organisationName: "Forge India Connect Demo",
+          workspaceId,
+          domain: "demo.nexus.app",
+          adminEmail: email,
+          password: await import_bcrypt.default.hash("demo_password_123!@#", 10),
+          paymentStatus: "active",
+          subscriptionTier: "enterprise",
+          maxUsers: 99999,
+          subscriptionExpiryDate: new Date(Date.now() + 1e3 * 60 * 60 * 24 * 365 * 10)
+          // 10 years
+        });
+      }
+      let user = await User.findOne({ email });
+      if (!user) {
+        user = await User.create({
+          name: "Demo User",
+          email,
+          passwordHash: await import_bcrypt.default.hash("demo_password_123!@#", 10),
+          workspaceId,
+          role: "demo",
+          avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=DemoUser`,
+          mfaEnabled: false
+        });
+      } else if (user.role !== "demo") {
+        user.role = "demo";
+        await user.save();
+      }
+      const tokenBundle = await issueTokens(user);
+      return reply.code(200).send(tokenBundle);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to create or login to demo account.", details: err.message });
     }
   });
   fastify2.post("/signup", async (request, reply) => {
@@ -752,6 +864,7 @@ var MeetingSchema = new import_mongoose5.Schema({
   participantIds: [{ type: import_mongoose5.Schema.Types.ObjectId, ref: "User" }],
   aiEnabled: { type: Boolean, default: false },
   aiSummary: { type: String },
+  summarySent: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 var Meeting = (0, import_mongoose5.model)("Meeting", MeetingSchema);
@@ -796,6 +909,7 @@ var mailSchema = new import_mongoose8.default.Schema({
   body: { type: String, default: "" },
   isRead: { type: Boolean, default: false },
   isStarred: { type: Boolean, default: false },
+  label: { type: String, default: null },
   attachments: [{
     name: String,
     url: String,
@@ -823,6 +937,9 @@ var RoomSchema = new import_mongoose9.Schema({
 });
 var Room = (0, import_mongoose9.model)("Room", RoomSchema);
 
+// src/routes/meetings.ts
+init_Transcript();
+
 // src/services/aiBot.ts
 var import_ws = __toESM(require("ws"));
 var import_fs2 = __toESM(require("fs"));
@@ -835,7 +952,10 @@ init_transcription();
 // src/services/summarizer.ts
 var import_groq_sdk2 = __toESM(require("groq-sdk"));
 init_Transcript();
-var groq2 = new import_groq_sdk2.default({ apiKey: process.env.GROQ_API_KEY });
+var groq2 = null;
+if (process.env.GROQ_API_KEY) {
+  groq2 = new import_groq_sdk2.default({ apiKey: process.env.GROQ_API_KEY });
+}
 async function dispatchSummaryMail(meeting, summaryHtml) {
   try {
     const participantDocs = await Participant.find({ meetingId: meeting._id }).distinct("userId");
@@ -881,12 +1001,28 @@ async function summarizeMeeting(meetingId) {
     console.log("[Summarizer] Summary already exists, skipping.");
     return meeting.aiSummary;
   }
+  if (meeting.summarySent) {
+    console.log("[Summarizer] Summary email already sent for this meeting, skipping.");
+    return meeting.aiSummary || null;
+  }
+  const lockResult = await Meeting.findOneAndUpdate(
+    { _id: meetingId, summarySent: { $ne: true } },
+    { $set: { summarySent: true } },
+    { new: true }
+  );
+  if (!lockResult) {
+    console.log("[Summarizer] Another process already claimed this summary, skipping.");
+    return null;
+  }
   const transcripts = await Transcript.find({ meetingId }).sort({ timestamp: 1 });
   const hasTranscripts = transcripts && transcripts.length > 0;
   let summaryHtml;
-  if (!hasTranscripts || !process.env.GROQ_API_KEY) {
-    console.log(`[Summarizer] No transcripts found (or no API key). Sending completion notification.`);
-    const duration = meeting.scheduledAt ? Math.round((Date.now() - new Date(meeting.scheduledAt).getTime()) / 6e4) : 0;
+  if (!hasTranscripts || !process.env.GROQ_API_KEY || !groq2) {
+    console.log(`[Summarizer] No transcripts found (or no API key/client). Sending completion notification.`);
+    let duration = 0;
+    if (meeting.scheduledAt) {
+      duration = Math.max(1, Math.round((Date.now() - new Date(meeting.scheduledAt).getTime()) / 6e4));
+    }
     summaryHtml = `
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;border-radius:12px">
   <div style="background:linear-gradient(135deg,#1e40af,#7c3aed);padding:24px;border-radius:8px;margin-bottom:20px">
@@ -914,6 +1050,8 @@ async function summarizeMeeting(meetingId) {
     const fullText = transcripts.map((t) => `[${t.timestamp.toISOString()}] ${t.speakerName}: ${t.text}`).join("\n");
     console.log(`[Summarizer] Summarizing ${transcripts.length} transcript entries (${fullText.length} chars)...`);
     const prompt = `You are an expert Executive Assistant. Summarize the following meeting transcript.
+The transcript may contain a mix of English and Tamil.
+Your summary MUST be entirely in English.
 Your response MUST be formatted in clean HTML suitable for an email body.
 Do NOT use markdown. Use bold tags, lists, and headers (h2, h3).
 Include the following sections exactly:
@@ -941,8 +1079,39 @@ ${fullText}`;
         temperature: 0.2,
         max_tokens: 2e3
       });
-      summaryHtml = chatCompletion.choices[0]?.message?.content || "";
-      console.log(`[Summarizer] AI summary generated (${summaryHtml.length} chars).`);
+      const rawSummary = chatCompletion.choices[0]?.message?.content || "";
+      let duration = meeting.durationMinutes || 60;
+      if (transcripts && transcripts.length > 0) {
+        const firstTs = new Date(transcripts[0].timestamp).getTime();
+        const lastTs = new Date(transcripts[transcripts.length - 1].timestamp).getTime();
+        duration = Math.max(1, Math.round((lastTs - firstTs) / 6e4));
+      } else if (meeting.scheduledAt) {
+        duration = Math.max(1, Math.round((Date.now() - new Date(meeting.scheduledAt).getTime()) / 6e4));
+      }
+      const uniqueSpeakers = new Set(transcripts.map((t) => t.speakerName)).size;
+      summaryHtml = `
+<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;border-radius:12px">
+  <div style="background:linear-gradient(135deg,#1e40af,#7c3aed);padding:24px;border-radius:8px;margin-bottom:20px">
+    <h1 style="color:#fff;margin:0;font-size:22px">Meeting Summary</h1>
+    <p style="color:#bfdbfe;margin:8px 0 0">${meeting.title}</p>
+  </div>
+  
+  <div style="background:#fff;padding:20px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:20px">
+    <h2 style="color:#1e293b;margin-top:0;font-size:16px;margin-bottom:12px">Meeting Details</h2>
+    <ul style="color:#475569;line-height:1.8;margin:0;padding-left:20px">
+      <li><strong>Date:</strong> ${(/* @__PURE__ */ new Date()).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</li>
+      <li><strong>Duration:</strong> ~${duration} minutes</li>
+      <li><strong>Speakers:</strong> ${uniqueSpeakers}</li>
+    </ul>
+  </div>
+
+  <div style="background:#fff;padding:24px;border-radius:8px;border:1px solid #e2e8f0;color:#1e293b;line-height:1.6">
+    ${rawSummary.replace(/<h2>/g, '<h2 style="color:#1e40af;font-size:18px;margin-top:24px;margin-bottom:12px;border-bottom:2px solid #e2e8f0;padding-bottom:8px">').replace(/<h3>/g, '<h3 style="color:#334155;font-size:16px;margin-top:20px;margin-bottom:8px">').replace(/<ul>/g, '<ul style="color:#475569;padding-left:20px;margin-bottom:16px">').replace(/<li>/g, '<li style="margin-bottom:8px">')}
+  </div>
+  
+  <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:24px">Sent by Forge India Connect AI</p>
+</div>`;
+      console.log(`[Summarizer] AI summary generated and formatted.`);
     } catch (err) {
       console.error("[Summarizer] Groq API failed:", err.message);
       return null;
@@ -1191,6 +1360,7 @@ async function meetingRoutes(fastify2) {
         scheduledAt,
         startTime,
         recordingEnabled,
+        aiEnabled,
         inviteEmails
       } = request.body;
       if (!title) {
@@ -1210,6 +1380,7 @@ async function meetingRoutes(fastify2) {
         scheduledAt: scheduledAt || startTime ? new Date(scheduledAt || startTime) : /* @__PURE__ */ new Date(),
         durationMinutes: durationMinutes || duration || 60,
         recordingEnabled: !!recordingEnabled,
+        aiEnabled: !!aiEnabled,
         status: "scheduled",
         participantIds: [new import_mongoose11.Types.ObjectId(request.user.id)]
       });
@@ -1252,9 +1423,10 @@ async function meetingRoutes(fastify2) {
         const targetEmails = allUsers.map((u) => u.email).filter((e) => e !== request.user.email);
         if (targetEmails.length > 0) {
           const timeStr = scheduledAt || startTime ? new Date(scheduledAt || startTime).toLocaleString() : "Now";
-          const origin = request.headers.origin || process.env.CLIENT_URL || "http://localhost:5173";
+          const reqOrigin = request.headers.origin || process.env.CLIENT_URL || "http://localhost:5173";
+          const origin = reqOrigin.includes("localhost") || reqOrigin.includes("127.0.0.1") ? "https://workspace-blue-theta-87.vercel.app" : reqOrigin;
           const webLink = `${origin}/w/${workspaceId}/meet/room/${joinCode}${plainPasscode ? `?pwd=${encodeURIComponent(plainPasscode)}&intent=join` : "?intent=join"}`;
-          const mobileLink = `nexus-workspace://meet/room/${joinCode}${plainPasscode ? `?pwd=${encodeURIComponent(plainPasscode)}&intent=join` : "?intent=join"}`;
+          const mobileLink = `nexus://meet/room/${joinCode}${plainPasscode ? `?pwd=${encodeURIComponent(plainPasscode)}` : ""}`;
           const mailBody = `
   <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b;">
     <h2 style="color: #2563eb;">Meeting Invitation: ${meeting.title}</h2>
@@ -1303,6 +1475,9 @@ async function meetingRoutes(fastify2) {
   });
   fastify2.get("/join/:code", { preHandler: authenticate }, async (request, reply) => {
     try {
+      if (request.user?.role === "demo") {
+        return reply.code(403).send({ error: "Demo accounts cannot join meetings." });
+      }
       const { code } = request.params;
       const { passcode } = request.query;
       const cleanCode = normalizeJoinCode(String(code || ""));
@@ -1390,8 +1565,81 @@ async function meetingRoutes(fastify2) {
       return reply.code(500).send({ error: "Error resolving meeting join code.", details: err.message });
     }
   });
+  fastify2.get("/history", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { page = 1, limit = 10 } = request.query;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const userId = new import_mongoose11.Types.ObjectId(request.user.id);
+      const meetings = await Meeting.find({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      }).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).populate("hostId", "name email avatarUrl");
+      const total = await Meeting.countDocuments({
+        $or: [
+          { hostId: userId },
+          { participantIds: userId }
+        ]
+      });
+      return reply.code(200).send({
+        meetings,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to retrieve history logs.", details: err.message });
+    }
+  });
+  fastify2.get("/rooms", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const workspaceId = request.user?.workspaceId || "antigraviity-hq";
+      const rooms2 = await Room.find({ workspaceId }).sort({ createdAt: -1 });
+      return reply.code(200).send(rooms2);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to fetch rooms", details: err.message });
+    }
+  });
+  fastify2.post("/rooms", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { title, tag, color } = request.body;
+      const workspaceId = request.user?.workspaceId || "antigraviity-hq";
+      if (!title || !tag) return reply.code(400).send({ error: "Title and Tag are required." });
+      const room = await Room.create({
+        workspaceId,
+        creatorId: request.user.id,
+        title,
+        tag,
+        color: color || "#7c3aed"
+      });
+      return reply.code(201).send(room);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to create room", details: err.message });
+    }
+  });
+  fastify2.delete("/rooms/:id", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const room = await Room.findById(id);
+      if (!room) return reply.code(404).send({ error: "Room not found." });
+      if (room.creatorId.toString() !== request.user.id && request.user.role !== "company-admin") {
+        return reply.code(403).send({ error: "Unauthorized to delete this room." });
+      }
+      await Room.findByIdAndDelete(id);
+      return reply.code(200).send({ success: true });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to delete room", details: err.message });
+    }
+  });
   fastify2.get("/:id", { preHandler: authenticate }, async (request, reply) => {
     try {
+      if (request.user?.role === "demo") {
+        return reply.code(403).send({ error: "Demo accounts cannot join meetings." });
+      }
       const { id } = request.params;
       if (!import_mongoose11.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid meeting ID format." });
@@ -1595,19 +1843,31 @@ async function meetingRoutes(fastify2) {
   fastify2.post("/:id/leave", { preHandler: authenticate }, async (request, reply) => {
     try {
       const { id } = request.params;
-      const meeting = await resolveMeetingIdentifier(id);
+      if (!id || !id.trim()) {
+        return reply.code(400).send({ error: "Missing required field: meeting ID." });
+      }
+      let meeting;
+      try {
+        meeting = await resolveMeetingIdentifier(id);
+      } catch (resolveErr) {
+        return reply.code(400).send({ error: "Invalid meeting identifier.", details: resolveErr.message });
+      }
       if (!meeting) {
         return reply.code(404).send({ error: "Meeting room not found." });
       }
-      await Participant.findOneAndUpdate(
-        {
-          meetingId: meeting._id,
-          userId: new import_mongoose11.Types.ObjectId(request.user.id),
-          leftAt: { $exists: false }
-        },
-        { leftAt: /* @__PURE__ */ new Date() },
-        { new: true }
-      );
+      try {
+        await Participant.findOneAndUpdate(
+          {
+            meetingId: meeting._id,
+            userId: new import_mongoose11.Types.ObjectId(request.user.id),
+            leftAt: { $exists: false }
+          },
+          { leftAt: /* @__PURE__ */ new Date() },
+          { new: true }
+        );
+      } catch (participantErr) {
+        console.warn("[Meeting] Failed to update participant leave status:", participantErr.message);
+      }
       const aiBotUser = await User.findOne({ email: "ai-assistant@nexus.app" });
       const query = {
         meetingId: meeting._id,
@@ -1624,43 +1884,15 @@ async function meetingRoutes(fastify2) {
         if (meeting.aiEnabled) {
           await stopAIBot(meeting._id.toString());
         } else {
-          summarizeMeeting(meeting._id.toString()).catch(() => {
+          summarizeMeeting(meeting._id.toString()).catch((err) => {
+            console.warn("[Meeting] Summary generation failed:", err.message);
           });
         }
       }
       return reply.code(200).send({ success: true, message: "Left meeting successfully", activeParticipantCount });
     } catch (err) {
-      return reply.code(500).send({ error: "Failed to leave meeting.", details: err.message });
-    }
-  });
-  fastify2.get("/history", { preHandler: authenticate }, async (request, reply) => {
-    try {
-      const { page = 1, limit = 10 } = request.query;
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-      const userId = new import_mongoose11.Types.ObjectId(request.user.id);
-      const meetings = await Meeting.find({
-        $or: [
-          { hostId: userId },
-          { participantIds: userId }
-        ]
-      }).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).populate("hostId", "name email avatarUrl");
-      const total = await Meeting.countDocuments({
-        $or: [
-          { hostId: userId },
-          { participantIds: userId }
-        ]
-      });
-      return reply.code(200).send({
-        meetings,
-        pagination: {
-          total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / parseInt(limit))
-        }
-      });
-    } catch (err) {
-      return reply.code(500).send({ error: "Failed to retrieve history logs.", details: err.message });
+      console.error("[Meeting] Leave route error:", err);
+      return reply.code(500).send({ error: "Failed to leave meeting.", details: err.message || "Unknown server error" });
     }
   });
   fastify2.get("/:id/participants", { preHandler: authenticate }, async (request, reply) => {
@@ -1696,6 +1928,9 @@ async function meetingRoutes(fastify2) {
   fastify2.post("/:id/summarize", { preHandler: authenticate }, async (request, reply) => {
     try {
       const { id } = request.params;
+      if (!id || !id.trim()) {
+        return reply.code(400).send({ error: "Missing required field: meeting ID." });
+      }
       if (!import_mongoose11.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid meeting ID format." });
       }
@@ -1704,10 +1939,14 @@ async function meetingRoutes(fastify2) {
         return reply.code(404).send({ error: "Meeting room not found." });
       }
       if (meeting.status !== "ended") {
-        return reply.code(400).send({ error: "Summaries can only be generated for completed meetings." });
+        return reply.code(400).send({ error: "Summaries can only be generated for completed meetings. Current status: " + meeting.status });
       }
       if (meeting.aiSummary) {
         return reply.code(200).send({ summary: meeting.aiSummary });
+      }
+      const transcriptCount = await Transcript.countDocuments({ meetingId: meeting._id });
+      if (transcriptCount === 0) {
+        return reply.code(400).send({ error: "No transcript data available for this meeting. Summary cannot be generated without transcripts." });
       }
       const summaryHtml = await summarizeMeeting(meeting._id.toString());
       return reply.code(200).send({ summary: summaryHtml });
@@ -1715,90 +1954,10 @@ async function meetingRoutes(fastify2) {
       return reply.code(500).send({ error: "Failed to generate AI summary.", details: err.message });
     }
   });
-  fastify2.get("/rooms", { preHandler: authenticate }, async (request, reply) => {
-    try {
-      const workspaceId = request.user?.workspaceId || "antigraviity-hq";
-      const rooms2 = await Room.find({ workspaceId }).sort({ createdAt: -1 });
-      return reply.code(200).send(rooms2);
-    } catch (err) {
-      return reply.code(500).send({ error: "Failed to fetch rooms", details: err.message });
-    }
-  });
-  fastify2.post("/rooms", { preHandler: authenticate }, async (request, reply) => {
-    try {
-      const { title, tag, color } = request.body;
-      const workspaceId = request.user?.workspaceId || "antigraviity-hq";
-      if (!title || !tag) return reply.code(400).send({ error: "Title and Tag are required." });
-      const room = await Room.create({
-        workspaceId,
-        creatorId: request.user.id,
-        title,
-        tag,
-        color: color || "#7c3aed"
-      });
-      return reply.code(201).send(room);
-    } catch (err) {
-      return reply.code(500).send({ error: "Failed to create room", details: err.message });
-    }
-  });
-  fastify2.delete("/rooms/:id", { preHandler: authenticate }, async (request, reply) => {
-    try {
-      const { id } = request.params;
-      const room = await Room.findById(id);
-      if (!room) return reply.code(404).send({ error: "Room not found." });
-      if (room.creatorId.toString() !== request.user.id && request.user.role !== "company-admin") {
-        return reply.code(403).send({ error: "Unauthorized to delete this room." });
-      }
-      await Room.findByIdAndDelete(id);
-      return reply.code(200).send({ success: true });
-    } catch (err) {
-      return reply.code(500).send({ error: "Failed to delete room", details: err.message });
-    }
-  });
-}
-
-// src/services/mailSockets.ts
-var import_fs3 = __toESM(require("fs"));
-var import_path2 = __toESM(require("path"));
-var activeMailSockets = /* @__PURE__ */ new Map();
-function handleMailSocket(socket, req) {
-  const logFile = import_path2.default.join(__dirname, "../../socket_debug.log");
-  const log = (msg) => {
-    try {
-      import_fs3.default.appendFileSync(logFile, `[${(/* @__PURE__ */ new Date()).toISOString()}] ${msg}
-`);
-    } catch (e) {
-    }
-  };
-  log(`New connection attempt. req.url: "${req.url}", req.query: ${JSON.stringify(req.query)}`);
-  let email = req.query?.email;
-  if (!email && req.url) {
-    try {
-      const url = new URL(req.url, "http://localhost");
-      email = url.searchParams.get("email") || void 0;
-      log(`Parsed email from URL: "${email}"`);
-    } catch (e) {
-      log(`Failed to parse URL: ${e.message}`);
-    }
-  }
-  if (email) {
-    log(`Successfully established Mail Socket for user: ${email}`);
-    activeMailSockets.set(email, socket);
-    socket.on("close", (code, reason) => {
-      log(`Mail Socket closed for user: ${email}. Code: ${code}, Reason: "${reason ? reason.toString() : ""}"`);
-      activeMailSockets.delete(email);
-    });
-    socket.on("error", (err) => {
-      log(`Mail Socket error for user ${email}: ${err.message}`);
-      activeMailSockets.delete(email);
-    });
-  } else {
-    log(`Closing socket: Email identifier missing or empty.`);
-    socket.close(1008, "Email identifier required");
-  }
 }
 
 // src/routes/mail.ts
+init_mailSockets();
 async function fetchJsonWithTimeout(url, options, timeoutMs = 1e4) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -1914,6 +2073,20 @@ async function mailRoutes(fastify2) {
       return reply.code(200).send(mail);
     } catch (err) {
       return reply.code(500).send({ error: "Failed to update mail" });
+    }
+  });
+  fastify2.put("/:id/label", async (request, reply) => {
+    try {
+      const { label } = request.body;
+      const mail = await Mail.findOneAndUpdate(
+        { _id: request.params.id, ownerEmail: request.user.email },
+        { label },
+        { new: true }
+      );
+      if (!mail) return reply.code(404).send({ error: "Mail not found" });
+      return reply.code(200).send(mail);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to update mail label" });
     }
   });
   fastify2.put("/:id/star", async (request, reply) => {
@@ -2281,22 +2454,6 @@ async function channelRoutes(fastify2) {
         email: { $ne: currentEmail }
       }).select("name email role avatarUrl workspaceId createdAt");
       const channelsMap = /* @__PURE__ */ new Map();
-      for (const member of members) {
-        const conversation = await ensureDirectConversation(activeWorkspaceId, currentEmail, member.email);
-        channelsMap.set(conversation._id.toString(), {
-          _id: conversation._id,
-          type: conversation.type,
-          displayName: member.name,
-          name: member.name,
-          email: member.email,
-          avatar: initials(member.name),
-          role: member.role || "Member",
-          workspaceId: activeWorkspaceId,
-          isOnline: true,
-          lastMessageContent: conversation.lastMessageContent || "Start a secure Kural conversation",
-          lastMessageTime: conversation.lastMessageTime || conversation.updatedAt
-        });
-      }
       const conversations = await KuralConversation.find({
         type: "direct",
         participantEmails: currentEmail
@@ -2413,6 +2570,26 @@ async function kuralRoutes(fastify2) {
         participantEmails,
         createdByEmail: currentEmail
       });
+      const { activeMailSockets: activeMailSockets2 } = (init_mailSockets(), __toCommonJS(mailSockets_exports));
+      if (activeMailSockets2) {
+        const channelData = {
+          _id: conversation._id,
+          type: conversation.type,
+          name: conversation.name,
+          displayName: conversation.name,
+          participantEmails: conversation.participantEmails,
+          lastMessageContent: conversation.lastMessageContent,
+          lastMessageTime: conversation.lastMessageTime || conversation.updatedAt,
+          unread: 0,
+          isOnline: true
+        };
+        const messageStr = JSON.stringify({ type: "new-channel", channel: channelData });
+        participantEmails.forEach((email) => {
+          if (email !== currentEmail && activeMailSockets2.has(email)) {
+            activeMailSockets2.get(email)?.send(messageStr);
+          }
+        });
+      }
       return reply.code(201).send(conversation);
     } catch (err) {
       return reply.code(500).send({ error: "Failed to create group.", details: err.message });
@@ -2447,6 +2624,26 @@ async function kuralRoutes(fastify2) {
       }
       conversation.participantEmails.push(...newEmails);
       await conversation.save();
+      const { activeMailSockets: activeMailSockets2 } = (init_mailSockets(), __toCommonJS(mailSockets_exports));
+      if (activeMailSockets2) {
+        const channelData = {
+          _id: conversation._id,
+          type: conversation.type,
+          name: conversation.name,
+          displayName: conversation.name,
+          participantEmails: conversation.participantEmails,
+          lastMessageContent: conversation.lastMessageContent,
+          lastMessageTime: conversation.lastMessageTime || conversation.updatedAt,
+          unread: 0,
+          isOnline: true
+        };
+        const messageStr = JSON.stringify({ type: "new-channel", channel: channelData });
+        newEmails.forEach((email) => {
+          if (activeMailSockets2.has(email)) {
+            activeMailSockets2.get(email)?.send(messageStr);
+          }
+        });
+      }
       return reply.code(200).send({ message: `${newEmails.length} member(s) added.`, conversation });
     } catch (err) {
       return reply.code(500).send({ error: "Failed to add members.", details: err.message });
@@ -3328,10 +3525,345 @@ async function statusRoutes(fastify2) {
   });
 }
 
+// src/routes/threads.ts
+var import_cloudinary2 = require("cloudinary");
+
+// src/models/ThreadPost.ts
+var import_mongoose21 = require("mongoose");
+var ThreadPostSchema = new import_mongoose21.Schema({
+  workspaceId: { type: String, required: true, index: true },
+  authorEmail: { type: String, required: true },
+  authorName: { type: String, required: true },
+  content: { type: String },
+  mediaUrls: [{
+    url: { type: String, required: true },
+    type: { type: String, enum: ["image", "video", "document"], required: true },
+    name: { type: String }
+  }],
+  likes: [{ type: String }],
+  visibility: { type: String, enum: ["everyone", "team", "channel", "selected"], default: "everyone" },
+  visibilityData: [{ type: String }],
+  isPinned: { type: Boolean, default: false },
+  isReported: { type: Boolean, default: false }
+}, { timestamps: true });
+var ThreadPost = (0, import_mongoose21.model)("ThreadPost", ThreadPostSchema);
+
+// src/models/ThreadComment.ts
+var import_mongoose22 = require("mongoose");
+var ThreadCommentSchema = new import_mongoose22.Schema({
+  postId: { type: String, required: true, index: true },
+  parentCommentId: { type: String, index: true },
+  authorEmail: { type: String, required: true },
+  authorName: { type: String, required: true },
+  content: { type: String, required: true },
+  likes: [{ type: String }]
+}, { timestamps: true });
+var ThreadComment = (0, import_mongoose22.model)("ThreadComment", ThreadCommentSchema);
+
+// src/services/threadSockets.ts
+var import_fs4 = __toESM(require("fs"));
+var import_path3 = __toESM(require("path"));
+var activeThreadSockets = /* @__PURE__ */ new Map();
+function handleThreadsSocket(socket, req) {
+  const logFile = import_path3.default.join(__dirname, "../../socket_debug.log");
+  const log = (msg) => {
+    try {
+      import_fs4.default.appendFileSync(logFile, `[${(/* @__PURE__ */ new Date()).toISOString()}] [ThreadsSocket] ${msg}
+`);
+    } catch (e) {
+    }
+  };
+  let workspaceId = req.query?.workspaceId;
+  if (!workspaceId && req.url) {
+    try {
+      const url = new URL(req.url, "http://localhost");
+      workspaceId = url.searchParams.get("workspaceId") || void 0;
+    } catch (e) {
+      log(`Failed to parse URL: ${e.message}`);
+    }
+  }
+  if (workspaceId) {
+    log(`Established Threads Socket for workspace: ${workspaceId}`);
+    if (!activeThreadSockets.has(workspaceId)) {
+      activeThreadSockets.set(workspaceId, /* @__PURE__ */ new Set());
+    }
+    activeThreadSockets.get(workspaceId)?.add(socket);
+    socket.on("close", () => {
+      log(`Threads Socket closed for workspace: ${workspaceId}`);
+      activeThreadSockets.get(workspaceId)?.delete(socket);
+      if (activeThreadSockets.get(workspaceId)?.size === 0) {
+        activeThreadSockets.delete(workspaceId);
+      }
+    });
+    socket.on("error", (err) => {
+      log(`Threads Socket error for workspace ${workspaceId}: ${err.message}`);
+      activeThreadSockets.get(workspaceId)?.delete(socket);
+    });
+  } else {
+    log(`Closing socket: workspaceId missing`);
+    socket.close(1008, "workspaceId required");
+  }
+}
+function broadcastToWorkspace(workspaceId, eventType, payload) {
+  const sockets = activeThreadSockets.get(workspaceId);
+  if (!sockets) return;
+  const message = JSON.stringify({ type: eventType, payload });
+  Array.from(sockets).forEach((socket) => {
+    if (socket.readyState === 1) {
+      socket.send(message);
+    }
+  });
+}
+
+// src/routes/threads.ts
+var cloudinaryFolder2 = process.env.CLOUDINARY_FOLDER || "chat_uploads";
+var cloudinaryCloudName2 = process.env.CLOUDINARY_CLOUD_NAME || "";
+var cloudinaryApiKey2 = process.env.CLOUDINARY_API_KEY || "";
+var cloudinaryApiSecret2 = process.env.CLOUDINARY_API_SECRET || "";
+import_cloudinary2.v2.config({
+  cloud_name: cloudinaryCloudName2,
+  api_key: cloudinaryApiKey2,
+  api_secret: cloudinaryApiSecret2
+});
+function normalizeEmail3(value) {
+  return String(value || "").trim().toLowerCase();
+}
+async function resolveMultipartFile2(request) {
+  try {
+    const direct = await request.file();
+    if (direct) return direct;
+  } catch {
+  }
+  const bodyFile = request.body?.file;
+  if (bodyFile?.file) return bodyFile;
+  return null;
+}
+async function streamToBuffer2(stream) {
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+async function uploadToCloudinary2(file) {
+  if (!cloudinaryCloudName2 || !cloudinaryApiKey2 || !cloudinaryApiSecret2) {
+    throw new Error("Cloudinary config missing");
+  }
+  const mimetype = file?.mimetype || "application/octet-stream";
+  const resourceType = String(mimetype).startsWith("video/") ? "video" : "auto";
+  const uploadOptions = {
+    folder: cloudinaryFolder2,
+    resource_type: resourceType,
+    use_filename: true,
+    unique_filename: true,
+    overwrite: false
+  };
+  const payload = typeof file?.toBuffer === "function" ? await file.toBuffer() : file?.file ? await streamToBuffer2(file.file) : Buffer.alloc(0);
+  if (!payload.length) throw new Error("Uploaded file is empty or unreadable.");
+  return new Promise((resolve, reject) => {
+    const uploadStream = import_cloudinary2.v2.uploader.upload_stream(uploadOptions, (error, uploaded) => {
+      if (error) return reject(error);
+      if (!uploaded) return reject(new Error("Cloudinary upload returned no result."));
+      resolve(uploaded);
+    });
+    uploadStream.end(payload);
+  });
+}
+function resolveUploadName2(file, uploaded) {
+  const explicit = String(file?.filename || "").trim();
+  if (explicit) return explicit;
+  const fromCloudinary = String(uploaded?.original_filename || "").trim();
+  if (fromCloudinary) {
+    const fmt = String(uploaded?.format || "").trim();
+    return fmt ? `${fromCloudinary}.${fmt}` : fromCloudinary;
+  }
+  return `upload.file`;
+}
+async function threadsRoutes(fastify2) {
+  fastify2.addHook("preValidation", authenticate);
+  fastify2.post("/upload", async (request, reply) => {
+    try {
+      const file = await resolveMultipartFile2(request);
+      if (!file) return reply.code(400).send({ error: "Missing file upload." });
+      const result = await uploadToCloudinary2(file);
+      const type = file.mimetype?.startsWith("video/") ? "video" : file.mimetype?.startsWith("image/") ? "image" : "document";
+      return reply.code(200).send({
+        url: result.secure_url || result.url,
+        type,
+        name: resolveUploadName2(file, result)
+      });
+    } catch (err) {
+      return reply.code(500).send({ error: "Upload failed", details: err.message });
+    }
+  });
+  fastify2.get("/:workspaceId", async (request, reply) => {
+    try {
+      const { workspaceId } = request.params;
+      const { limit = 20, cursor } = request.query;
+      const query = { workspaceId };
+      if (cursor) {
+        query.createdAt = { $lt: new Date(cursor) };
+      }
+      const posts = await ThreadPost.find(query).sort({ createdAt: -1 }).limit(Number(limit)).lean();
+      const postIds = posts.map((p) => p._id);
+      const comments = await ThreadComment.find({ postId: { $in: postIds } }).sort({ createdAt: 1 }).lean();
+      const commentsByPostId = comments.reduce((acc, c) => {
+        const pId = c.postId.toString();
+        if (!acc[pId]) acc[pId] = [];
+        acc[pId].push(c);
+        return acc;
+      }, {});
+      const result = posts.map((post) => ({
+        ...post,
+        comments: commentsByPostId[post._id.toString()] || []
+      }));
+      return reply.code(200).send(result);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to fetch feed", details: err.message });
+    }
+  });
+  fastify2.post("/create", async (request, reply) => {
+    try {
+      const { workspaceId, content, mediaUrls = [], visibility = "everyone", visibilityData = [] } = request.body;
+      const currentEmail = normalizeEmail3(request.user?.email || "");
+      const currentName = request.user?.name || currentEmail;
+      if (!workspaceId || !content) return reply.code(400).send({ error: "workspaceId and content required" });
+      const post = await ThreadPost.create({
+        workspaceId,
+        authorEmail: currentEmail,
+        authorName: currentName,
+        content,
+        mediaUrls,
+        visibility,
+        visibilityData
+      });
+      broadcastToWorkspace(workspaceId, "NEW_POST", post);
+      return reply.code(201).send(post);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to create post", details: err.message });
+    }
+  });
+  fastify2.post("/:id/like", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const currentEmail = normalizeEmail3(request.user?.email || "");
+      const post = await ThreadPost.findById(id);
+      if (!post) return reply.code(404).send({ error: "Post not found" });
+      const hasLiked = post.likes.includes(currentEmail);
+      if (hasLiked) {
+        post.likes = post.likes.filter((e) => e !== currentEmail);
+      } else {
+        post.likes.push(currentEmail);
+      }
+      await post.save();
+      broadcastToWorkspace(post.workspaceId, "POST_LIKED", { postId: id, likes: post.likes });
+      return reply.code(200).send({ likes: post.likes });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to toggle like", details: err.message });
+    }
+  });
+  fastify2.delete("/:id", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const currentEmail = normalizeEmail3(request.user?.email || "");
+      const post = await ThreadPost.findById(id);
+      if (!post) return reply.code(404).send({ error: "Post not found" });
+      if (post.authorEmail !== currentEmail && request.user?.role !== "Admin") {
+        return reply.code(403).send({ error: "Not authorized" });
+      }
+      await ThreadComment.deleteMany({ postId: id });
+      await ThreadPost.findByIdAndDelete(id);
+      broadcastToWorkspace(post.workspaceId, "POST_DELETED", { postId: id });
+      return reply.code(200).send({ message: "Deleted" });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to delete post", details: err.message });
+    }
+  });
+  fastify2.post("/:id/comment", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const { content, parentCommentId } = request.body;
+      const currentEmail = normalizeEmail3(request.user?.email || "");
+      const currentName = request.user?.name || currentEmail;
+      if (!content) return reply.code(400).send({ error: "content required" });
+      const post = await ThreadPost.findById(id);
+      if (!post) return reply.code(404).send({ error: "Post not found" });
+      const comment = await ThreadComment.create({
+        postId: id,
+        parentCommentId,
+        authorEmail: currentEmail,
+        authorName: currentName,
+        content
+      });
+      broadcastToWorkspace(post.workspaceId, "NEW_COMMENT", comment);
+      return reply.code(201).send(comment);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to create comment", details: err.message });
+    }
+  });
+  fastify2.post("/comment/:commentId/like", async (request, reply) => {
+    try {
+      const { commentId } = request.params;
+      const currentEmail = normalizeEmail3(request.user?.email || "");
+      const comment = await ThreadComment.findById(commentId);
+      if (!comment) return reply.code(404).send({ error: "Comment not found" });
+      const post = await ThreadPost.findById(comment.postId);
+      if (!post) return reply.code(404).send({ error: "Post not found" });
+      const hasLiked = comment.likes.includes(currentEmail);
+      if (hasLiked) {
+        comment.likes = comment.likes.filter((e) => e !== currentEmail);
+      } else {
+        comment.likes.push(currentEmail);
+      }
+      await comment.save();
+      broadcastToWorkspace(post.workspaceId, "COMMENT_LIKED", { commentId, likes: comment.likes, postId: comment.postId });
+      return reply.code(200).send({ likes: comment.likes });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to toggle like", details: err.message });
+    }
+  });
+  fastify2.delete("/comment/:commentId", async (request, reply) => {
+    try {
+      const { commentId } = request.params;
+      const currentEmail = normalizeEmail3(request.user?.email || "");
+      const comment = await ThreadComment.findById(commentId);
+      if (!comment) return reply.code(404).send({ error: "Comment not found" });
+      if (comment.authorEmail !== currentEmail && request.user?.role !== "Admin") {
+        return reply.code(403).send({ error: "Not authorized" });
+      }
+      const post = await ThreadPost.findById(comment.postId);
+      await ThreadComment.deleteMany({ $or: [{ _id: commentId }, { parentCommentId: commentId }] });
+      if (post) broadcastToWorkspace(post.workspaceId, "COMMENT_DELETED", { commentId, postId: comment.postId });
+      return reply.code(200).send({ message: "Deleted" });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to delete comment", details: err.message });
+    }
+  });
+  fastify2.post("/poster", async (request, reply) => {
+    try {
+      const { prompt } = request.body;
+      const geminiKey = process.env.GEMINI_API_KEY;
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7 }
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message || "Gemini error");
+      return reply.code(200).send({ svg: data.candidates?.[0]?.content?.parts?.[0]?.text || "" });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to generate poster", details: err.message });
+    }
+  });
+}
+
 // src/services/webrtc.ts
 var import_ws2 = require("ws");
 var import_jsonwebtoken4 = __toESM(require("jsonwebtoken"));
-var import_mongoose21 = require("mongoose");
+var import_mongoose23 = require("mongoose");
 var JWT_SECRET2 = process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var rooms = /* @__PURE__ */ new Map();
 function send(ws, payload) {
@@ -3379,7 +3911,8 @@ function handleWebRtcSignalling(ws) {
       const userId = decoded.userId || decoded.id;
       const user = await User.findById(userId).catch(() => null);
       if (!user) return send(ws, { type: "error", message: "User not found" });
-      peerId = user._id.toString();
+      const baseUserId = user._id.toString();
+      peerId = `${baseUserId}_${Math.random().toString(36).substring(2, 10)}`;
       meetingId = String(roomKey);
       if (!rooms.has(meetingId)) rooms.set(meetingId, /* @__PURE__ */ new Map());
       const room = rooms.get(meetingId);
@@ -3392,14 +3925,14 @@ function handleWebRtcSignalling(ws) {
       }
       room.set(peerId, {
         socket: ws,
-        userId: peerId,
+        userId: baseUserId,
         name: user.name,
         avatarUrl: user.avatarUrl,
         isAlive: true,
         joinedAt: /* @__PURE__ */ new Date()
       });
       await Participant.findOneAndUpdate(
-        { meetingId, userId: peerId },
+        { meetingId, userId: baseUserId },
         { joinedAt: /* @__PURE__ */ new Date(), $unset: { leftAt: "" } },
         { upsert: true }
       ).catch(() => {
@@ -3414,7 +3947,7 @@ function handleWebRtcSignalling(ws) {
       broadcastToRoom(meetingId, peerId, {
         type: "peer-joined",
         peerId,
-        userId: peerId,
+        userId: baseUserId,
         name: user.name,
         avatarUrl: user.avatarUrl
       });
@@ -3424,10 +3957,10 @@ function handleWebRtcSignalling(ws) {
       return send(ws, { type: "error", message: "Not joined. Send join first." });
     }
     if (type === "offer") {
-      const { targetPeerId, sdp } = data;
+      const { targetPeerId, sdp, isScreenShare, screenTrackId, screenMid, screenStreamId } = data;
       const target = rooms.get(meetingId)?.get(targetPeerId);
       if (target) {
-        send(target.socket, { type: "offer", fromPeerId: peerId, sdp });
+        send(target.socket, { type: "offer", fromPeerId: peerId, sdp, isScreenShare, screenTrackId, screenMid, screenStreamId });
       }
       return;
     }
@@ -3469,7 +4002,7 @@ function handleWebRtcSignalling(ws) {
     }
     if (type === "end-meeting-all") {
       broadcastToRoom(meetingId, peerId, { type: "meeting-ended" });
-      const query = import_mongoose21.Types.ObjectId.isValid(meetingId) ? { _id: meetingId } : { joinCode: meetingId };
+      const query = import_mongoose23.Types.ObjectId.isValid(meetingId) ? { _id: meetingId } : { joinCode: meetingId };
       Meeting.updateOne(query, { status: "ended" }).catch((err) => console.error("[WebRTC] Failed to update meeting status:", err));
       return;
     }
@@ -3512,12 +4045,42 @@ async function cleanupPeer(roomId, pid) {
   room.delete(pid);
   if (room.size === 0) rooms.delete(roomId);
   broadcastToRoom(roomId, pid, { type: "peer-left", peerId: pid });
-  await Participant.findOneAndUpdate(
-    { meetingId: roomId, userId: pid },
-    { leftAt: /* @__PURE__ */ new Date() }
-  ).catch((e) => {
+  const baseUserId = pid.split("_")[0];
+  try {
+    let meetingQuery = { _id: roomId };
+    if (!import_mongoose23.Types.ObjectId.isValid(roomId)) {
+      meetingQuery = { joinCode: roomId };
+    }
+    const meeting = await Meeting.findOne(meetingQuery);
+    if (!meeting) return;
+    await Participant.findOneAndUpdate(
+      { meetingId: meeting._id, userId: baseUserId, leftAt: { $exists: false } },
+      { leftAt: /* @__PURE__ */ new Date() }
+    );
+    const aiBotUser = await User.findOne({ email: "ai-assistant@nexus.app" });
+    const query = {
+      meetingId: meeting._id,
+      leftAt: { $exists: false }
+    };
+    if (aiBotUser) {
+      query.userId = { $ne: aiBotUser._id };
+    }
+    const activeParticipantCount = await Participant.countDocuments(query);
+    if (activeParticipantCount === 0 && meeting.status !== "ended") {
+      meeting.status = "ended";
+      await meeting.save();
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      if (meeting.aiEnabled) {
+        await stopAIBot(meeting._id.toString());
+      } else {
+        summarizeMeeting(meeting._id.toString()).catch((err) => {
+          console.warn("[WebRTC] Summary generation failed:", err.message);
+        });
+      }
+    }
+  } catch (e) {
     console.error("[WebRTC] cleanupPeer DB update error:", e);
-  });
+  }
 }
 setInterval(() => {
   for (const [roomId, room] of rooms.entries()) {
@@ -3669,6 +4232,9 @@ function handleCallSignaling(ws) {
   });
 }
 
+// src/index.ts
+init_mailSockets();
+
 // src/utils/seedDefaultUser.ts
 var import_bcrypt5 = __toESM(require("bcrypt"));
 var DEFAULT_EMAIL = "admin@fic.com";
@@ -3741,7 +4307,7 @@ async function ensureDefaultUser() {
 }
 
 // src/index.ts
-import_dotenv2.default.config({ path: import_path3.default.join(__dirname, "../.env") });
+import_dotenv2.default.config({ path: import_path4.default.join(__dirname, "../.env") });
 import_dotenv2.default.config();
 var PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 var MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/nexus-zoom";
@@ -3804,8 +4370,8 @@ async function bootstrap() {
   server.addHook("onRequest", async (request, reply) => {
     if (!ENABLE_SOCKET_FILE_LOGS) return;
     try {
-      const logFile = import_path3.default.join(__dirname, "../../socket_debug.log");
-      import_fs4.default.appendFileSync(logFile, `[${(/* @__PURE__ */ new Date()).toISOString()}] [onRequest Hook] URL: "${request.url}", Method: "${request.method}", IP: "${request.ip}", Headers: ${JSON.stringify(request.headers)}
+      const logFile = import_path4.default.join(__dirname, "../../socket_debug.log");
+      import_fs5.default.appendFileSync(logFile, `[${(/* @__PURE__ */ new Date()).toISOString()}] [onRequest Hook] URL: "${request.url}", Method: "${request.method}", IP: "${request.ip}", Headers: ${JSON.stringify(request.headers)}
 `);
     } catch (e) {
       console.error("Failed to write to socket_debug.log inside onRequest hook:", e);
@@ -3814,10 +4380,10 @@ async function bootstrap() {
   server.addHook("onResponse", async (request, reply) => {
     if (!ENABLE_SOCKET_FILE_LOGS) return;
     try {
-      const logFile = import_path3.default.join(__dirname, "../../socket_debug.log");
+      const logFile = import_path4.default.join(__dirname, "../../socket_debug.log");
       const entry = `[${(/* @__PURE__ */ new Date()).toISOString()}] [onResponse Hook] URL: "${request.url}", Method: "${request.method}", Status: "${reply.statusCode}", ResponseTimeMs: "${reply.getResponseTime ? reply.getResponseTime() : "n/a"}"
 `;
-      import_fs4.default.appendFileSync(logFile, entry);
+      import_fs5.default.appendFileSync(logFile, entry);
     } catch (e) {
       console.error("Failed to write to socket_debug.log inside onResponse hook:", e);
     }
@@ -3845,23 +4411,16 @@ async function bootstrap() {
   await server.register(showRoutes, { prefix: "/api/show" });
   await server.register(superadminRoutes, { prefix: "/api/superadmin" });
   await server.register(statusRoutes, { prefix: "/api/status" });
+  await server.register(threadsRoutes, { prefix: "/api/threads" });
   server.get("/api/meet/ice-servers", async () => {
-    try {
-      const apiKey = process.env.TURN_API_KEY || "5b2b016149c3a46ecddbca3d89feffb889b2";
-      const meteredDomain = process.env.TURN_DOMAIN || "meetspace.metered.live";
-      const response = await fetch(`https://${meteredDomain}/api/v1/turn/credentials?apiKey=${apiKey}`);
-      if (response.ok) {
-        const iceServers = await response.json();
-        return iceServers;
-      } else {
-        server.log.warn(`Metered API error: ${response.status}`);
-      }
-    } catch (err) {
-      server.log.error("Metered TURN fetch failed:", err.message);
-    }
     return [
       { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" }
+      { urls: "stun:stun1.l.google.com:19302" },
+      {
+        urls: "turn:free.expressturn.com:3478",
+        username: "000000002097290800",
+        credential: "XnOg5DVFwGY/30tgW+PnfhmXv0c="
+      }
     ];
   });
   server.get("/ws/webrtc", { websocket: true }, (connection, req) => {
@@ -3877,6 +4436,10 @@ async function bootstrap() {
   server.get("/ws/audio", { websocket: true }, (connection, req) => {
     const ws = connection.socket || connection;
     handleAudioSocket(ws);
+  });
+  server.get("/ws/threads", { websocket: true }, (connection, req) => {
+    const ws = connection.socket || connection;
+    handleThreadsSocket(ws, req);
   });
   server.get("/ws/calls", { websocket: true }, (connection, req) => {
     server.log.info("New voice call signaling connection.");

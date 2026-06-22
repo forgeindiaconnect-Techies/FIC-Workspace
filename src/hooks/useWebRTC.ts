@@ -150,7 +150,21 @@ export const useWebRTC = ({
       localStreamRef.current.getTracks().forEach(track => {
         // Only add if not already added
         if (!existingSenderKinds.includes(track.kind)) {
-          pc.addTrack(track, localStreamRef.current!);
+          const sender = pc.addTrack(track, localStreamRef.current!);
+          if (track.kind === 'video') {
+            try {
+              const params = sender.getParameters();
+              if (!params.encodings) {
+                 params.encodings = [{}];
+              }
+              // Enforce 150kbps max bitrate and 1/2 resolution for mesh stability
+              params.encodings[0].maxBitrate = 150000;
+              params.encodings[0].scaleResolutionDownBy = 2.0;
+              sender.setParameters(params);
+            } catch (err) {
+              console.warn('Failed to set video bandwidth limit', err);
+            }
+          }
         }
       });
     }
@@ -302,7 +316,21 @@ export const useWebRTC = ({
 
       localStreamRef.current.getTracks().forEach(track => {
         if (!existingSenderKinds.includes(track.kind)) {
-          pc.addTrack(track, localStreamRef.current!);
+          const sender = pc.addTrack(track, localStreamRef.current!);
+          if (track.kind === 'video') {
+            try {
+              const params = sender.getParameters();
+              if (!params.encodings) {
+                 params.encodings = [{}];
+              }
+              // Enforce 150kbps max bitrate and 1/2 resolution for mesh stability
+              params.encodings[0].maxBitrate = 150000;
+              params.encodings[0].scaleResolutionDownBy = 2.0;
+              sender.setParameters(params);
+            } catch (err) {
+              console.warn('Failed to set video bandwidth limit', err);
+            }
+          }
         }
       });
     }

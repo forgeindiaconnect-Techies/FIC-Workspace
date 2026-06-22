@@ -57,7 +57,7 @@ const MeetingLayout = ({ children }) => {
            {/* My Department dropdown removed */}
            
            <div className="flex items-center gap-1">
-              <NavIcon icon={Download} />
+
               <NavIcon icon={Bell} />
            </div>
 
@@ -170,32 +170,8 @@ const MeetingLayout = ({ children }) => {
                     />
                  </div>
 
-                 {/* Promo Card */}
-                 <div className="bg-rose-50 dark:bg-rose-500/5 rounded-[32px] p-6 border border-rose-100 dark:border-rose-500/10 relative overflow-hidden group">
-                    <div className="relative z-10 space-y-3">
-                       <p className="text-[10px] font-black uppercase tracking-widest text-rose-500">Admin reports</p>
-                       <h3 className="text-lg font-black leading-tight">A complete overview of dashboard and reporting features</h3>
-                       <button className="text-xs font-black text-rose-600 hover:underline flex items-center gap-1 uppercase tracking-widest">Learn more <ArrowUpRight size={14}/></button>
-                    </div>
-                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-125 transition-transform">
-                       <BarChart2 size={80} />
-                    </div>
-                 </div>
-
                  {/* App Groups */}
                  <div className="space-y-10">
-                    <section className="space-y-6">
-                       <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Related Apps</h4>
-                       <div className="grid grid-cols-3 gap-6">
-                          <Link to={`/w/${workspaceId}/meet`} className="flex flex-col items-center gap-3 group">
-                             <div className="w-14 h-14 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
-                                <img src={LogoImage} alt="Assist" className="w-8 h-8 object-contain" />
-                             </div>
-                             <span className="text-[10px] font-black uppercase tracking-widest">Assist</span>
-                          </Link>
-                       </div>
-                    </section>
-
                     <section className="space-y-6">
                        <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">All WorkSphere Apps</h4>
                        <h5 className="text-xs font-black uppercase tracking-widest text-zinc-800 dark:text-zinc-200 border-b border-zinc-100 dark:border-white/5 pb-2">Sales & Marketing</h5>

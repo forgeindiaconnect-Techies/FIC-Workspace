@@ -26,6 +26,7 @@ const MeetingHome = () => {
 
   const [meetings, setMeetings] = useState([]);
   const [pastMeetings, setPastMeetings] = useState([]);
+  const [liveWorkspaceMeetings, setLiveWorkspaceMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isValidating, setIsValidating] = useState(false);
 
@@ -65,6 +66,17 @@ const MeetingHome = () => {
         const meetingsList = Array.isArray(data) ? data : (data.meetings || []);
         setMeetings(meetingsList.filter(m => m.status?.toLowerCase() !== 'ended'));
         setPastMeetings(meetingsList.filter(m => m.status?.toLowerCase() === 'ended'));
+      }
+
+      if (workspaceId) {
+        const wsRes = await fetch(getApiUrl(`/api/meetings?workspaceId=${workspaceId}`), {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        if (wsRes.ok) {
+          const wsData = await wsRes.json();
+          const wsMeetingsList = Array.isArray(wsData) ? wsData : (wsData.meetings || []);
+          setLiveWorkspaceMeetings(wsMeetingsList.filter(m => m.status?.toLowerCase() === 'live'));
+        }
       }
     } catch (err) {
       console.error('Failed to fetch meetings:', err);
@@ -267,8 +279,42 @@ const MeetingHome = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
+              {/* Live Workspace Meetings */}
+              {liveWorkspaceMeetings.length > 0 && (
+                <div className="bg-white border border-rose-200 rounded-lg p-6">
+                  <h2 className="text-lg font-semibold text-rose-600 mb-4 pb-2 border-b border-rose-100 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" /> Live Team Meetings
+                  </h2>
+                  <div className="space-y-3">
+                    {liveWorkspaceMeetings.map(m => (
+                      <div key={m._id} className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-md border border-rose-100 hover:bg-rose-50 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-rose-100 rounded flex items-center justify-center shrink-0">
+                            <Play size={18} className="text-rose-600" fill="currentColor" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="text-sm font-semibold text-slate-900">{m.title}</p>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-slate-500">
+                              <span className="flex items-center gap-1"><Clock size={12} /> {new Date(m.scheduledAt || m.startTime || m.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                              <span className="flex items-center gap-1"><Users size={12} /> {(m.participants?.length || m.participantIds?.length || 0)} participants</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => navigate(`/w/${workspaceId}/meet/room/${m.joinCode || m.roomId || m._id}?intent=join`)} className="px-4 py-2 bg-rose-600 text-white hover:bg-rose-700 rounded text-sm font-medium transition-colors">
+                            Join Now
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Today's Agenda */}
               <div className="bg-white border border-slate-200 rounded-lg p-6">
                 <h2 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b border-slate-100">Upcoming Meetings</h2>

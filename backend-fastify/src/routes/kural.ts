@@ -310,6 +310,28 @@ export async function kuralRoutes(fastify: FastifyInstance) {
         createdByEmail: currentEmail
       });
 
+      // Broadcast to other members
+      const { activeMailSockets } = require('../services/mailSockets');
+      if (activeMailSockets) {
+        const channelData = {
+          _id: conversation._id,
+          type: conversation.type,
+          name: conversation.name,
+          displayName: conversation.name,
+          participantEmails: conversation.participantEmails,
+          lastMessageContent: conversation.lastMessageContent,
+          lastMessageTime: conversation.lastMessageTime || conversation.updatedAt,
+          unread: 0,
+          isOnline: true
+        };
+        const messageStr = JSON.stringify({ type: 'new-channel', channel: channelData });
+        participantEmails.forEach((email: string) => {
+          if (email !== currentEmail && activeMailSockets.has(email)) {
+            activeMailSockets.get(email)?.send(messageStr);
+          }
+        });
+      }
+
       return reply.code(201).send(conversation);
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to create group.', details: err.message });
@@ -355,6 +377,28 @@ export async function kuralRoutes(fastify: FastifyInstance) {
 
       conversation.participantEmails.push(...newEmails);
       await conversation.save();
+
+      // Broadcast to newly added members
+      const { activeMailSockets } = require('../services/mailSockets');
+      if (activeMailSockets) {
+        const channelData = {
+          _id: conversation._id,
+          type: conversation.type,
+          name: conversation.name,
+          displayName: conversation.name,
+          participantEmails: conversation.participantEmails,
+          lastMessageContent: conversation.lastMessageContent,
+          lastMessageTime: conversation.lastMessageTime || conversation.updatedAt,
+          unread: 0,
+          isOnline: true
+        };
+        const messageStr = JSON.stringify({ type: 'new-channel', channel: channelData });
+        newEmails.forEach((email: string) => {
+          if (activeMailSockets.has(email)) {
+            activeMailSockets.get(email)?.send(messageStr);
+          }
+        });
+      }
 
       return reply.code(200).send({ message: `${newEmails.length} member(s) added.`, conversation });
     } catch (err: any) {

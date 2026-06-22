@@ -55,17 +55,17 @@ const CommandPalette = () => {
       <motion.div
         initial={{ scale: 0.95, opacity: 0, y: -20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="w-full max-w-[640px] bg-[var(--surface-0)] rounded-[24px] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3)] border border-[var(--border)] overflow-hidden relative"
+        className="w-full max-w-2xl bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden relative"
       >
-        <div className="flex items-center px-6 py-4 border-b border-[var(--border)] bg-[var(--surface-1)]">
-          <Terminal size={18} className="text-[var(--brand-primary)] mr-4" />
+        <div className="flex items-center px-4 py-3 border-b border-slate-200 bg-slate-50">
+          <Terminal size={18} className="text-blue-600 mr-3" />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search commands (e.g. 'compose', 'inbox')..."
-            className="flex-1 bg-transparent border-none outline-none text-base font-bold placeholder:opacity-30"
+            className="flex-1 bg-transparent border-none outline-none text-base text-slate-800 placeholder:text-slate-400"
           />
         </div>
 
@@ -74,28 +74,28 @@ const CommandPalette = () => {
             <button
               key={c.id}
               onClick={() => { c.action(); setIsOpen(false); }}
-              className="w-full flex items-center justify-between p-4 hover:bg-[var(--brand-light)] hover:text-[var(--brand-primary)] rounded-xl transition-all group"
+              className="w-full flex items-center justify-between p-3 hover:bg-slate-50 hover:text-blue-700 rounded-lg transition-colors group text-slate-700"
             >
-              <div className="flex items-center gap-4">
-                <div className="p-2 bg-[var(--surface-1)] rounded-lg group-hover:bg-[var(--brand-primary)] group-hover:text-white transition-colors">
-                  <c.icon size={18} />
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-slate-100 rounded text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                  <c.icon size={16} />
                 </div>
-                <span className="font-bold text-sm">{c.label}</span>
+                <span className="font-medium text-sm">{c.label}</span>
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest opacity-40 px-2 py-1 bg-[var(--surface-2)] rounded-lg border border-[var(--border)] group-hover:border-transparent">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 px-2 py-1 bg-slate-100 rounded border border-slate-200 group-hover:border-transparent transition-colors">
                 {c.shortcut}
               </span>
             </button>
           ))}
           {commands.length === 0 && (
-            <div className="p-8 text-center opacity-30">
-              <Search size={32} className="mx-auto mb-2" />
-              <p className="text-xs font-bold uppercase tracking-widest">No commands matched</p>
+            <div className="p-8 text-center">
+              <Search size={24} className="mx-auto mb-2 text-slate-300" />
+              <p className="text-sm font-medium text-slate-500">No commands matched</p>
             </div>
           )}
         </div>
 
-        <div className="px-6 py-3 bg-[var(--surface-1)] border-t border-[var(--border)] flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-[var(--text-secondary)] opacity-40">
+        <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs font-semibold text-slate-400">
            <div className="flex gap-4">
              <span>↑↓ Navigate</span>
              <span>Enter to select</span>

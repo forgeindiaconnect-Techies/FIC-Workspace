@@ -30,12 +30,44 @@ const DocsApp = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [menuOpenForId, setMenuOpenForId] = useState(null);
 
-  // Close menu when clicking outside
+  const selectionRef = React.useRef(null);
+
+  // Close menu when clicking outside and track selection
   useEffect(() => {
     const closeMenu = () => setMenuOpenForId(null);
     window.addEventListener('click', closeMenu);
-    return () => window.removeEventListener('click', closeMenu);
+
+    const handleSelection = () => {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const editor = document.getElementById('doc-editor');
+        if (editor && editor.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+          selectionRef.current = selection.getRangeAt(0).cloneRange();
+        }
+      }
+    };
+    document.addEventListener('selectionchange', handleSelection);
+
+    return () => {
+      window.removeEventListener('click', closeMenu);
+      document.removeEventListener('selectionchange', handleSelection);
+    };
   }, []);
+
+  const executeCommand = (command, showUI = false, value = null) => {
+    const editor = document.getElementById('doc-editor');
+    if (editor) {
+      // Focus the editor first
+      editor.focus();
+      // Restore selection if we have one
+      if (selectionRef.current) {
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(selectionRef.current);
+      }
+      document.execCommand(command, showUI, value);
+    }
+  };
 
   // API Base URL - Managed by global config
 
@@ -211,7 +243,7 @@ const DocsApp = () => {
       html += '</tr>';
     }
     html += '</table><p><br></p>';
-    document.execCommand('insertHTML', false, html);
+    executeCommand('insertHTML', false, html);
     syncContent();
     setShowTablePicker(false);
   };
@@ -234,7 +266,7 @@ const DocsApp = () => {
       default: break;
     }
     if(html) {
-      document.execCommand('insertHTML', false, html);
+      executeCommand('insertHTML', false, html);
       syncContent();
     }
     setShowShapesPicker(false);
@@ -247,7 +279,7 @@ const DocsApp = () => {
       reader.onload = (event) => {
         const editor = document.getElementById('doc-editor');
         if(editor) editor.focus();
-        document.execCommand('insertImage', false, event.target.result);
+        executeCommand('insertImage', false, event.target.result);
         syncContent();
       };
       reader.readAsDataURL(file);
@@ -309,7 +341,17 @@ const DocsApp = () => {
         </div>
 
         {/* Ribbon Content */}
-        <div className="h-28 bg-zinc-50/50 dark:bg-zinc-900/50 flex items-center px-6 gap-6 relative z-50">
+        <div 
+          className="h-28 bg-zinc-50/50 dark:bg-zinc-900/50 flex items-center px-6 gap-6 relative z-50"
+          onMouseDown={(e) => {
+            // Prevent toolbar clicks from stealing focus from the editor, except for select menus
+            // We prevent default on color/file inputs so they don't steal focus (which clears visual selection)
+            // but their native click handlers will still open the OS dialogs.
+            if (e.target.tagName !== 'SELECT') {
+              e.preventDefault();
+            }
+          }}
+        >
           {activeTab === 'Home' && (
             <>
               {/* Clipboard Group */}
@@ -336,7 +378,7 @@ const DocsApp = () => {
                 <div className="flex-1 flex flex-col justify-center gap-2">
                   <div className="flex items-center gap-1">
                     <select 
-                      onChange={(e) => document.execCommand('fontName', false, e.target.value)}
+                      onChange={(e) => executeCommand('fontName', false, e.target.value)}
                       className="text-[10px] font-bold bg-white dark:bg-black border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 w-32 outline-none"
                     >
                       <option>Inter</option>
@@ -344,7 +386,7 @@ const DocsApp = () => {
                       <option>Times New Roman</option>
                     </select>
                     <select 
-                      onChange={(e) => document.execCommand('fontSize', false, e.target.value)}
+                      onChange={(e) => executeCommand('fontSize', false, e.target.value)}
                       className="text-[10px] font-bold bg-white dark:bg-black border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 w-16 outline-none"
                     >
                       <option value="1">12</option>
@@ -354,18 +396,18 @@ const DocsApp = () => {
                     </select>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button onClick={() => document.execCommand('bold')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Bold size={12} /></button>
-                    <button onClick={() => document.execCommand('italic')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Italic size={12} /></button>
-                    <button onClick={() => document.execCommand('underline')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Underline size={12} /></button>
-                    <button onClick={() => document.execCommand('strikeThrough')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Strikethrough size={12} /></button>
+                    <button onClick={() => executeCommand('bold')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Bold size={12} /></button>
+                    <button onClick={() => executeCommand('italic')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Italic size={12} /></button>
+                    <button onClick={() => executeCommand('underline')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Underline size={12} /></button>
+                    <button onClick={() => executeCommand('strikeThrough')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Strikethrough size={12} /></button>
                     <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1" />
                     <div className="relative">
                       <button className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm text-red-500"><Palette size={12} /></button>
-                      <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => document.execCommand('foreColor', false, e.target.value)} />
+                      <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => executeCommand('foreColor', false, e.target.value)} />
                     </div>
                     <div className="relative">
                       <button className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm text-yellow-500"><Highlighter size={12} /></button>
-                      <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => document.execCommand('backColor', false, e.target.value)} />
+                      <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => executeCommand('backColor', false, e.target.value)} />
                     </div>
                   </div>
                 </div>
@@ -376,16 +418,16 @@ const DocsApp = () => {
               <div className="flex flex-col h-20 border-r border-zinc-200 dark:border-zinc-800 pr-6 shrink-0">
                 <div className="flex-1 flex flex-col justify-center gap-2">
                   <div className="flex items-center gap-1">
-                    <button onClick={() => document.execCommand('insertUnorderedList')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><List size={12} /></button>
-                    <button onClick={() => document.execCommand('insertOrderedList')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><ListOrdered size={12} /></button>
-                    <button onClick={() => document.execCommand('outdent')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Outdent size={12} /></button>
-                    <button onClick={() => document.execCommand('indent')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Indent size={12} /></button>
+                    <button onClick={() => executeCommand('insertUnorderedList')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><List size={12} /></button>
+                    <button onClick={() => executeCommand('insertOrderedList')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><ListOrdered size={12} /></button>
+                    <button onClick={() => executeCommand('outdent')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Outdent size={12} /></button>
+                    <button onClick={() => executeCommand('indent')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><Indent size={12} /></button>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button onClick={() => document.execCommand('justifyLeft')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><AlignLeft size={12} /></button>
-                    <button onClick={() => document.execCommand('justifyCenter')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><AlignCenter size={12} /></button>
-                    <button onClick={() => document.execCommand('justifyRight')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><AlignRight size={12} /></button>
-                    <button onClick={() => document.execCommand('justifyFull')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><AlignJustify size={12} /></button>
+                    <button onClick={() => executeCommand('justifyLeft')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><AlignLeft size={12} /></button>
+                    <button onClick={() => executeCommand('justifyCenter')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><AlignCenter size={12} /></button>
+                    <button onClick={() => executeCommand('justifyRight')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><AlignRight size={12} /></button>
+                    <button onClick={() => executeCommand('justifyFull')} className="p-1.5 hover:bg-white dark:hover:bg-zinc-800 rounded border border-zinc-100 dark:border-zinc-800 shadow-sm"><AlignJustify size={12} /></button>
                   </div>
                 </div>
                 <div className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 text-center mt-auto pb-1">Paragraph</div>
@@ -402,7 +444,7 @@ const DocsApp = () => {
                   ].map(item => (
                     <button 
                       key={item.label}
-                      onClick={() => document.execCommand('formatBlock', false, item.tag)}
+                      onClick={() => executeCommand('formatBlock', false, item.tag)}
                       className="h-full min-w-[80px] flex flex-col items-center justify-center p-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg hover:border-blue-500 transition-all shrink-0"
                     >
                       <span className={`${item.style} leading-none mb-1`}>AaBb</span>
@@ -437,7 +479,7 @@ const DocsApp = () => {
                         </label>
                         <button onClick={() => {
                           const url = prompt('Enter Online Picture URL:');
-                          if(url) document.execCommand('insertImage', false, url);
+                          if(url) executeCommand('insertImage', false, url);
                           setShowPicturePicker(false);
                         }} className="w-full text-left px-3 py-2 text-[10px] font-bold hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition-colors flex items-center gap-3">
                           <Search size={14} className="text-emerald-500" />

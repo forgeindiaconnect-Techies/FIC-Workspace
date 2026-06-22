@@ -17,10 +17,19 @@ const LoginPage = () => {
     const savedAuth = JSON.parse(localStorage.getItem('auth') || 'null');
     const savedToken = localStorage.getItem('token');
     if (savedAuth && savedToken) {
+      if (savedAuth.role === 'demo') {
+        // Clear demo account session so user can log in to a real account
+        localStorage.removeItem('auth');
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        return;
+      }
       if (savedAuth.role === 'super-admin') {
         navigate('/super-admin', { replace: true });
       } else {
-        navigate(`/w/${savedAuth.workspaceId || 'demo'}/mail`, { replace: true });
+        const params = new URLSearchParams(location.search);
+        const targetApp = params.get('app') || 'chat';
+        navigate(`/w/${savedAuth.workspaceId || 'demo'}/${targetApp}`, { replace: true });
       }
     }
   }, [location, navigate]);
@@ -62,19 +71,19 @@ const LoginPage = () => {
       }));
 
       const params = new URLSearchParams(location.search);
-      const targetApp = params.get('app') || 'mail';
+      const targetApp = params.get('app') || 'chat';
 
       if (normalizedAuthData.role === 'super-admin') {
         navigate('/super-admin');
       } else if (normalizedAuthData.role === 'company-admin') {
-        navigate(`/w/${normalizedAuthData.workspaceId}/mail`);
+        navigate(`/w/${normalizedAuthData.workspaceId}/${targetApp}`);
       } else {
         // Role-specific redirection
-        if (email.includes('dev')) navigate(`/w/${normalizedAuthData.workspaceId}/mail`);
-        else if (email.includes('test')) navigate(`/w/${normalizedAuthData.workspaceId}/mail`);
-        else if (email.includes('manager')) navigate(`/w/${normalizedAuthData.workspaceId}/mail`);
-        else if (email.includes('lead')) navigate(`/w/${normalizedAuthData.workspaceId}/mail`);
-        else navigate(targetApp === 'mail' ? `/w/${normalizedAuthData.workspaceId}/mail` : `/w/${normalizedAuthData.workspaceId}/${targetApp}`);
+        if (email.includes('dev')) navigate(`/w/${normalizedAuthData.workspaceId}/${targetApp}`);
+        else if (email.includes('test')) navigate(`/w/${normalizedAuthData.workspaceId}/${targetApp}`);
+        else if (email.includes('manager')) navigate(`/w/${normalizedAuthData.workspaceId}/${targetApp}`);
+        else if (email.includes('lead')) navigate(`/w/${normalizedAuthData.workspaceId}/${targetApp}`);
+        else navigate(`/w/${normalizedAuthData.workspaceId}/${targetApp}`);
       }
     } catch (err) {
       setError(err.message);

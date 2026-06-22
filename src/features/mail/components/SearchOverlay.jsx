@@ -47,30 +47,31 @@ const SearchOverlay = () => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[200] bg-white/80 dark:bg-zinc-950/80 backdrop-blur-2xl flex flex-col items-center pt-[10vh] px-6"
+        className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex flex-col items-center pt-[10vh] px-4"
       >
-        <div className="w-full max-w-3xl flex flex-col gap-8">
+        <div className="w-full max-w-2xl flex flex-col gap-4">
           {/* Search Input Area */}
-          <div className="relative group">
-            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-[var(--brand-primary)]" size={24} strokeWidth={3} />
+          <div className="relative group bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
             <input
               ref={inputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-[var(--surface-0)] border-2 border-[var(--border)] group-focus-within:border-[var(--brand-primary)] rounded-[32px] py-6 pl-16 pr-20 text-xl font-bold placeholder:text-[var(--text-secondary)] placeholder:opacity-30 focus:outline-none shadow-2xl transition-all"
-              placeholder="Search people, subjects, or attachments..."
+              className="w-full bg-transparent border-none py-4 pl-12 pr-20 text-lg text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-0"
+              placeholder="Search emails, people, or attachments..."
             />
-            <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-secondary)] opacity-40 px-2 py-1 bg-[var(--surface-2)] rounded-lg">ESC to close</span>
-              <button onClick={() => setSearchOpen(false)} className="p-2 hover:bg-[var(--surface-2)] rounded-full transition-all">
-                <X size={20} />
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">ESC</span>
+              <button onClick={() => setSearchOpen(false)} className="p-1 hover:bg-slate-100 rounded text-slate-500 transition-colors">
+                <X size={16} />
               </button>
             </div>
           </div>
 
           {/* Filter Chips */}
-          <div className="flex flex-wrap items-center justify-center gap-2 px-4">
+          {/* Filter Chips */}
+          <div className="flex flex-wrap items-center gap-2">
              <FilterChip icon={User} label="From" />
              <FilterChip icon={Mail} label="To" />
              <FilterChip icon={Paperclip} label="Has Attachment" />
@@ -79,12 +80,12 @@ const SearchOverlay = () => {
           </div>
 
           {/* Results Area */}
-          <div className="flex-1 overflow-y-auto max-h-[60vh] no-scrollbar px-2 space-y-8">
+          <div className="flex-1 overflow-y-auto max-h-[60vh] custom-scrollbar bg-white rounded-lg shadow-xl border border-slate-200">
             {searchQuery.length > 0 ? (
-              <div className="grid grid-cols-1 gap-1">
+              <div className="py-2">
                 {results.length > 0 ? (
                   <>
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--text-secondary)] mb-2 px-4">Matching Conversations</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2 px-4 pt-2">Matching Conversations</p>
                     {results.map((res) => (
                       <SearchResultItem 
                         key={res.id} 
@@ -97,14 +98,14 @@ const SearchOverlay = () => {
                     ))}
                   </>
                 ) : (
-                  <div className="text-center py-20 opacity-30">
-                    <Search size={48} className="mx-auto mb-4" strokeWidth={1} />
-                    <p className="text-sm font-bold uppercase tracking-widest">No results found for "{searchQuery}"</p>
+                  <div className="text-center py-16">
+                    <Search size={32} className="mx-auto mb-3 text-slate-300" />
+                    <p className="text-sm font-medium text-slate-500">No results found for "{searchQuery}"</p>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10 pt-10">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
                 <RecentSection title="Recent Searches" items={['Q3 Roadmap', 'Indigo Group', 'Invoice #2026']} />
                 <RecentSection title="Frequent Contacts" items={['Rahul Sharma', 'Anjali Verma', 'HR Team']} />
               </div>
@@ -117,8 +118,8 @@ const SearchOverlay = () => {
 };
 
 const FilterChip = ({ icon: Icon, label }) => (
-  <button className="flex items-center gap-2 px-4 py-2 rounded-full border border-[var(--border)] bg-[var(--surface-0)] text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--brand-light)] hover:border-[var(--brand-primary)] hover:text-[var(--brand-primary)] transition-all">
-    <Icon size={14} />
+  <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200 bg-white text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm">
+    <Icon size={14} className="text-slate-400" />
     {label}
   </button>
 );
@@ -126,29 +127,29 @@ const FilterChip = ({ icon: Icon, label }) => (
 const SearchResultItem = ({ res, onClick }) => (
   <button 
     onClick={onClick}
-    className="w-full flex items-center gap-4 p-4 hover:bg-[var(--surface-2)] rounded-2xl transition-all group text-left"
+    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors group text-left"
   >
-    <div className="w-10 h-10 rounded-xl bg-[var(--surface-0)] border border-[var(--border)] flex items-center justify-center text-[var(--brand-primary)] group-hover:bg-[var(--brand-primary)] group-hover:text-white transition-all">
-      <Mail size={18} />
+    <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors shrink-0">
+      <Mail size={16} />
     </div>
     <div className="flex-1 min-w-0">
-      <div className="flex items-center gap-2 mb-0.5">
-        <span className="text-xs font-black text-[var(--text-primary)]">{res.sender}</span>
-        <span className="text-[10px] font-bold text-[var(--text-secondary)] opacity-40">• {res.label}</span>
+      <div className="flex items-center justify-between mb-0.5">
+        <span className="text-sm font-semibold text-slate-900 truncate">{res.sender}</span>
+        <span className="text-xs font-medium text-slate-500 whitespace-nowrap">{res.label}</span>
       </div>
-      <p className="text-xs font-semibold text-[var(--text-secondary)] truncate">{res.subject}</p>
+      <p className="text-sm text-slate-600 truncate">{res.subject}</p>
     </div>
-    <ArrowRight size={16} className="text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+    <ArrowRight size={16} className="text-slate-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
   </button>
 );
 
 const RecentSection = ({ title, items }) => (
-  <div className="space-y-4">
-    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--text-secondary)] px-4">{title}</h3>
+  <div className="space-y-3">
+    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 px-2">{title}</h3>
     <div className="space-y-1">
       {items.map(item => (
-        <button key={item} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--surface-2)] rounded-xl transition-all text-sm font-semibold text-[var(--text-primary)]">
-          <Clock size={14} className="text-[var(--text-secondary)]" />
+        <button key={item} className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded transition-colors text-sm font-medium text-slate-700">
+          <Clock size={14} className="text-slate-400" />
           {item}
         </button>
       ))}

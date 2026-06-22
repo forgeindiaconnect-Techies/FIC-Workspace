@@ -261,43 +261,43 @@ const ComposeModal = () => {
           }}
           exit={{ y: 500, opacity: 0 }}
           className={cn(
-            "fixed z-[100] bg-[var(--surface-0)] border border-[var(--border)] shadow-2xl flex flex-col overflow-hidden",
-            isMaximized || window.innerWidth < 768 ? "top-0 left-0" : ""
+            "fixed z-[100] bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col overflow-hidden",
+            isMaximized || window.innerWidth < 768 ? "top-0 left-0" : "border border-slate-200/60"
           )}
         >
           {/* Header */}
-          <div className="h-12 bg-[var(--text-primary)] text-white flex items-center justify-between px-4 cursor-grab active:cursor-grabbing shrink-0">
-            <span className="text-xs font-black uppercase tracking-widest">New Message</span>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setIsMinimized(!isMinimized)} className="p-1.5 hover:bg-white/10 rounded-lg"><Minus size={14} /></button>
-              <button onClick={() => setIsMaximized(!isMaximized)} className="p-1.5 hover:bg-white/10 rounded-lg"><Maximize2 size={14} /></button>
-              <button onClick={() => setComposeOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg"><X size={14} /></button>
+          <div className="h-12 bg-[#0F172A] text-white flex items-center justify-between px-5 cursor-grab active:cursor-grabbing shrink-0">
+            <span className="text-[14px] font-bold tracking-wide">New Message</span>
+            <div className="flex items-center gap-1.5 text-slate-300">
+              <button onClick={() => setIsMinimized(!isMinimized)} className="p-1.5 hover:bg-white/10 hover:text-white rounded-md transition-colors"><Minus size={16} /></button>
+              <button onClick={() => setIsMaximized(!isMaximized)} className="p-1.5 hover:bg-white/10 hover:text-white rounded-md transition-colors"><Maximize2 size={14} /></button>
+              <button onClick={() => setComposeOpen(false)} className="p-1.5 hover:bg-white/10 hover:text-white rounded-md transition-colors"><X size={16} /></button>
             </div>
           </div>
 
           {/* Fields */}
           {!isMinimized && (
             <>
-              <div className="px-6 py-2 border-b border-[var(--border)]">
-                <div className="flex items-center gap-3 py-1.5">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-secondary)] w-12">To</span>
-                  <input id="compose-to" type="text" className="flex-1 bg-transparent border-none outline-none text-sm font-semibold" placeholder="recipients@forgeindia.com" />
-                  <button className="text-[10px] font-black text-[var(--text-secondary)] hover:text-[var(--brand-primary)]">Cc/Bcc</button>
+              <div className="px-6 py-1 border-b border-slate-100">
+                <div className="flex items-center gap-4 py-2.5">
+                  <span className="text-[13px] font-bold text-slate-400 w-12">To</span>
+                  <input id="compose-to" type="text" className="flex-1 bg-transparent border-none outline-none text-[14px] font-medium text-slate-800 placeholder:font-normal placeholder:text-slate-300" placeholder="recipients@example.com" />
+                  <button className="text-[13px] font-bold text-slate-400 hover:text-blue-600 transition-colors">Cc/Bcc</button>
                 </div>
-                <div className="h-px bg-[var(--border)] w-full" />
-                <div className="flex items-center gap-3 py-1.5">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-secondary)] w-12">Subject</span>
-                  <input id="compose-subject" type="text" className="flex-1 bg-transparent border-none outline-none text-sm font-semibold" placeholder="Meeting sync" />
+                <div className="h-px bg-slate-100 w-full" />
+                <div className="flex items-center gap-4 py-2.5">
+                  <span className="text-[13px] font-bold text-slate-400 w-12">Subject</span>
+                  <input id="compose-subject" type="text" className="flex-1 bg-transparent border-none outline-none text-[14px] font-bold text-slate-800 placeholder:font-normal placeholder:text-slate-300" placeholder="Enter subject" />
                 </div>
               </div>
               
               {attachments.length > 0 && (
-                <div className="px-6 py-2 border-b border-[var(--border)] flex gap-2 flex-wrap bg-[var(--surface-1)]">
+                <div className="px-5 py-2 border-b border-slate-200 flex gap-2 flex-wrap bg-slate-50">
                   {attachments.map((file, i) => (
-                    <div key={i} className="flex items-center gap-2 bg-[var(--surface-2)] border border-[var(--border)] px-3 py-1.5 rounded-lg text-xs font-medium">
-                      <Paperclip size={12} className="text-[var(--text-secondary)]" />
+                    <div key={i} className="flex items-center gap-2 bg-white border border-slate-200 px-2.5 py-1 rounded text-xs font-medium text-slate-700 shadow-sm">
+                      <Paperclip size={12} className="text-slate-400" />
                       <span className="truncate max-w-[150px]">{file.name}</span>
-                      <button onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-rose-500 ml-1">
+                      <button onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-red-500 ml-1 transition-colors">
                         <X size={12} />
                       </button>
                     </div>
@@ -306,26 +306,26 @@ const ComposeModal = () => {
               )}
 
               {/* Editor */}
-              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar min-h-[200px] relative">
-                <EditorContent editor={editor} className="prose prose-sm max-w-none focus:outline-none min-h-full" />
+              <div className="flex-1 overflow-y-auto p-5 custom-scrollbar min-h-[200px] relative bg-white">
+                <EditorContent editor={editor} className="prose prose-sm max-w-none focus:outline-none min-h-full text-slate-800" />
                 {suggestion && (
-                  <div className="absolute left-6 bottom-6 pointer-events-none opacity-40 text-sm font-medium italic text-[var(--text-secondary)]">
+                  <div className="absolute left-5 bottom-5 pointer-events-none opacity-50 text-sm italic text-slate-500">
                     Press Tab to accept: "{suggestion}"
                   </div>
                 )}
               </div>
 
               {/* Toolbar */}
-              <div className="p-4 border-t border-[var(--border)] flex items-center justify-between bg-[var(--surface-1)]">
+              <div className="p-3 border-t border-slate-100 flex items-center justify-between bg-white shrink-0 rounded-b-xl">
                 <div className="flex items-center gap-3">
                   <button 
                     onClick={handleSend}
                     disabled={sendMutation.isPending}
-                    className="btn btn-primary h-10 px-6 rounded-xl flex items-center gap-3 shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                    className="bg-blue-600 hover:bg-blue-700 text-white h-10 px-6 rounded-lg flex items-center gap-2 transition-all shadow-md shadow-blue-600/20 disabled:opacity-50"
                   >
-                    <span className="text-xs font-bold">{sendMutation.isPending ? 'Sending...' : 'Send'}</span>
-                    <div className="w-px h-4 bg-white/20" />
-                    <ChevronDown size={14} />
+                    <span className="text-[14px] font-bold tracking-wide">{sendMutation.isPending ? 'Sending...' : 'Send'}</span>
+                    <div className="w-px h-4 bg-white/30 mx-1" />
+                    <ChevronDown size={16} />
                   </button>
                   <div className="flex items-center gap-1">
                     <EditorAction icon={Bold} onClick={() => editor.chain().focus().toggleBold().run()} />
@@ -334,25 +334,25 @@ const ComposeModal = () => {
                     <EditorAction icon={Link} onClick={() => {}} />
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5">
                   <button 
                     onClick={handleAIGenerate} 
                     disabled={isGenerating}
-                    className="p-2 hover:bg-purple-500/10 rounded-lg text-purple-500 transition-all flex items-center gap-2 font-bold text-xs"
+                    className="p-2 hover:bg-blue-100 rounded text-blue-600 transition-colors flex items-center gap-1.5 text-xs font-semibold mr-2"
                   >
-                    {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-                    <span className="hidden sm:inline">{isGenerating ? 'Writing...' : 'Write with AI'}</span>
+                    {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                    <span className="hidden sm:inline">{isGenerating ? 'Writing...' : 'AI Assist'}</span>
                   </button>
-                  <div className="w-px h-6 bg-[var(--border)] mx-1" />
+                  <div className="w-px h-5 bg-slate-300 mx-1" />
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
                   {isUploading ? (
-                    <div className="p-2 text-[var(--text-secondary)]"><Loader2 size={16} className="animate-spin" /></div>
+                    <div className="p-1.5 text-slate-400"><Loader2 size={16} className="animate-spin" /></div>
                   ) : (
                     <EditorAction icon={Paperclip} onClick={() => fileInputRef.current?.click()} />
                   )}
                   <EditorAction icon={Image} onClick={() => fileInputRef.current?.click()} />
                   <EditorAction icon={Smile} />
-                  <div className="w-px h-6 bg-[var(--border)] mx-1" />
+                  <div className="w-px h-5 bg-slate-300 mx-1" />
                   <EditorAction icon={Trash2} />
                 </div>
               </div>
@@ -367,9 +367,9 @@ const ComposeModal = () => {
 const EditorAction = ({ icon: Icon, onClick }) => (
   <button 
     onClick={onClick}
-    className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all"
+    className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
   >
-    <Icon size={16} />
+    <Icon size={18} />
   </button>
 );
 

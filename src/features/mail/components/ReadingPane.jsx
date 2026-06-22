@@ -253,12 +253,12 @@ const ReadingPane = () => {
 
   if (!selectedId) {
     return (
-      <div className="flex-1 h-full flex flex-col items-center justify-center bg-[var(--surface-0)] gap-6 opacity-30">
+      <div className="flex-1 h-full flex flex-col items-center justify-center bg-slate-50 gap-4 opacity-50">
         <div className="flex items-center justify-center">
-          <img src={LogoImage} alt="Forge India Logo" className="h-20 w-auto object-contain opacity-60" />
+          <img src={LogoImage} alt="Forge India Logo" className="h-12 w-auto object-contain opacity-40 grayscale" />
         </div>
         <div className="text-center mt-2">
-           <p className="text-sm font-medium">Select a conversation to read</p>
+           <p className="text-sm font-medium text-slate-500">Select a message to read</p>
         </div>
       </div>
     );
@@ -266,9 +266,9 @@ const ReadingPane = () => {
 
   if (isMailLoading) {
     return (
-      <div className="flex-1 h-full flex flex-col items-center justify-center bg-[var(--surface-0)] gap-4 opacity-30">
-        <Zap className="animate-pulse text-[var(--brand-primary)]" size={32} />
-        <p className="text-[10px] font-black uppercase tracking-widest">Opening thread...</p>
+      <div className="flex-1 h-full flex flex-col items-center justify-center bg-slate-50 gap-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Loading...</p>
       </div>
     );
   }
@@ -276,21 +276,21 @@ const ReadingPane = () => {
   if (!mail) return null;
 
   return (
-    <div className="flex-1 h-full flex overflow-hidden bg-[var(--surface-0)]">
+    <div className="flex-1 h-full flex overflow-hidden bg-white">
       <div className="flex-1 flex flex-col min-w-0">
         {/* Toolbar */}
-        <div className="h-16 flex items-center justify-between px-8 border-b border-[var(--border)] shrink-0">
+        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-200 shrink-0 bg-white">
           <div className="flex items-center gap-2">
             <button 
               onClick={() => setSelectedId(null)}
-              className="lg:hidden p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)]"
+              className="lg:hidden p-2 hover:bg-slate-100 rounded text-slate-500 transition-colors"
             >
               <ArrowLeft size={18} />
             </button>
             <div className="flex items-center gap-1">
               <ToolbarButton icon={Reply} label="Reply" onClick={handleReply} />
               <ToolbarButton icon={Forward} label="Forward" onClick={handleForward} />
-              <div className="w-px h-6 bg-[var(--border)] mx-2" />
+              <div className="w-px h-6 bg-slate-200 mx-2" />
               <ToolbarButton icon={Archive} label="Archive" onClick={handleArchive} />
               <ToolbarButton icon={Trash2} label="Delete" onClick={handleDelete} />
             </div>
@@ -299,13 +299,13 @@ const ReadingPane = () => {
             <button 
               onClick={() => setShowAIPanel(!showAIPanel)}
               className={cn(
-                "btn h-9 px-4 rounded-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all",
+                "btn h-8 px-3 rounded flex items-center gap-2 text-xs font-semibold transition-colors border",
                 showAIPanel 
-                  ? "bg-[var(--brand-primary)] text-white shadow-lg shadow-blue-500/20" 
-                  : "bg-[var(--brand-light)] text-[var(--brand-primary)] hover:bg-[var(--brand-primary)] hover:text-white"
+                  ? "bg-blue-600 text-white border-blue-600" 
+                  : "bg-white text-blue-600 border-blue-200 hover:bg-blue-50"
               )}
             >
-              <Sparkles size={14} /> Antigravity AI
+              <Sparkles size={14} /> AI Insights
             </button>
             <ToolbarButton icon={Star} label="Star" active={mail.isStarred} onClick={handleToggleStar} />
             <ToolbarButton icon={MoreVertical} label="More" />
@@ -313,21 +313,21 @@ const ReadingPane = () => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 lg:p-12">
-          <div className="max-w-[720px] mx-auto space-y-10">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-10">
+          <div className="max-w-3xl mx-auto space-y-8">
             {/* Subject */}
             <div className="flex items-start justify-between gap-6">
-              <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] leading-tight">
+              <h1 className="text-2xl font-bold text-slate-900 leading-tight">
                 {mail.subject}
               </h1>
               <div className="flex items-center gap-2 shrink-0 cursor-pointer" onClick={handleNextLabel} title="Click to change label">
                 <span className={cn(
-                  "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all hover:opacity-80",
-                  mail.label === 'Work' ? "bg-blue-50 text-blue-600 border-blue-100" :
-                  mail.label === 'Client' ? "bg-purple-50 text-purple-600 border-purple-100" :
-                  mail.label === 'Finance' ? "bg-amber-50 text-amber-600 border-amber-100" :
-                  mail.label === 'Personal' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                  "bg-[var(--surface-2)] text-[var(--text-secondary)] border-[var(--border)]"
+                  "px-2.5 py-1 rounded text-[11px] font-semibold uppercase tracking-wider border transition-colors",
+                  mail.label === 'Work' ? "bg-blue-50 text-blue-700 border-blue-200" :
+                  mail.label === 'Client' ? "bg-purple-50 text-purple-700 border-purple-200" :
+                  mail.label === 'Finance' ? "bg-amber-50 text-amber-700 border-amber-200" :
+                  mail.label === 'Personal' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                  "bg-[#F8FAFC] text-slate-600 border-slate-200 hover:bg-slate-100"
                 )}>
                   {mail.label || 'Add Label'}
                 </span>
@@ -335,24 +335,24 @@ const ReadingPane = () => {
             </div>
 
             {/* Sender Card */}
-            <div className="flex items-center justify-between group">
+            <div className="flex items-center justify-between group p-4 rounded-xl border border-slate-100 bg-[#F8FAFC]/50 hover:bg-[#F8FAFC] transition-colors">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-[var(--surface-2)] flex items-center justify-center text-xs font-black text-[var(--text-primary)] border border-[var(--border)]">
+                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-[15px] font-bold text-white shadow-sm ring-2 ring-white">
                   {mail.sender.split(' ').map(n => n[0]).join('')}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-black text-[var(--text-primary)]">{mail.sender}</span>
-                    <span className="text-xs font-medium text-[var(--text-secondary)] opacity-60">&lt;{mail.senderEmail}&gt;</span>
+                    <span className="text-[15px] font-bold text-slate-900">{mail.sender}</span>
+                    <span className="text-[13px] text-slate-500 font-medium">&lt;{mail.senderEmail}&gt;</span>
                   </div>
-                  <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-widest mt-0.5">To: {mail.recipient}</p>
+                  <p className="text-[12px] text-slate-500 mt-0.5 font-medium">To: {mail.recipient}</p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">
+                <p className="text-[13px] font-bold text-slate-700">
                   {new Date(mail.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
                 </p>
-                <p className="text-[10px] font-bold text-[var(--text-secondary)] opacity-40 font-mono mt-0.5">
+                <p className="text-[12px] text-slate-500 mt-0.5 font-medium">
                   {new Date(mail.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
@@ -360,20 +360,20 @@ const ReadingPane = () => {
 
             {/* Body */}
             <div 
-              className="text-[var(--text-primary)] leading-[1.8] text-[15px] font-medium font-sans mail-content"
+              className="text-slate-800 leading-relaxed text-[15px] font-sans mail-content px-2"
               dangerouslySetInnerHTML={{ __html: mail.content }}
             />
 
             {/* Attachments */}
             {mail.hasAttachments && (
-              <div className="pt-10 border-t border-[var(--border)]">
+              <div className="pt-8 border-t border-slate-200">
                 <div className="flex items-center gap-2 mb-4">
-                  <Paperclip size={14} className="text-[var(--text-secondary)]" />
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">
+                  <Paperclip size={14} className="text-slate-500" />
+                  <span className="text-xs font-semibold text-slate-700">
                     {selected.attachments.length} Attachment{selected.attachments.length !== 1 && 's'}
                   </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {selected.attachments.map((att, i) => (
                     <a key={i} href={att.url} target="_blank" rel="noreferrer" style={{textDecoration: 'none'}}>
                       <AttachmentCard 
@@ -388,16 +388,16 @@ const ReadingPane = () => {
             )}
 
             {/* Smart Replies */}
-            <div className="pt-10 border-t border-[var(--border)] space-y-4">
+            <div className="pt-8 border-t border-slate-200 space-y-3">
                <div className="flex items-center gap-2 mb-2">
-                 <Sparkles size={14} className="text-[var(--brand-primary)]" />
-                 <span className="text-[10px] font-black uppercase tracking-widest text-[var(--brand-primary)]">AI Smart Replies</span>
+                 <Sparkles size={14} className="text-blue-600" />
+                 <span className="text-xs font-semibold text-blue-600">AI Smart Replies</span>
                </div>
                <div className="flex flex-wrap gap-2">
                  {smartReplyMutation.isPending ? (
-                   <p className="text-[10px] font-bold text-[var(--text-secondary)] animate-pulse">Thinking...</p>
+                   <p className="text-xs font-medium text-slate-500 animate-pulse">Thinking...</p>
                  ) : smartReplyMutation.data?.replies?.map((reply, i) => (
-                   <button key={i} onClick={() => setInlineReplyText(prev => prev ? prev + '\n' + reply : reply)} className="px-4 py-2 bg-[var(--surface-1)] border border-[var(--border)] rounded-xl text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--brand-light)] hover:border-[var(--brand-primary)] hover:text-[var(--brand-primary)] transition-all">
+                   <button key={i} onClick={() => setInlineReplyText(prev => prev ? prev + '\n' + reply : reply)} className="px-3 py-1.5 bg-white border border-slate-200 rounded text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors">
                      {reply}
                    </button>
                  ))}
@@ -405,25 +405,25 @@ const ReadingPane = () => {
             </div>
 
             {/* Inline Reply Box */}
-            <div className="pt-10 pb-20">
-              <div className="bg-[var(--surface-1)] border border-[var(--border)] rounded-[24px] p-6 focus-within:ring-4 focus-within:ring-purple-500/5 transition-all">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-[var(--brand-primary)] flex items-center justify-center text-[10px] font-black text-white">A</div>
-                  <span className="text-xs font-bold text-[var(--text-secondary)]">Reply to <span className="text-[var(--text-primary)] font-black">{mail.sender}</span></span>
+            <div className="pt-8 pb-16">
+              <div className="bg-white border border-slate-200 rounded-lg p-4 focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all shadow-sm">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700">A</div>
+                  <span className="text-sm text-slate-600">Reply to <span className="font-semibold text-slate-900">{mail.sender}</span></span>
                 </div>
                 <textarea 
                   value={inlineReplyText}
                   onChange={(e) => setInlineReplyText(e.target.value)}
-                  className="w-full bg-transparent border-none outline-none text-sm font-medium resize-none min-h-[120px]"
+                  className="w-full bg-transparent border-none outline-none text-sm text-slate-900 resize-y min-h-[100px]"
                   placeholder="Write your response..."
                 />
                 {inlineAttachments.length > 0 && (
-                  <div className="flex gap-2 flex-wrap mb-4 border-t border-[var(--border)] pt-4">
+                  <div className="flex gap-2 flex-wrap mb-3 border-t border-slate-100 pt-3">
                     {inlineAttachments.map((file, i) => (
-                      <div key={i} className="flex items-center gap-2 bg-[var(--surface-2)] border border-[var(--border)] px-3 py-1.5 rounded-lg text-xs font-medium">
-                        <Paperclip size={12} className="text-[var(--text-secondary)]" />
-                        <span className="truncate max-w-[150px] text-[var(--text-primary)]">{file.name}</span>
-                        <button onClick={() => setInlineAttachments(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-rose-500 ml-1 font-bold">
+                      <div key={i} className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded text-xs font-medium text-slate-700">
+                        <Paperclip size={12} className="text-slate-400" />
+                        <span className="truncate max-w-[150px]">{file.name}</span>
+                        <button onClick={() => setInlineAttachments(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-red-500 ml-1">
                           ✕
                         </button>
                       </div>
@@ -431,25 +431,25 @@ const ReadingPane = () => {
                   </div>
                 )}
                 {isUploadingAttachment && (
-                  <div className="text-xs text-[var(--brand-primary)] font-bold mb-4">Uploading attachment...</div>
+                  <div className="text-xs text-blue-600 font-medium mb-3">Uploading attachment...</div>
                 )}
-                <div className="flex items-center justify-between mt-4">
-                   <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between mt-3">
+                   <div className="flex items-center gap-1">
                      <input 
                        type="file" 
                        ref={inlineFileRef} 
                        onChange={handleInlineAttachmentUpload} 
                        style={{ display: 'none' }} 
                      />
-                     <button className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all"><Maximize2 size={16} /></button>
-                     <button onClick={() => inlineFileRef.current?.click()} className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)] transition-all"><Paperclip size={16} /></button>
+                     <button className="p-1.5 hover:bg-slate-100 rounded text-slate-500 transition-colors" title="Pop out reply"><Maximize2 size={16} /></button>
+                     <button onClick={() => inlineFileRef.current?.click()} className="p-1.5 hover:bg-slate-100 rounded text-slate-500 transition-colors" title="Attach file"><Paperclip size={16} /></button>
                    </div>
                    <button 
                      onClick={() => sendReplyMutation.mutate()} 
                      disabled={sendReplyMutation.isPending || isUploadingAttachment || (!inlineReplyText.trim() && inlineAttachments.length === 0)}
-                     className="btn btn-primary h-10 px-6 rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                     className="bg-blue-600 hover:bg-blue-700 text-white h-8 px-4 rounded text-sm font-medium transition-colors disabled:opacity-50"
                    >
-                     {sendReplyMutation.isPending ? 'Sending...' : 'Send Reply'}
+                     {sendReplyMutation.isPending ? 'Sending...' : 'Send'}
                    </button>
                 </div>
               </div>
@@ -465,35 +465,35 @@ const ReadingPane = () => {
             initial={{ x: 380 }}
             animate={{ x: 0 }}
             exit={{ x: 380 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="w-[380px] h-full border-l border-[var(--border)] bg-[var(--surface-1)] flex flex-col shrink-0"
+            transition={{ type: 'tween', duration: 0.2 }}
+            className="w-[320px] lg:w-[380px] h-full border-l border-slate-200 bg-slate-50 flex flex-col shrink-0"
           >
-            <div className="h-16 flex items-center justify-between px-6 border-b border-[var(--border)]">
+            <div className="h-16 flex items-center justify-between px-5 border-b border-slate-200 bg-white">
                <div className="flex items-center gap-2">
-                 <Sparkles size={18} className="text-[var(--brand-primary)]" />
-                 <h2 className="text-sm font-black uppercase tracking-widest text-[var(--text-primary)]">Antigravity AI</h2>
+                 <Sparkles size={16} className="text-blue-600" />
+                 <h2 className="text-sm font-semibold text-slate-800">Antigravity AI</h2>
                </div>
-               <button onClick={() => setShowAIPanel(false)} className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-secondary)]">
-                 <XIcon size={18} />
+               <button onClick={() => setShowAIPanel(false)} className="p-1.5 hover:bg-slate-100 rounded text-slate-500 transition-colors">
+                 <XIcon size={16} />
                </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+            <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
                {/* Summary Card */}
-               <div className="bg-[var(--surface-0)] border border-[var(--border)] rounded-[24px] p-6 shadow-xl shadow-black/5">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 rounded-xl bg-purple-100 flex items-center justify-center text-purple-600">
-                      <Zap size={16} fill="currentColor" />
+               <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 rounded bg-purple-100 flex items-center justify-center text-purple-600">
+                      <Zap size={14} fill="currentColor" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-primary)]">AI Summary</span>
+                    <span className="text-xs font-semibold text-slate-700">AI Summary</span>
                   </div>
                   {summaryMutation.isPending ? (
-                    <p className="text-xs font-bold text-[var(--text-secondary)] animate-pulse">Summarizing email thread...</p>
+                    <p className="text-sm text-slate-500 animate-pulse">Summarizing email thread...</p>
                   ) : (
-                    <ul className="space-y-3">
+                    <ul className="space-y-2">
                       {summaryMutation.data?.summary?.map((point, i) => (
-                        <li key={i} className="flex gap-3 text-xs font-medium leading-relaxed text-[var(--text-primary)]">
-                           <ChevronRight size={14} className="shrink-0 text-[var(--brand-primary)] mt-0.5" />
+                        <li key={i} className="flex gap-2 text-sm text-slate-700 leading-relaxed">
+                           <ChevronRight size={14} className="shrink-0 text-blue-600 mt-1" />
                            {point.replace(/^[\s•*-]+/, '')}
                         </li>
                       ))}
@@ -502,9 +502,9 @@ const ReadingPane = () => {
                </div>
 
                {/* Action Suggestions */}
-               <div className="space-y-4">
-                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-secondary)] px-2">Recommended Actions</p>
-                 <div className="space-y-2">
+               <div className="space-y-3">
+                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">Recommended Actions</p>
+                 <div className="space-y-1.5">
                     <AIActionItem label="Approve Timeline" icon={CheckCircle} />
                     <AIActionItem label="Schedule QA Sync" icon={Clock} />
                     <AIActionItem label="Share with Stakeholders" icon={ExternalLink} />
@@ -512,13 +512,13 @@ const ReadingPane = () => {
                </div>
 
                {/* Priority Insight */}
-               <div className="bg-gradient-to-br from-[var(--brand-primary)] to-indigo-600 rounded-[24px] p-6 text-white">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Sparkles size={16} />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Priority Insight</span>
+               <div className="bg-slate-800 rounded-lg p-5 text-white shadow-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles size={14} className="text-blue-300" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-100">Priority Insight</span>
                   </div>
-                  <p className="text-xs font-semibold leading-relaxed opacity-90">
-                    This thread is marked as <span className="font-black underline decoration-2 underline-offset-4">High Priority</span> because it contains critical project delivery updates.
+                  <p className="text-sm leading-relaxed text-slate-300">
+                    This thread is marked as <span className="font-semibold text-white">High Priority</span> because it contains critical project delivery updates.
                   </p>
                </div>
             </div>
@@ -533,41 +533,41 @@ const ToolbarButton = ({ icon: Icon, label, active, onClick }) => (
   <button 
     onClick={onClick}
     className={cn(
-      "p-2.5 rounded-xl transition-all flex items-center gap-2 group",
+      "p-1.5 rounded transition-colors flex items-center gap-2 group",
       active 
         ? "text-amber-500 bg-amber-50" 
-        : "text-[var(--text-secondary)] hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]"
+        : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
     )}
     title={label}
   >
-    <Icon size={18} className={cn(active && "fill-amber-500")} />
+    <Icon size={16} className={cn(active && "fill-amber-500")} />
   </button>
 );
 
 const AttachmentCard = ({ name, size, type }) => (
-  <div className="flex items-center gap-3 p-4 bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl hover:border-[var(--brand-primary)] transition-all cursor-pointer group">
-    <div className="w-10 h-10 rounded-xl bg-[var(--surface-0)] flex items-center justify-center text-[10px] font-black text-[var(--text-secondary)] border border-[var(--border)]">
+  <div className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded hover:border-slate-300 hover:bg-slate-50 transition-colors cursor-pointer group shadow-sm">
+    <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500 border border-slate-200">
       {type}
     </div>
     <div className="flex-1 min-w-0">
-      <p className="text-xs font-bold truncate text-[var(--text-primary)]">{name}</p>
-      <p className="text-[10px] font-medium text-[var(--text-secondary)] opacity-60">{size}</p>
+      <p className="text-sm font-medium truncate text-slate-800">{name}</p>
+      <p className="text-xs text-slate-500">{size}</p>
     </div>
-    <button className="p-2 hover:bg-[var(--surface-0)] rounded-lg text-[var(--text-secondary)] transition-all opacity-0 group-hover:opacity-100">
+    <button className="p-1.5 hover:bg-slate-200 rounded text-slate-500 transition-colors opacity-0 group-hover:opacity-100">
       <Download size={14} />
     </button>
   </div>
 );
 
 const AIActionItem = ({ label, icon: Icon }) => (
-  <button className="w-full flex items-center justify-between p-4 bg-[var(--surface-0)] border border-[var(--border)] rounded-2xl hover:bg-[var(--brand-light)] hover:border-[var(--brand-primary)] transition-all group">
+  <button className="w-full flex items-center justify-between p-3 bg-white border border-slate-200 rounded hover:bg-slate-50 hover:border-slate-300 transition-colors group shadow-sm">
     <div className="flex items-center gap-3">
-      <div className="w-8 h-8 rounded-lg bg-[var(--surface-1)] flex items-center justify-center text-[var(--text-secondary)] group-hover:text-[var(--brand-primary)]">
-        <Icon size={16} />
+      <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-500 group-hover:text-blue-600">
+        <Icon size={14} />
       </div>
-      <span className="text-xs font-bold text-[var(--text-primary)] group-hover:text-[var(--brand-primary)]">{label}</span>
+      <span className="text-sm font-medium text-slate-700 group-hover:text-blue-700">{label}</span>
     </div>
-    <ChevronRight size={14} className="text-[var(--text-secondary)] group-hover:text-[var(--brand-primary)] group-hover:translate-x-1 transition-all" />
+    <ChevronRight size={14} className="text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-transform" />
   </button>
 );
 

@@ -419,24 +419,57 @@ const ChatApp = () => {
       }));
     });
 
-    socketRef.current.on('presence-update', ({ mobile, isOnline, lastSeen }) => {
-      setChannels(prev => prev.map(ch => {
-        if (['dm', 'direct'].includes(ch.type) && ch.members.includes(mobile)) {
-          return { ...ch, isOnline, lastSeen };
-        }
-        return ch;
-      }));
+    // Real WebSocket for presence via wssMail
+    const email = auth.email || auth.user?.email || '';
+    const token = auth.token || auth.user?.token || localStorage.getItem('token');
+    if (email) {
+      const wsUrl = getSocketUrl().replace('http', 'ws') + `/ws/mail?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token || '')}`;
+      const ws = new WebSocket(wsUrl);
       
-      setSelected(prev => {
-        if (['dm', 'direct'].includes(prev?.type) && prev.members.includes(mobile)) {
-          return { ...prev, isOnline, lastSeen };
-        }
-        return prev;
-      });
-    });
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'presence-update') {
+            const onlineEmails = data.onlineEmails || [];
+            setChannels(prev => prev.map(ch => {
+              if (['dm', 'direct'].includes(ch.type)) {
+                // Determine if any other member in this DM is online
+                const otherMembers = ch.members.filter(m => m !== email);
+                const isOnline = otherMembers.some(m => onlineEmails.includes(m));
+                return { ...ch, isOnline };
+              }
+              return ch;
+            }));
+            
+            setSelected(prev => {
+              if (['dm', 'direct'].includes(prev?.type)) {
+                const otherMembers = prev.members.filter(m => m !== email);
+                const isOnline = otherMembers.some(m => onlineEmails.includes(m));
+                return { ...prev, isOnline };
+              }
+              return prev;
+            });
+
+            // Update members online status
+            setMembers(prev => prev.map(m => ({
+              ...m,
+              isOnline: onlineEmails.includes(m.email)
+            })));
+          } else if (data.type === 'new-channel') {
+            fetchChannels();
+          }
+        } catch (e) {}
+      };
+      
+      // Store ws in a ref if needed, or just let it close on unmount
+      socketRef.current.realWs = ws;
+    }
 
     return () => {
-      if (socketRef.current) socketRef.current.disconnect();
+      if (socketRef.current) {
+        if (socketRef.current.disconnect) socketRef.current.disconnect();
+        if (socketRef.current.realWs) socketRef.current.realWs.close();
+      }
     };
   }, []);
 

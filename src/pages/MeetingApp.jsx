@@ -1270,6 +1270,13 @@ const m = Math.floor((seconds % 3600) / 60);
           if (!videoOn) {
             track.stop();
             streamRef.current.removeTrack(track);
+            // Replace the track with null for all peer connections to unfreeze last frame
+            peersRef.current.forEach(({ pc, peerID }) => {
+              if (!pc) return;
+              const cameraSender = cameraSendersRef.current.get(peerID) || 
+                                   pc.getSenders().find(s => s.track && s.track.kind === 'video' && !s.track.label?.toLowerCase().includes('screen'));
+              if (cameraSender) cameraSender.replaceTrack(null).catch(() => {});
+            });
           } else {
             track.enabled = true;
           }

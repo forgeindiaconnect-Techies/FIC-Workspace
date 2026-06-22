@@ -1,3 +1,4 @@
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 // Cache bust 1
 import SuperAdmin from './pages/SuperAdmin';
@@ -25,6 +26,20 @@ import ModulePlaceholder from './pages/ModulePlaceholder';
 import { ThemeProvider } from './context/ThemeContext';
 
 function App() {
+  useEffect(() => {
+    if (!sessionStorage.getItem('app_session_started')) {
+      sessionStorage.setItem('app_session_started', 'true');
+      try {
+        const auth = JSON.parse(localStorage.getItem('auth') || 'null');
+        if (auth && auth.role === 'demo') {
+          localStorage.removeItem('auth');
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+        }
+      } catch (err) {}
+    }
+  }, []);
+
   return (
     <ThemeProvider>
       <Router>

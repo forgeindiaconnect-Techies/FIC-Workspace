@@ -3,9 +3,10 @@ import { NavLink, useParams, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Settings,
   LogOut, Bell, ChevronDown, Search, Sun, Moon,
-  Zap, Users, Shield, Globe, Menu, X, Command
+  Zap, Users, Shield, Globe, Menu, X, Command, Grid
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { AppSwitcher } from './AppLayout';
 
 const DashboardLayout = ({ children, isAdmin = false }) => {
   const { workspaceId } = useParams();
@@ -13,6 +14,30 @@ const DashboardLayout = ({ children, isAdmin = false }) => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [onlineCount, setOnlineCount] = useState(1);
+
+  React.useEffect(() => {
+    const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+    const email = auth.email || auth.user?.email || '';
+    const token = auth.token || auth.user?.token || localStorage.getItem('token');
+    if (!email) return;
+
+    let ws;
+    import('../api').then(({ getSocketUrl }) => {
+      const wsUrl = getSocketUrl().replace('http', 'ws') + `/ws/mail?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token || '')}`;
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'presence-update') {
+            setOnlineCount(data.onlineEmails?.length || 1);
+          }
+        } catch (e) {}
+      };
+    }).catch(() => {});
+    
+    return () => { if (ws) ws.close(); };
+  }, []);
 
   const basePath = workspaceId ? `/w/${workspaceId}` : '';
 
@@ -94,14 +119,21 @@ const DashboardLayout = ({ children, isAdmin = false }) => {
 
           <div className="divider my-2" />
 
-          <NavLink to={workspaceId ? `${basePath}/settings` : '/super-admin'} className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
-            <Settings size={16} strokeWidth={1.75} />
-            {sidebarOpen && <span>Settings</span>}
-          </NavLink>
+          {/* Settings option removed per request */}
         </nav>
 
         {/* Bottom User */}
-        <div className="p-2 border-t" style={{ borderColor: 'var(--border)' }}>
+        <div className="p-2 border-t flex flex-col gap-1" style={{ borderColor: 'var(--border)' }}>
+          {/* App Switcher */}
+          <div className="w-full">
+            {sidebarOpen ? <AppSwitcher workspaceId={workspaceId} /> : (
+              <div className="flex justify-center w-full mb-2">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-slate-100 text-slate-400 cursor-pointer">
+                  <Grid size={18} strokeWidth={2.5} />
+                </div>
+              </div>
+            )}
+          </div>
           <button onClick={handleLogout} className="sidebar-item w-full text-left">
             <LogOut size={16} strokeWidth={1.75} />
             {sidebarOpen && <span>Sign out</span>}
@@ -144,7 +176,7 @@ const DashboardLayout = ({ children, isAdmin = false }) => {
             {/* Live Presence */}
             <div className="hidden lg:flex items-center gap-1 mr-3">
               <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-xs" style={{ color: 'var(--text-3)' }}>3 online</span>
+              <span className="text-xs" style={{ color: 'var(--text-3)' }}>{onlineCount} online</span>
             </div>
 
             <button className="btn btn-ghost btn-icon relative">
@@ -171,7 +203,7 @@ const DashboardLayout = ({ children, isAdmin = false }) => {
                   <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>{workspaceId || 'Admin'}</p>
                 </div>
                 <div className="p-1">
-                  <button onClick={() => navigate(workspaceId ? `${basePath}/settings` : '/super-admin')} className="sidebar-item w-full text-xs"><Settings size={14} /> Settings</button>
+                  {/* Settings button removed per request */}
                   <button onClick={handleLogout} className="sidebar-item w-full text-xs" style={{ color: '#EF4444' }}><LogOut size={14} /> Sign out</button>
                 </div>
                 </div>

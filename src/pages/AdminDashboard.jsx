@@ -24,7 +24,7 @@ const AdminOverview = () => {
   const [newUser, setNewUser] = useState({ name: '', emailPrefix: '', password: '', mobile: '', personalEmail: '', role: 'Member' });
   const [adding, setAdding] = useState(false);
 
-  const [activeDomain, setActiveDomain] = useState(`${workspaceId}.com`);
+  const [activeDomain, setActiveDomain] = useState((workspaceId === 'antigraviity-hq' || workspaceId === 'antigraviity.hq') ? 'FIC.hq.com' : `${workspaceId}.com`);
   // API Base URL - Managed by global config
 
   const fetchUsers = async () => {

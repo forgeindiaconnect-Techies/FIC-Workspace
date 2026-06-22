@@ -18,7 +18,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const JWT_SECRET = process.env.JWT_SECRET || 'nexus-jwt-secret-key';
 
 // Keep track of active sockets
-const activeMailSockets = new Map(); // email -> ws
+const activeMailSockets = new Map(); // email -> Set<ws>
 const onlineCallUsers = new Map();   // email -> ws
 const webrtcRooms = new Map();       // meetingId -> Map(peerId -> { socket, name, avatarUrl })
 const webrtcRoomsMeta = new Map();   // meetingId -> { locked: boolean }
@@ -36,8 +36,8 @@ function sendJson(ws, payload) {
 app.post('/internal/new-mail', (req, res) => {
   const { recipientEmail, mail } = req.body;
   if (recipientEmail && activeMailSockets.has(recipientEmail)) {
-    const ws = activeMailSockets.get(recipientEmail);
-    sendJson(ws, { type: 'NEW_MAIL', mail });
+    const sockets = activeMailSockets.get(recipientEmail);
+    sockets.forEach(ws => sendJson(ws, { type: 'NEW_MAIL', mail }));
     console.log(`[Sockets Internal] Forwarded new mail alert to ${recipientEmail}`);
   }
   res.json({ success: true });
@@ -119,20 +119,44 @@ wssAudio.on('connection', (ws, req) => {
       try {
         fs.writeFileSync(filePath, message);
         
-        if (process.env.GROQ_API_KEY) {
-          const { default: Groq } = await import('groq-sdk');
-          const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-          
-          const transcription = await groq.audio.transcriptions.create({
-            file: fs.createReadStream(filePath),
-            model: 'whisper-large-v3',
-            prompt: 'Meeting conversation. Transcribe accurately.',
-            temperature: 0,
-            response_format: 'verbose_json',
-            language: 'en',
-          });
+        if (process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY) {
+          let text = '';
+          try {
+            if (process.env.GROQ_API_KEY) {
+              const { default: Groq } = await import('groq-sdk');
+              const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+              
+              const transcription = await groq.audio.transcriptions.create({
+                file: fs.createReadStream(filePath),
+                model: 'whisper-large-v3',
+                prompt: 'Meeting conversation. Transcribe accurately.',
+                temperature: 0,
+                response_format: 'verbose_json',
+                language: 'en',
+              });
+              text = transcription.text.trim();
+            }
+          } catch (groqErr) {
+            console.error('[AudioSocket] Groq failed, trying Gemini:', groqErr.message);
+          }
 
-          const text = transcription.text.trim();
+          if (!text && process.env.GEMINI_API_KEY) {
+            try {
+              const { GoogleGenerativeAI } = await import('@google/generative-ai');
+              const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+              const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+              
+              const audioBuffer = fs.readFileSync(filePath);
+              const result = await model.generateContent([
+                "Transcribe the following meeting audio accurately. Output only the transcription text, nothing else.",
+                { inlineData: { data: audioBuffer.toString('base64'), mimeType: "audio/webm" } }
+              ]);
+              text = result.response.text().trim();
+            } catch (geminiErr) {
+              console.error('[AudioSocket] Gemini fallback failed:', geminiErr.message);
+            }
+          }
+
           if (text) {
             await Transcript.create({
               meetingId: currentMeetingId,
@@ -202,15 +226,37 @@ wssMail.on('connection', (ws, req) => {
 
   if (email) {
     console.log(`[Sockets] Mail socket connected: ${email}`);
-    activeMailSockets.set(email, ws);
+    if (!activeMailSockets.has(email)) activeMailSockets.set(email, new Set());
+    activeMailSockets.get(email).add(ws);
+    
+    const broadcastPresence = () => {
+      const onlineEmails = Array.from(activeMailSockets.keys());
+      const payload = JSON.stringify({ type: 'presence-update', onlineEmails });
+      activeMailSockets.forEach((sockets) => {
+        sockets.forEach((client) => {
+          if (client.readyState === 1) client.send(payload);
+        });
+      });
+    };
+    broadcastPresence();
     
     ws.on('close', () => {
       console.log(`[Sockets] Mail socket closed: ${email}`);
-      activeMailSockets.delete(email);
+      const sockets = activeMailSockets.get(email);
+      if (sockets) {
+        sockets.delete(ws);
+        if (sockets.size === 0) activeMailSockets.delete(email);
+      }
+      broadcastPresence();
     });
     
     ws.on('error', () => {
-      activeMailSockets.delete(email);
+      const sockets = activeMailSockets.get(email);
+      if (sockets) {
+        sockets.delete(ws);
+        if (sockets.size === 0) activeMailSockets.delete(email);
+      }
+      broadcastPresence();
     });
   } else {
     ws.close(1008, 'Email identifier required');

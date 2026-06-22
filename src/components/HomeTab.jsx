@@ -221,7 +221,7 @@ const HomeTab = ({ members = [], workspaceId, onViewAllMembers, onStartChat }) =
                     <span className="text-[14px] font-medium text-[#0B1C30] truncate">{member.name || member.email}</span>
                     <span className="text-[12px] text-gray-500 truncate">{member.email}</span>
                   </div>
-                  <div className="ml-auto w-2 h-2 rounded-full bg-green-500 shrink-0"></div>
+                  <div className={`ml-auto w-2 h-2 rounded-full shrink-0 ${member.isOnline ? 'bg-green-500' : 'bg-gray-300'}`}></div>
                 </div>
               ))
             ) : (
