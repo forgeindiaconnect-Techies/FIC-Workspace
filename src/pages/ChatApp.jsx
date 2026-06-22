@@ -1198,7 +1198,18 @@ const ChatApp = () => {
                                            </span>
                                         </div>
                                      </div>
-                                   </div>
+                                     <div className="flex items-center gap-4">
+                                       {(selected.type === 'group' || selected.isGroup) && (selected.createdBy === currentUserEmail || selected.createdByEmail === currentUserEmail) && (
+                                         <button
+                                           onClick={() => deleteGroup(selected._id, selected.name)}
+                                           className="text-[#76777D] hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
+                                           title="Delete Group"
+                                         >
+                                           <Trash2 size={20} />
+                                         </button>
+                                       )}
+                                     </div>
+                                  </div>
 
                                   {/* Messages Area */}
                                   <div className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar relative bg-[#FFFFFF]">
