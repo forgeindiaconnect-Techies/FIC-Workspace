@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Megaphone, Rocket, PenTool, Terminal, FileText, File, Calendar, Video, MessageSquare } from 'lucide-react';
 import { getApiUrl } from '../api';
 
-const HomeTab = ({ members = [], workspaceId, onViewAllMembers, onStartChat }) => {
+const HomeTab = ({ members = [], workspaceId, onViewAllMembers, onStartChat, meetingUpdateTrigger }) => {
   const auth = JSON.parse(localStorage.getItem('auth') || '{}');
   const currentUserName = auth.user || auth.name || 'Alex';
   const firstName = currentUserName.split(' ')[0];
@@ -33,7 +33,7 @@ const HomeTab = ({ members = [], workspaceId, onViewAllMembers, onStartChat }) =
       }
     };
     fetchMeetings();
-  }, []);
+  }, [workspaceId, meetingUpdateTrigger]);
 
   const [activities, setActivities] = useState([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(true);

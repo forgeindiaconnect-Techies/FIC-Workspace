@@ -44,6 +44,7 @@ const ChatApp = () => {
   const [isFindingFriends, setIsFindingFriends] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [meetingUpdateTrigger, setMeetingUpdateTrigger] = useState(0);
   const [searching, setSearching] = useState(false);
   const [activeTab, setActiveTab] = useState('messenger'); // 'messenger', 'conversations', 'updates', 'calls', 'preferences'
   const [stories, setStories] = useState([]);
@@ -457,6 +458,8 @@ const ChatApp = () => {
             })));
           } else if (data.type === 'new-channel') {
             fetchChannels();
+          } else if (data.type === 'meeting-update') {
+            setMeetingUpdateTrigger(prev => prev + 1);
           }
         } catch (e) {}
       };
@@ -1072,7 +1075,7 @@ const ChatApp = () => {
                   <div className="flex flex-1 overflow-hidden">
                      {activeTab === 'threads' || activeTab === 'activity' ? (
                         <ThreadsTab workspaceId={workspaceId} currentUserEmail={currentUserEmail} currentUserName={currentUserName} activityMode={activeTab === 'activity'} onExitActivityMode={() => setActiveTab('threads')} />
-                     ) : activeTab === 'files' ? (
+) : activeTab === 'files' ? (
                         <FilesTab workspaceId={workspaceId} currentUserEmail={currentUserEmail} currentUserName={currentUserName} />
                      ) : activeTab === 'apps' ? (
                         <AppsTab workspaceId={workspaceId} />
@@ -1082,6 +1085,7 @@ const ChatApp = () => {
                           workspaceId={workspaceId}
                           onViewAllMembers={() => setIsFindingFriends(true)}
                           onStartChat={(user) => { startChat(user); setActiveTab('messenger'); }}
+                          meetingUpdateTrigger={meetingUpdateTrigger}
                         />
                      ) : (
                         <>

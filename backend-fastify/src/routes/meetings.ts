@@ -135,6 +135,23 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         console.error(' [WEBHOOK] dispatch failed:', err.message);
       });
 
+      // Broadcast meeting-update to trigger UI refresh
+      try {
+        const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+        const allWorkspaceUsers = await User.find({ workspaceId });
+        const { activeMailSockets } = require('../services/mailSockets');
+        if (activeMailSockets) {
+          const msgStr = JSON.stringify({ type: 'meeting-update' });
+          allWorkspaceUsers.forEach(u => {
+            if (activeMailSockets.has(u.email)) {
+              activeMailSockets.get(u.email)?.send(msgStr);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Socket broadcast error:', e);
+      }
+
       // Send AI email invitations to all team members in the workspace
       try {
         const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
@@ -490,6 +507,23 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // Broadcast meeting-update to trigger UI refresh
+      try {
+        const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+        const allWorkspaceUsers = await User.find({ workspaceId });
+        const { activeMailSockets } = require('../services/mailSockets');
+        if (activeMailSockets) {
+          const msgStr = JSON.stringify({ type: 'meeting-update' });
+          allWorkspaceUsers.forEach(u => {
+            if (activeMailSockets.has(u.email)) {
+              activeMailSockets.get(u.email)?.send(msgStr);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Socket broadcast error:', e);
+      }
+
       // Fire Webhook event to the web application
       const webhookUrl = `${process.env.WEB_APP_URL || 'http://localhost:3000'}/api/webhooks/meetings`;
       fetch(webhookUrl, {
@@ -614,6 +648,23 @@ export async function meetingRoutes(fastify: FastifyInstance) {
       }).catch(err => {
         console.error(' [WEBHOOK] dispatch failed:', err.message);
       });
+
+      // Broadcast meeting-update to trigger UI refresh
+      try {
+        const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+        const allWorkspaceUsers = await User.find({ workspaceId });
+        const { activeMailSockets } = require('../services/mailSockets');
+        if (activeMailSockets) {
+          const msgStr = JSON.stringify({ type: 'meeting-update' });
+          allWorkspaceUsers.forEach(u => {
+            if (activeMailSockets.has(u.email)) {
+              activeMailSockets.get(u.email)?.send(msgStr);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Socket broadcast error:', e);
+      }
 
       // Invalidate all lingering participants
       await Participant.updateMany(
