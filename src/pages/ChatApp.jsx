@@ -698,7 +698,7 @@ const ChatApp = () => {
   };
 
   const deleteGroup = async (groupId, groupName) => {
-    if (!window.confirm(`Are you sure you want to permanently delete the group "${groupName}" and all its messages?`)) {
+    if (!window.confirm(`Are you sure you want to permanently delete the chat/group "${groupName}" and all its messages?`)) {
       return;
     }
     try {
@@ -1199,11 +1199,11 @@ const ChatApp = () => {
                                         </div>
                                      </div>
                                      <div className="flex items-center gap-4">
-                                       {(selected.type === 'group' || selected.isGroup) && (selected.createdBy === currentUserEmail || selected.createdByEmail === currentUserEmail) && (
+                                       {( (['dm', 'direct'].includes(selected.type)) || ((selected.type === 'group' || selected.isGroup) && (selected.createdBy === currentUserEmail || selected.createdByEmail === currentUserEmail)) ) && (
                                          <button
-                                           onClick={() => deleteGroup(selected._id, selected.name)}
+                                           onClick={() => deleteGroup(selected._id, selected.name || getDMName(selected))}
                                            className="text-[#76777D] hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
-                                           title="Delete Group"
+                                           title={['dm', 'direct'].includes(selected.type) ? "Delete Chat" : "Delete Group"}
                                          >
                                            <Trash2 size={20} />
                                          </button>

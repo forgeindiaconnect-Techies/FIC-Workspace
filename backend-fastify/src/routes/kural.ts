@@ -460,17 +460,25 @@ export async function kuralRoutes(fastify: FastifyInstance) {
 
       const currentEmail = normalizeEmail(request.user?.email || '');
       const conversation = await KuralConversation.findOne({
-        _id: groupId,
-        type: 'channel'
+        _id: groupId
       });
 
       if (!conversation) {
-        return reply.code(404).send({ error: 'Group not found.' });
+        return reply.code(404).send({ error: 'Chat/Group not found.' });
       }
 
-      // Check authorization: must be creator
-      if (conversation.createdByEmail !== currentEmail) {
-        return reply.code(403).send({ error: 'Only the group creator can delete this group.' });
+      const isDM = ['dm', 'direct'].includes(conversation.type);
+
+      // Check authorization
+      if (isDM) {
+        if (!conversation.participantEmails.includes(currentEmail)) {
+          return reply.code(403).send({ error: 'Not authorized to delete this chat.' });
+        }
+      } else {
+        // must be creator for channels/groups
+        if (conversation.createdByEmail !== currentEmail) {
+          return reply.code(403).send({ error: 'Only the group creator can delete this group.' });
+        }
       }
 
       await KuralMessage.deleteMany({ conversationId: conversation._id });

@@ -2734,14 +2734,20 @@ async function kuralRoutes(fastify2) {
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
       const conversation = await KuralConversation.findOne({
-        _id: groupId,
-        type: "channel"
+        _id: groupId
       });
       if (!conversation) {
-        return reply.code(404).send({ error: "Group not found." });
+        return reply.code(404).send({ error: "Chat/Group not found." });
       }
-      if (conversation.createdByEmail !== currentEmail) {
-        return reply.code(403).send({ error: "Only the group creator can delete this group." });
+      const isDM = ["dm", "direct"].includes(conversation.type);
+      if (isDM) {
+        if (!conversation.participantEmails.includes(currentEmail)) {
+          return reply.code(403).send({ error: "Not authorized to delete this chat." });
+        }
+      } else {
+        if (conversation.createdByEmail !== currentEmail) {
+          return reply.code(403).send({ error: "Only the group creator can delete this group." });
+        }
       }
       await KuralMessage.deleteMany({ conversationId: conversation._id });
       await KuralConversation.findByIdAndDelete(conversation._id);
