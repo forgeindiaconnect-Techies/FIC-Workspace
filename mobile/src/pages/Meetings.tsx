@@ -863,7 +863,8 @@ export default function Meetings() {
   }, [activeRoom, syncRoomParticipants]);
 
   React.useEffect(() => {
-    localStreamRef.current?.getAudioTracks?.().forEach((track: any) => {
+    const audioTracks = localStreamRef.current?.getAudioTracks?.() || [];
+    audioTracks.forEach((track: any) => {
       track.enabled = !isMuted;
     });
     if (activeRoom) {
@@ -913,7 +914,12 @@ export default function Meetings() {
               
               const newVideoTrack = newStream.getVideoTracks()[0];
               if (newVideoTrack) {
-                stream.addTrack(newVideoTrack);
+                // Create a combined stream to bypass native RTCView mutation bugs
+                const combinedStream = newStream; 
+                const oldAudioTrack = stream.getAudioTracks()[0];
+                if (oldAudioTrack) {
+                  combinedStream.addTrack(oldAudioTrack);
+                }
                 
                 // Replace the track in all existing peer connections
                 peerConnectionsRef.current.forEach((pc: any, peerId: string) => {
@@ -931,8 +937,7 @@ export default function Meetings() {
                          }).catch((e: any) => console.warn("Renegotiation failed:", e));
                       }).catch((e: any) => console.warn("Failed to replace video track:", e));
                     } else if (pc.addTrack) {
-                      // Fallback if no sender exists (shouldn't happen usually)
-                      pc.addTrack(newVideoTrack, stream);
+                      pc.addTrack(newVideoTrack, combinedStream);
                       pc.createOffer().then((offer: any) => {
                          pc.setLocalDescription(offer);
                          sendSignal('offer', { targetPeerId: peerId, sdp: offer });
@@ -943,9 +948,9 @@ export default function Meetings() {
                   }
                 });
                 
-                // Force state update to re-render local view
-                setLocalStream(null);
-                setLocalStream(stream);
+                // Directly set the new stream, naturally triggering a re-render without null-hacks
+                localStreamRef.current = combinedStream;
+                setLocalStream(combinedStream);
                 
                 // Send state update
                 if (activeRoom) {
@@ -1017,6 +1022,7 @@ export default function Meetings() {
             meetingId: signalingRoomId,
             roomId: publicRoomId || signalingRoomId,
             joinCode: publicRoomId || undefined,
+            name: user?.name || 'Participant',
           }
         }));
       };
@@ -1963,7 +1969,7 @@ export default function Meetings() {
                       {isPinnedLocal ? (
                         <>
                           {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
-                            <RTCView style={s.cameraView} stream={rtcLocalStreamSource} objectFit="cover" mirror={facing === 'front'} muted />
+                            <RTCView style={s.cameraView} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={facing === 'front'} muted />
                           ) : camReady ? (
                             <CameraView style={s.cameraView} facing={facing} mute={isMuted} />
                           ) : (
@@ -1989,7 +1995,7 @@ export default function Meetings() {
                               ? (remoteScreenStreams[originalId] || (originalPeerId ? remoteScreenStreams[originalPeerId] : null))
                               : (remoteStreams[pinnedPeer.id] || (pinnedPeer.peerId ? remoteStreams[pinnedPeer.peerId] : null)));
                             return rtcAvailableNow && remoteStream ? (
-                              <RTCView style={s.cameraView} stream={remoteStream} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
+                              <RTCView style={s.cameraView} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                             ) : (
                               <View style={[s.videoAvatar, { backgroundColor: (pinnedPeer as any).isBot ? '#1e40af' : '#475569' }]}>
                                 <Text style={s.videoAvatarText}>{(pinnedPeer as any).isBot ? 'FI' : avatarFor(pinnedPeer.name)}</Text>
@@ -2036,7 +2042,7 @@ export default function Meetings() {
                         return (
                           <TouchableOpacity key={peer.id} style={s.unpinnedTile} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
                             {rtcAvailableNow && remoteStream && (!(peer as any).videoOff || isScreen || isLocalScreen) ? (
-                              <RTCView style={s.cameraView} stream={remoteStream} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
+                              <RTCView style={s.cameraView} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                             ) : (
                               <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
                                 <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff' }}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>
@@ -2060,7 +2066,7 @@ export default function Meetings() {
                   {/* LOCAL CAMERA TILE */}
                   <TouchableOpacity activeOpacity={0.85} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser('local')}>
                     {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
-                      <RTCView style={s.cameraView} stream={rtcLocalStreamSource} objectFit="cover" mirror={facing === 'front'} muted />
+                      <RTCView style={s.cameraView} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={facing === 'front'} muted />
                     ) : camReady ? (
                       <CameraView style={s.cameraView} facing={facing} mute={isMuted} />
                     ) : (
@@ -2093,7 +2099,7 @@ export default function Meetings() {
                     return (
                       <TouchableOpacity activeOpacity={0.85} key={peer.id} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
                         {rtcAvailableNow && remoteStream && (!(peer as any).videoOff || isScreen || isLocalScreen) ? (
-                          <RTCView style={s.cameraView} stream={remoteStream} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
+                          <RTCView style={s.cameraView} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                         ) : (
                           <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
                             <Text style={s.videoAvatarText}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>

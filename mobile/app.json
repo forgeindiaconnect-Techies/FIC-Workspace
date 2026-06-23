@@ -5,7 +5,7 @@
     "scheme": "nexus",
     "version": "1.1.0",
     "orientation": "portrait",
-    "icon": "./assets/forge-icon.jpg",
+    "icon": "./assets/forge-icon-square.jpg",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
@@ -20,7 +20,7 @@
     "android": {
       "package": "com.nexus.workspace",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/forge-icon.jpg",
+        "foregroundImage": "./assets/forge-icon-adaptive.png",
         "backgroundColor": "#ffffff"
       },
       "usesCleartextTraffic": true,

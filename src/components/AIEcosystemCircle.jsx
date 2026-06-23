@@ -5,6 +5,8 @@ import MailAIAnimation from './MailAIAnimation';
 import DocsAIAnimation from './DocsAIAnimation';
 import ShowAIAnimation from './ShowAIAnimation';
 import MeetAIAnimation from './MeetAIAnimation';
+import ChatAIAnimation from './ChatAIAnimation';
+import SheetsAIAnimation from './SheetsAIAnimation';
 
 const AIEcosystemCircle = () => {
   const [hoveredApp, setHoveredApp] = useState(null);
@@ -34,11 +36,13 @@ const AIEcosystemCircle = () => {
 
       {/* Central Animation Overlay */}
       <div className={`absolute z-40 transition-all duration-500 transform
-        ${['mail', 'docs', 'show', 'meet'].includes(hoveredApp) ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
+        ${['mail', 'docs', 'show', 'meet', 'chat', 'sheets'].includes(hoveredApp) ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
         {hoveredApp === 'mail' && <MailAIAnimation />}
         {hoveredApp === 'docs' && <DocsAIAnimation />}
         {hoveredApp === 'show' && <ShowAIAnimation />}
         {hoveredApp === 'meet' && <MeetAIAnimation />}
+        {hoveredApp === 'chat' && <ChatAIAnimation />}
+        {hoveredApp === 'sheets' && <SheetsAIAnimation />}
       </div>
 
       {/* Connection Lines (Dashed SVG Circle) */}

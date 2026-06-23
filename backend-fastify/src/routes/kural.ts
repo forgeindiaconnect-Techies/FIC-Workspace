@@ -227,6 +227,8 @@ export async function channelRoutes(fastify: FastifyInstance) {
         participantEmails: g.participantEmails,
         lastMessageContent: g.lastMessageContent,
         lastMessageTime: g.lastMessageTime || g.updatedAt,
+        createdBy: g.createdBy,
+        createdByEmail: g.createdByEmail,
         unread: 0,
         isOnline: true
       })));

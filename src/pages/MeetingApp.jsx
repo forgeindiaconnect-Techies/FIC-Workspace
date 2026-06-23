@@ -740,7 +740,8 @@ const m = Math.floor((seconds % 3600) / 60);
           token, 
           meetingId: signalingRoomId,
           roomId: signalingRoomId,
-          joinCode: signalingRoomId
+          joinCode: signalingRoomId,
+          name: user?.name || 'Participant'
         }
       }));
     };
@@ -1160,6 +1161,13 @@ const m = Math.floor((seconds % 3600) / 60);
       try {
         const stream = await navigator.mediaDevices.getUserMedia(getMediaConstraints());
         applyContentHints(stream);
+        stream.getAudioTracks().forEach(track => track.enabled = micOn);
+        if (!videoOn) {
+          stream.getVideoTracks().forEach(track => {
+            track.stop();
+            stream.removeTrack(track);
+          });
+        }
         streamRef.current = stream;
         if (userVideo.current) userVideo.current.srcObject = stream;
         setPermissionError(null);

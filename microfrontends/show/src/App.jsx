@@ -64,7 +64,6 @@ const App = () => {
               <div className="flex items-center gap-1 -ml-1">
                 <MenuButton>File</MenuButton>
                 <MenuButton>Edit</MenuButton>
-                <MenuButton>View</MenuButton>
                 <MenuButton>Insert</MenuButton>
                 <MenuButton>Format</MenuButton>
                 <MenuButton>Slide</MenuButton>

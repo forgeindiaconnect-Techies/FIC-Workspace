@@ -1199,11 +1199,11 @@ const ChatApp = () => {
                                         </div>
                                      </div>
                                      <div className="flex items-center gap-4">
-                                       {( (['dm', 'direct'].includes(selected.type)) || ((selected.type === 'group' || selected.isGroup) && (selected.createdBy === currentUserEmail || selected.createdByEmail === currentUserEmail)) ) && (
+                                       {( (['dm', 'direct'].includes(selected.type)) || ((['group', 'channel'].includes(selected.type) || selected.isGroup) && (selected.createdBy === currentUserEmail || selected.createdByEmail === currentUserEmail)) ) && (
                                          <button
                                            onClick={() => deleteGroup(selected._id, selected.name || getDMName(selected))}
                                            className="text-[#76777D] hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
-                                           title={['dm', 'direct'].includes(selected.type) ? "Delete Chat" : "Delete Group"}
+                                           title={['dm', 'direct'].includes(selected.type) ? "Delete Chat" : "Delete Chat/Group"}
                                          >
                                            <Trash2 size={20} />
                                          </button>

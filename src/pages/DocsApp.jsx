@@ -9,7 +9,8 @@ import {
   Indent, Outdent, Eraser, Quote, Scissors, Copy, Clipboard,
   Strikethrough, Subscript, Superscript, CaseUpper, Grid,
   Maximize2, Minimize2, Table as TableIcon, Columns, 
-  Settings2, HelpCircle, Save, FilePlus, Lock, Globe, Shield, Users
+  Settings2, HelpCircle, Save, FilePlus, Lock, Globe, Shield, Users,
+  LayoutTemplate, PaintBucket, Wand2, CheckCircle2, Stamp, Square
 } from 'lucide-react';
 
 const DocsApp = () => {
@@ -324,7 +325,7 @@ const DocsApp = () => {
 
         {/* Ribbon Tabs */}
         <div className="flex items-center px-6 pt-1 gap-1">
-          {['File', 'Home', 'Insert', 'Design', 'Layout', 'References', 'Review', 'View'].map(tab => (
+          {['File', 'Home', 'Insert'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -595,6 +596,7 @@ const DocsApp = () => {
                </div>
              </>
           )}
+
 
           {activeTab === 'File' && (
              <>
