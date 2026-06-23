@@ -39,17 +39,7 @@ export async function transcribeChunk(
     const cleanText = lowerText.replace(/[^a-z0-9\s]/g, '').trim();
     
     // Check for high probability of silence/no-speech using segment data
-    const segments = transcription.segments || [];
-    let avgNoSpeechProb = 0;
-    if (segments.length > 0) {
-      avgNoSpeechProb = segments.reduce((acc: number, seg: any) => acc + (seg.no_speech_prob || 0), 0) / segments.length;
-    }
-    
-    if (avgNoSpeechProb > 0.6) {
-       console.log(`[Transcription] Ignored silent chunk (no_speech_prob: ${avgNoSpeechProb.toFixed(2)})`);
-       return null;
-    }
-    
+    // Removed avgNoSpeechProb > 0.6 check to ensure we capture all audio chunks correctly without aggressively dropping them.
     // Whisper often hallucinates the prompt or generic phrases on silent chunks
     const isHallucination = cleanText.includes('meeting conversation in tamil and english transcribe accurately') ||
                             cleanText.includes('meeting conversation transcribe accurately') || 

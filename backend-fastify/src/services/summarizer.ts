@@ -133,21 +133,8 @@ The transcript may contain a mix of English and Tamil.
 Your summary MUST be entirely in English.
 Your response MUST be formatted in clean HTML suitable for an email body.
 Do NOT use markdown. Use bold tags, lists, and headers (h2, h3).
-Include the following sections exactly:
-<h2>Executive Summary</h2>
-(Brief 2-3 sentences overview)
-
-<h2>Main Topics</h2>
-<ul><li>Topic 1</li></ul>
-
-<h2>Key Decisions</h2>
-<ul><li>Decision 1</li></ul>
-
-<h2>Action Items</h2>
-<ul><li>[Owner Name] Task description (Deadline if any)</li></ul>
-
-<h2>Pending Topics & Follow-ups</h2>
-<ul><li>Follow-up 1</li></ul>
+Do NOT use a predefined rigid template. Dynamically analyze the meeting context and generate appropriate sections (e.g. Executive Summary, Main Discussion Points, Key Takeaways, Action Items, Ideas, etc.) based ONLY on what was actually discussed.
+Focus on capturing the real essence of the conversation accurately.
 
 Here is the meeting transcript:
 ${fullText}`;

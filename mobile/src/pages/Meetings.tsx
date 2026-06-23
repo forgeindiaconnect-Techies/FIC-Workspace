@@ -1970,8 +1970,6 @@ export default function Meetings() {
                         <>
                           {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
                             <RTCView style={s.cameraView} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={facing === 'front'} muted />
-                          ) : camReady ? (
-                            <CameraView style={s.cameraView} facing={facing} mute={isMuted} />
                           ) : (
                             <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                               <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
@@ -2018,8 +2016,8 @@ export default function Meetings() {
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.unpinnedStrip} contentContainerStyle={s.unpinnedStripContent}>
                       {!isPinnedLocal && (
                         <TouchableOpacity style={s.unpinnedTile} onPress={() => setPinnedUser('local')}>
-                          {camReady && !isVideoOff ? (
-                            <CameraView style={s.cameraView} facing={facing} mute={isMuted} />
+                          {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
+                            <RTCView style={s.cameraView} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={facing === 'front'} muted />
                           ) : (
                             <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                               <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff' }}>{avatarFor(localUser?.name || 'You')}</Text>
@@ -2067,8 +2065,6 @@ export default function Meetings() {
                   <TouchableOpacity activeOpacity={0.85} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser('local')}>
                     {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
                       <RTCView style={s.cameraView} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={facing === 'front'} muted />
-                    ) : camReady ? (
-                      <CameraView style={s.cameraView} facing={facing} mute={isMuted} />
                     ) : (
                       <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                         <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>

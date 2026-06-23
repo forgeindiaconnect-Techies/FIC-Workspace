@@ -741,7 +741,7 @@ const m = Math.floor((seconds % 3600) / 60);
           meetingId: signalingRoomId,
           roomId: signalingRoomId,
           joinCode: signalingRoomId,
-          name: user?.name || 'Participant'
+          name: auth?.user?.name || 'Participant'
         }
       }));
     };
