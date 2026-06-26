@@ -5,6 +5,7 @@ import { User } from '../models/User';
 import { Tenant } from '../models/Tenant';
 import { RefreshToken } from '../models/RefreshToken';
 import { authenticate } from '../middlewares/auth';
+import { getVapidPublicKey } from '../services/webPush';
 import { 
   getLockoutTimeRemaining, 
   registerFailedAttempt, 
@@ -619,7 +620,6 @@ export async function authRoutes(fastify: FastifyInstance) {
   // 11. GET VAPID PUBLIC KEY
   fastify.get('/web-push/public-key', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { getVapidPublicKey } = require('../services/webPush');
       return reply.code(200).send({ publicKey: getVapidPublicKey() });
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to fetch VAPID public key.', details: err.message });

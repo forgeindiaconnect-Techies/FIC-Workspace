@@ -4,6 +4,8 @@ import { Meeting } from '../models/Meeting';
 import { Participant } from '../models/Participant';
 import { Mail } from '../models/Mail';
 import { User } from '../models/User';
+import { sendPushNotification } from './pushNotifications';
+import { sendWebPush } from './webPush';
 
 let groq: Groq | null = null;
 if (process.env.GROQ_API_KEY) {
@@ -59,7 +61,6 @@ async function dispatchSummaryMail(meeting: any, summaryHtml: string) {
         }
 
         // Trigger remote push notification for background/terminated devices
-        const { sendPushNotification } = require('./pushNotifications');
         sendPushNotification(
           [email],
           `New Email: Meeting Summary: ${meeting.title}`,
@@ -72,7 +73,6 @@ async function dispatchSummaryMail(meeting: any, summaryHtml: string) {
         ).catch((err: any) => console.error('[Summarizer] Push error:', err));
 
         // Trigger Web Push notification for closed-tab browser state
-        const { sendWebPush } = require('./webPush');
         sendWebPush(
           [email],
           {

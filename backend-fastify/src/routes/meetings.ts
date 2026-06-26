@@ -11,6 +11,8 @@ import { Transcript } from '../models/Transcript';
 import { authenticate } from '../middlewares/auth';
 import { launchAIBot, stopAIBot } from '../services/aiBot';
 import { summarizeMeeting } from '../services/summarizer';
+import { sendPushNotification } from '../services/pushNotifications';
+import { sendWebPush } from '../services/webPush';
 
 export async function meetingRoutes(fastify: FastifyInstance) {
   
@@ -214,7 +216,6 @@ export async function meetingRoutes(fastify: FastifyInstance) {
               }
 
               // Trigger remote push notification for background/terminated devices
-              const { sendPushNotification } = require('../services/pushNotifications');
               sendPushNotification(
                 [email],
                 `New Email: Invitation: ${meeting.title}`,
@@ -227,7 +228,6 @@ export async function meetingRoutes(fastify: FastifyInstance) {
               ).catch((err: any) => console.error('[Meetings Invite] Push error:', err));
 
               // Trigger Web Push notification for closed-tab browser state
-              const { sendWebPush } = require('../services/webPush');
               sendWebPush(
                 [email],
                 {
