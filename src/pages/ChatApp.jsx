@@ -123,6 +123,7 @@ const ChatApp = () => {
   
   const myVideo = useRef();
   const userVideo = useRef();
+  const remoteAudioRef = useRef();
   const connectionRef = useRef();
   const peerRef = useRef();
 
@@ -1120,6 +1121,7 @@ const ChatApp = () => {
       currentStream.getTracks().forEach(track => pc.addTrack(track, currentStream));
 
       pc.ontrack = (event) => {
+        if (remoteAudioRef.current) remoteAudioRef.current.srcObject = event.streams[0];
         if (userVideo.current) userVideo.current.srcObject = event.streams[0];
       };
 
@@ -1182,6 +1184,7 @@ const ChatApp = () => {
       currentStream.getTracks().forEach(track => pc.addTrack(track, currentStream));
 
       pc.ontrack = (event) => {
+        if (remoteAudioRef.current) remoteAudioRef.current.srcObject = event.streams[0];
         if (userVideo.current) userVideo.current.srcObject = event.streams[0];
       };
 
@@ -1960,6 +1963,9 @@ const ChatApp = () => {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[500] bg-[#111b21] flex flex-col items-center justify-center text-white"
           >
+             {callAccepted && !callEnded && (
+               <audio ref={remoteAudioRef} autoPlay />
+             )}
              {/* Background Glass Overlay */}
              <div className="absolute inset-0 opacity-20 blur-[100px] pointer-events-none">
                 <div className="w-full h-full bg-gradient-to-tr from-[#00a884] to-[#111b21]" />
