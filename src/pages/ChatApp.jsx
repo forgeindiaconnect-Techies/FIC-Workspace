@@ -1104,11 +1104,11 @@ const ChatApp = () => {
       setStream(currentStream);
       if (myVideo.current) myVideo.current.srcObject = currentStream;
 
-      if (typeof RTCPeerConnection === 'undefined') {
-         throw new Error("Your browser does not support WebRTC. Please use a modern browser.");
+      if (typeof window.RTCPeerConnection !== 'function') {
+         throw new Error("WebRTC is disabled or blocked by your browser settings or extensions. Please enable WebRTC to make calls.");
       }
 
-      const pc = new RTCPeerConnection({
+      const pc = new window.RTCPeerConnection({
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' }
@@ -1166,7 +1166,11 @@ const ChatApp = () => {
       setStream(currentStream);
       if (myVideo.current) myVideo.current.srcObject = currentStream;
 
-      const pc = new RTCPeerConnection({
+      if (typeof window.RTCPeerConnection !== 'function') {
+         throw new Error("WebRTC is disabled or blocked by your browser settings or extensions. Please enable WebRTC to answer calls.");
+      }
+
+      const pc = new window.RTCPeerConnection({
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' }
@@ -1983,31 +1987,27 @@ const ChatApp = () => {
                    </div>
                 </div>
 
-              <div className="flex-1 w-full flex items-center justify-center gap-6 relative">
-                {/* Remote Video */}
-                {callAccepted && (
-                  <div className="w-full h-full max-h-[70vh] bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl relative border border-white/10">
-                    <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover mirror ${!isVideoCall && 'hidden'}`} />
-                    {!isVideoCall && (
-                       <div className="absolute inset-0 flex items-center justify-center bg-zinc-900">
-                          <div className="w-32 h-32 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                             <UserCircle size={64} className="text-emerald-500" />
-                          </div>
+              {/* Only render video containers if it is a video call */}
+              {isVideoCall && (
+                <div className="flex-1 w-full flex items-center justify-center gap-6 relative my-4">
+                  {/* Remote Video */}
+                  {callAccepted && (
+                    <div className="w-full h-full max-h-[50vh] bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl relative border border-white/10">
+                      <video playsInline muted ref={userVideo} autoPlay className="w-full h-full object-cover mirror" />
+                    </div>
+                  )}
+                  
+                  {/* Local Video */}
+                  <div className={`${callAccepted ? 'absolute bottom-8 right-8 w-48 h-36' : 'w-full max-w-xl h-[35vh]'} bg-zinc-800 rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 border-2 border-white/20 z-10`}>
+                    <video playsInline muted ref={myVideo} autoPlay className={`w-full h-full object-cover ${isCameraOff ? 'hidden' : ''}`} />
+                    {isCameraOff && (
+                       <div className="absolute inset-0 flex items-center justify-center bg-zinc-800">
+                          <UserCircle size={48} className="text-white/30" />
                        </div>
                     )}
                   </div>
-                )}
-                
-                {/* Local Video */}
-                <div className={`${callAccepted ? 'absolute bottom-8 right-8 w-64 h-48' : 'w-full max-w-3xl h-[60vh]'} bg-zinc-800 rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 border-2 border-white/20 z-10`}>
-                  <video playsInline muted ref={myVideo} autoPlay className={`w-full h-full object-cover ${(!isVideoCall || isCameraOff) ? 'hidden' : ''}`} />
-                  {(!isVideoCall || isCameraOff) && (
-                     <div className="absolute inset-0 flex items-center justify-center bg-zinc-800">
-                        <UserCircle size={48} className="text-white/30" />
-                     </div>
-                  )}
                 </div>
-              </div>
+              )}
 
                 {/* Premium Controls */}
                 <div className="w-full max-w-md">
