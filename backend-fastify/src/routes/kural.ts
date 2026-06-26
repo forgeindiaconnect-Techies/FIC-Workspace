@@ -6,6 +6,7 @@ import { User } from '../models/User';
 import { KuralConversation } from '../models/KuralConversation';
 import { KuralMessage } from '../models/KuralMessage';
 import { Story } from '../models/Story';
+import { CallLog } from '../models/CallLog';
 import { authenticate } from '../middlewares/auth';
 import { sendPushNotification } from '../services/pushNotifications';
 import { sendWebPush } from '../services/webPush';

@@ -56,8 +56,8 @@ const ChatApp = () => {
   const [editUsername, setEditUsername] = useState(currentUserUsername.replace('@', ''));
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [lastMessageStatus, setLastMessageStatus] = useState({});
-  const [ringingAudio] = useState(typeof Audio !== 'undefined' ? new Audio('/phone-calling-1.wav') : null);
-  const [dialingAudio] = useState(typeof Audio !== 'undefined' ? new Audio('/phone-calling-1.wav') : null);
+  const [ringingAudio] = useState(typeof Audio !== 'undefined' ? new Audio('/phone-calling-1.wav?t=' + Date.now()) : null);
+  const [dialingAudio] = useState(typeof Audio !== 'undefined' ? new Audio('/phone-calling-1.wav?t=' + Date.now()) : null);
 
   if (ringingAudio) ringingAudio.loop = true;
   if (dialingAudio) dialingAudio.loop = true;
@@ -128,6 +128,9 @@ const ChatApp = () => {
 
   // API Base URL - Managed by global config
   const socketRef = useRef();
+  const activeWsRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const isMountedRef = useRef(true);
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -327,76 +330,23 @@ const ChatApp = () => {
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
     document.title = "Kural Messenger";
     fetchChannels();
     fetchMembers();
     fetchCallHistory();
     
-    // Real WebSocket connection for native voice/video call signaling
-    const wsBase = getSocketUrl().replace('http', 'ws');
-    const wsUrl = `${wsBase}/ws/calls?token=${encodeURIComponent(localStorage.getItem('token'))}`;
-    const ws = new WebSocket(wsUrl);
     const listeners = {};
 
-    ws.onopen = () => {
-      console.log("[ChatApp] Connected to Call Signaling Server");
-      // Register immediately
-      ws.send(JSON.stringify({
-        type: 'register',
-        data: { token: localStorage.getItem('token') }
-      }));
-      if (listeners["connect"]) {
-        listeners["connect"].forEach(cb => cb());
-      }
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        const { type } = msg;
-
-        if (type === 'incoming_call') {
-          if (listeners["call-incoming"]) {
-            listeners["call-incoming"].forEach(cb => cb({
-              from: msg.callerEmail,
-              name: msg.callerName,
-              signal: msg.offer,
-              isVideo: msg.isVideo || false
-            }));
-          }
-        } else if (type === 'call_answered') {
-          if (listeners["call-accepted"]) {
-            listeners["call-accepted"].forEach(cb => cb(msg.answer));
-          }
-        } else if (type === 'call_ended') {
-          if (listeners["call-ended"]) {
-            listeners["call-ended"].forEach(cb => cb());
-          }
-        } else if (type === 'call_declined') {
-          if (listeners["call-ended"]) {
-            listeners["call-ended"].forEach(cb => cb());
-          }
-        } else if (type === 'call_unavailable') {
-          if (listeners["call-error"]) {
-            listeners["call-error"].forEach(cb => cb({ message: "User is offline or unavailable." }));
-          }
-        }
-      } catch (e) {
-        console.warn("[ChatApp] Parse signaling message failed:", e);
-      }
-    };
-
-    ws.onclose = () => {
-      console.log("[ChatApp] Call Signaling connection closed.");
-    };
-
+    // Emulated socket interface dynamically bound to the active ws ref to prevent stale closures
     socketRef.current = {
       on: (event, callback) => {
         if (!listeners[event]) listeners[event] = [];
         listeners[event].push(callback);
       },
       emit: (event, payload) => {
-        if (ws.readyState !== WebSocket.OPEN) {
+        const ws = activeWsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
           console.warn("[ChatApp] Call signaling socket not open, event ignored:", event);
           return;
         }
@@ -431,10 +381,104 @@ const ChatApp = () => {
       },
       disconnect: () => {
         try {
-          ws.close();
+          if (activeWsRef.current) {
+            activeWsRef.current.onclose = null;
+            activeWsRef.current.onerror = null;
+            activeWsRef.current.close(1000, 'Manual disconnect');
+          }
         } catch (e) {}
       }
     };
+
+    const connectCallSocket = () => {
+      if (typeof window === 'undefined') return;
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.log("[ChatApp] No token found, postponing call socket connection.");
+        return;
+      }
+
+      if (
+        activeWsRef.current?.readyState === WebSocket.OPEN ||
+        activeWsRef.current?.readyState === WebSocket.CONNECTING
+      ) {
+        return;
+      }
+
+      const wsBase = getSocketUrl().replace('http', 'ws');
+      const wsUrl = `${wsBase}/ws/calls?token=${encodeURIComponent(token)}`;
+      console.log("[ChatApp] Connecting to Call Signaling Server:", wsUrl);
+      
+      const ws = new WebSocket(wsUrl);
+      activeWsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log("[ChatApp] Connected to Call Signaling Server");
+        reconnectAttemptsRef.current = 0;
+        // Register immediately
+        ws.send(JSON.stringify({
+          type: 'register',
+          data: { token }
+        }));
+        if (listeners["connect"]) {
+          listeners["connect"].forEach(cb => cb());
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          const { type } = msg;
+
+          if (type === 'incoming_call') {
+            if (listeners["call-incoming"]) {
+              listeners["call-incoming"].forEach(cb => cb({
+                from: msg.callerEmail,
+                name: msg.callerName,
+                signal: msg.offer,
+                isVideo: msg.isVideo || false
+              }));
+            }
+          } else if (type === 'call_answered') {
+            if (listeners["call-accepted"]) {
+              listeners["call-accepted"].forEach(cb => cb(msg.answer));
+            }
+          } else if (type === 'call_ended' || type === 'call_declined') {
+            if (listeners["call-ended"]) {
+              listeners["call-ended"].forEach(cb => cb());
+            }
+          } else if (type === 'call_unavailable') {
+            if (listeners["call-error"]) {
+              listeners["call-error"].forEach(cb => cb({ message: "User is offline or unavailable." }));
+            }
+          }
+        } catch (e) {
+          console.warn("[ChatApp] Parse signaling message failed:", e);
+        }
+      };
+
+      ws.onclose = (event) => {
+        console.log("[ChatApp] Call Signaling connection closed:", event.reason || event.code);
+        activeWsRef.current = null;
+        
+        // Reconnect with exponential backoff if mounted
+        if (isMountedRef.current && event.code !== 1000) {
+          if (reconnectAttemptsRef.current < 5) {
+            reconnectAttemptsRef.current++;
+            const delay = 2000 * reconnectAttemptsRef.current;
+            console.log(`[ChatApp] Reconnecting call socket in ${delay}ms (Attempt ${reconnectAttemptsRef.current}/5)...`);
+            setTimeout(connectCallSocket, delay);
+          }
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error("[ChatApp] Call Signaling socket error:", err);
+      };
+    };
+
+    connectCallSocket();
 
     socketRef.current.on("call-incoming", (data) => {
       console.log("Incoming call from:", data.from);
@@ -607,6 +651,7 @@ const ChatApp = () => {
     window.addEventListener('ws-message', handleWsMessage);
 
     return () => {
+      isMountedRef.current = false;
       window.removeEventListener('ws-message', handleWsMessage);
       if (socketRef.current) {
         if (socketRef.current.disconnect) socketRef.current.disconnect();
