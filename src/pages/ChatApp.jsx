@@ -379,6 +379,14 @@ const ChatApp = () => {
               targetEmail: payload.to
             }
           }));
+        } else if (event === 'ice-candidate') {
+          ws.send(JSON.stringify({
+            type: 'ice_candidate',
+            data: {
+              targetEmail: payload.to,
+              candidate: payload.candidate
+            }
+          }));
         }
       },
       disconnect: () => {
@@ -445,6 +453,12 @@ const ChatApp = () => {
           } else if (type === 'call_answered') {
             if (listeners["call-accepted"]) {
               listeners["call-accepted"].forEach(cb => cb(msg.answer));
+            }
+          } else if (type === 'ice_candidate') {
+            if (listeners["ice-candidate"]) {
+              listeners["ice-candidate"].forEach(cb => cb({
+                candidate: msg.candidate
+              }));
             }
           } else if (type === 'call_ended' || type === 'call_declined') {
             if (listeners["call-ended"]) {
@@ -514,12 +528,29 @@ const ChatApp = () => {
       setCallEnded(true);
       if (ringingAudio) ringingAudio.pause();
       if (dialingAudio) dialingAudio.pause();
-      if (connectionRef.current) connectionRef.current.destroy();
+      if (connectionRef.current) {
+        try {
+          connectionRef.current.close();
+        } catch (e) {}
+        connectionRef.current = null;
+      }
       setReceivingCall(false);
       setCallAccepted(false);
       setIsCalling(false);
       setStream(null);
       fetchCallHistory();
+    });
+
+    socketRef.current.on("ice-candidate", (data) => {
+      const pc = connectionRef.current;
+      if (pc && data?.candidate) {
+        const RTCIce = window.RTCIceCandidate;
+        if (RTCIce) {
+          pc.addIceCandidate(new RTCIce(data.candidate)).catch(err => {
+             console.warn("[WebRTC] Failed to add remote ICE candidate:", err);
+          });
+        }
+      }
     });
 
     socketRef.current.on("new message", (message) => {
@@ -1125,22 +1156,27 @@ const ChatApp = () => {
         if (userVideo.current) userVideo.current.srcObject = event.streams[0];
       };
 
-      // Wait for ICE gathering to complete (trickle: false) to match the signaling backend
+      // Send ICE candidates as they are gathered (trickle ICE)
       pc.onicecandidate = (event) => {
-        if (!event.candidate) {
-          console.log("[WebRTC] ICE gathering complete. Sending call offer...");
-          socketRef.current.emit("call-user", {
-            userToCall,
-            signalData: pc.localDescription,
-            from: currentUserEmail,
-            name: currentUserName,
-            isVideo
+        if (event.candidate) {
+          socketRef.current.emit("ice-candidate", {
+            to: userToCall,
+            candidate: event.candidate
           });
         }
       };
 
       pc.createOffer().then(offer => {
         return pc.setLocalDescription(offer);
+      }).then(() => {
+        console.log("[WebRTC] Sending call offer immediately...");
+        socketRef.current.emit("call-user", {
+          userToCall,
+          signalData: pc.localDescription,
+          from: currentUserEmail,
+          name: currentUserName,
+          isVideo
+        });
       }).catch(err => console.error("Offer generation error:", err));
 
     }).catch(err => {
@@ -1188,11 +1224,15 @@ const ChatApp = () => {
         if (userVideo.current) userVideo.current.srcObject = event.streams[0];
       };
 
+      const target = callTargetEmail || caller;
+
+      // Send ICE candidates as they are gathered (trickle ICE)
       pc.onicecandidate = (event) => {
-        if (!event.candidate) {
-          console.log("[WebRTC] ICE gathering complete. Sending call answer...");
-          const target = callTargetEmail || caller;
-          socketRef.current.emit("answer-call", { signal: pc.localDescription, to: target });
+        if (event.candidate && target) {
+          socketRef.current.emit("ice-candidate", {
+            to: target,
+            candidate: event.candidate
+          });
         }
       };
 
@@ -1200,6 +1240,11 @@ const ChatApp = () => {
         return pc.createAnswer();
       }).then(answer => {
         return pc.setLocalDescription(answer);
+      }).then(() => {
+        console.log("[WebRTC] Sending call answer immediately...");
+        if (target) {
+          socketRef.current.emit("answer-call", { signal: pc.localDescription, to: target });
+        }
       }).catch(err => console.error("Answer generation error:", err));
 
     }).catch(err => {
@@ -1963,9 +2008,7 @@ const ChatApp = () => {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[500] bg-[#111b21] flex flex-col items-center justify-center text-white"
           >
-             {callAccepted && !callEnded && (
-               <audio ref={remoteAudioRef} autoPlay />
-             )}
+             <audio ref={remoteAudioRef} autoPlay style={{ display: 'none' }} />
              {/* Background Glass Overlay */}
              <div className="absolute inset-0 opacity-20 blur-[100px] pointer-events-none">
                 <div className="w-full h-full bg-gradient-to-tr from-[#00a884] to-[#111b21]" />
