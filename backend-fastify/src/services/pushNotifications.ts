@@ -7,6 +7,7 @@ interface PushPayload {
   body: string;
   data?: Record<string, any>;
   channelId?: string;
+  priority?: 'default' | 'normal' | 'high';
 }
 
 /**
@@ -54,7 +55,8 @@ export async function sendPushNotification(
           title,
           body,
           data,
-          channelId: 'default'
+          channelId: 'default',
+          priority: 'high'
         });
       }
     }

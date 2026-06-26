@@ -246,7 +246,8 @@ async function sendPushNotification(recipientEmails, title, body, data) {
           title,
           body,
           data,
-          channelId: "default"
+          channelId: "default",
+          priority: "high"
         });
       }
     }
