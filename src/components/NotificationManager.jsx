@@ -75,10 +75,12 @@ export default function NotificationManager() {
           window.dispatchEvent(new CustomEvent('ws-message', { detail: data }));
           
           if (data.type === 'NEW_MESSAGE') {
+            const targetUrl = `/w/${auth.workspaceId || 'forge-india-connect'}/chat`;
             // Trigger browser-native OS desktop notification
             showDesktopNotification(
               `New Message from ${data.message.senderName || 'Workspace'}`,
-              data.message.content || 'Sent a file.'
+              data.message.content || 'Sent a file.',
+              targetUrl
             );
 
             // Display in-app visual toast if the user is not currently on the chat page
@@ -88,13 +90,15 @@ export default function NotificationManager() {
                 title: `New Message from ${data.message.senderName || 'Workspace'}`,
                 body: data.message.content || 'Sent a file.',
                 type: 'message',
-                target: `/w/${auth.workspaceId || 'forge-india-connect'}/chat`
+                target: targetUrl
               });
             }
           } else if (data.type === 'NEW_MAIL') {
+            const targetUrl = `/w/${auth.workspaceId || 'forge-india-connect'}/mail`;
             showDesktopNotification(
               `New Email: ${data.mail.subject || '(No Subject)'}`,
-              `From: ${data.mail.senderName || data.mail.senderEmail}`
+              `From: ${data.mail.senderName || data.mail.senderEmail}`,
+              targetUrl
             );
 
             // Display in-app visual toast if the user is not currently on the mail page
@@ -104,13 +108,15 @@ export default function NotificationManager() {
                 title: `New Email: ${data.mail.subject || '(No Subject)'}`,
                 body: `From: ${data.mail.senderName || data.mail.senderEmail}`,
                 type: 'mail',
-                target: `/w/${auth.workspaceId || 'forge-india-connect'}/mail`
+                target: targetUrl
               });
             }
           } else if (data.type === 'NEW_POST') {
+            const targetUrl = `/w/${auth.workspaceId || 'forge-india-connect'}/chat`;
             showDesktopNotification(
               `New Post in Workspace`,
-              `${data.post.authorName}: ${data.post.content}`
+              `${data.post.authorName}: ${data.post.content}`,
+              targetUrl
             );
 
             // Display in-app visual toast if the user is not currently on the chat/threads page
@@ -120,13 +126,15 @@ export default function NotificationManager() {
                 title: `New Post by ${data.post.authorName}`,
                 body: data.post.content,
                 type: 'post',
-                target: `/w/${auth.workspaceId || 'forge-india-connect'}/chat`
+                target: targetUrl
               });
             }
           } else if (data.type === 'NEW_COMMENT') {
+            const targetUrl = `/w/${auth.workspaceId || 'forge-india-connect'}/chat`;
             showDesktopNotification(
               `New Comment in Workspace`,
-              `${data.comment.authorName}: ${data.comment.content}`
+              `${data.comment.authorName}: ${data.comment.content}`,
+              targetUrl
             );
 
             // Display in-app visual toast if the user is not currently on the chat/threads page
@@ -136,7 +144,7 @@ export default function NotificationManager() {
                 title: `New Comment by ${data.comment.authorName}`,
                 body: data.comment.content,
                 type: 'post',
-                target: `/w/${auth.workspaceId || 'forge-india-connect'}/chat`
+                target: targetUrl
               });
             }
           }
@@ -165,11 +173,18 @@ export default function NotificationManager() {
       };
     };
 
-    const showDesktopNotification = (title, body) => {
+    const showDesktopNotification = (title, body, targetUrl = '') => {
       if (typeof window === 'undefined' || !('Notification' in window)) return;
       if (Notification.permission === 'granted') {
         try {
-          new Notification(title, { body, icon: '/logo.png' });
+          const notification = new Notification(title, { body, icon: '/logo.png' });
+          notification.onclick = (e) => {
+            e.preventDefault();
+            window.focus();
+            if (targetUrl) {
+              navigate(targetUrl);
+            }
+          };
         } catch (e) {
           console.warn('[NotificationManager] Failed to show desktop notification:', e);
         }
