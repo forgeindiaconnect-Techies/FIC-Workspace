@@ -581,7 +581,7 @@ const ChatApp = () => {
           setChannels(prev => prev.map(ch => {
             if (['dm', 'direct'].includes(ch.type)) {
               // Determine if any other member in this DM is online
-              const otherMembers = ch.members.filter(m => m !== email);
+              const otherMembers = ch.members.filter(m => m !== currentUserEmail);
               const isOnline = otherMembers.some(m => onlineEmails.includes(m));
               return { ...ch, isOnline };
             }
@@ -590,7 +590,7 @@ const ChatApp = () => {
           
           setSelected(prev => {
             if (['dm', 'direct'].includes(prev?.type)) {
-              const otherMembers = prev.members.filter(m => m !== email);
+              const otherMembers = prev.members.filter(m => m !== currentUserEmail);
               const isOnline = otherMembers.some(m => onlineEmails.includes(m));
               return { ...prev, isOnline };
             }
@@ -612,7 +612,7 @@ const ChatApp = () => {
               return [...prev, {
                 _id: message._id,
                 conversationId: message.conversationId,
-                sender: message.senderEmail === email ? 'You' : message.senderName,
+                sender: message.senderEmail === currentUserEmail ? 'You' : message.senderName,
                 senderName: message.senderName,
                 senderEmail: message.senderEmail,
                 content: message.content,
