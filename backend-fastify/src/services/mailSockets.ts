@@ -4,6 +4,18 @@ import path from 'path';
 
 export const activeMailSockets = new Map<string, WebSocket>();
 
+export function broadcastPresence() {
+  const onlineEmails = Array.from(activeMailSockets.keys());
+  const payload = JSON.stringify({ type: 'presence-update', onlineEmails });
+  for (const socket of activeMailSockets.values()) {
+    if (socket.readyState === 1) { // OPEN
+      try {
+        socket.send(payload);
+      } catch (e) {}
+    }
+  }
+}
+
 export function handleMailSocket(socket: WebSocket, req: any) {
   const logFile = path.join(__dirname, '../../socket_debug.log');
   const log = (msg: string) => {
@@ -30,17 +42,23 @@ export function handleMailSocket(socket: WebSocket, req: any) {
     log(`Successfully established Mail Socket for user: ${email}`);
     activeMailSockets.set(email, socket);
     
+    // Broadcast presence update immediately
+    broadcastPresence();
+    
     socket.on('close', (code, reason) => {
       log(`Mail Socket closed for user: ${email}. Code: ${code}, Reason: "${reason ? reason.toString() : ''}"`);
       activeMailSockets.delete(email);
+      broadcastPresence();
     });
     
     socket.on('error', (err) => {
       log(`Mail Socket error for user ${email}: ${err.message}`);
       activeMailSockets.delete(email);
+      broadcastPresence();
     });
   } else {
     log(`Closing socket: Email identifier missing or empty.`);
     socket.close(1008, 'Email identifier required');
   }
 }
+

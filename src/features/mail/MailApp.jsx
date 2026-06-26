@@ -75,81 +75,21 @@ const MailApp = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setComposeOpen, setSearchOpen, setFolder]);
 
-  const mailSocketRef = React.useRef(null);
-  const mailReconnectAttemptsRef = React.useRef(0);
-  const isMountedRef = React.useRef(true);
-
   useEffect(() => {
-    isMountedRef.current = true;
-    
-    const connectMailSocket = () => {
-      if (typeof window === 'undefined') return;
-      
-      if (
-        mailSocketRef.current?.readyState === WebSocket.OPEN ||
-        mailSocketRef.current?.readyState === WebSocket.CONNECTING
-      ) return;
-
-      if (mailSocketRef.current) {
-        mailSocketRef.current.onclose = null;
-        mailSocketRef.current.close(1000, 'Reconnecting');
-        mailSocketRef.current = null;
-      }
-
-      const auth = JSON.parse(localStorage.getItem('auth') || '{}');
-      const email = auth.email || auth.user?.email || '';
-      const token = auth.token || auth.user?.token || localStorage.getItem('token');
-      if (!email) {
-        console.warn('[Mail] No email found in auth, skipping WebSocket connection');
-        return;
-      }
-      const wsUrl = getSocketUrl().replace('http', 'ws') + `/ws/mail?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token || '')}`;
-      const socket = new WebSocket(wsUrl);
-      mailSocketRef.current = socket;
-
-      socket.onopen = () => {
-        console.log('[Mail] WebSocket connected');
-        mailReconnectAttemptsRef.current = 0;
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'new-email') {
-            if (data.payload?.recipient === auth.email || data.payload?.workspaceId === auth.workspaceId) {
-              queryClient.invalidateQueries(['mails']);
-            }
-          }
-        } catch (e) {}
-      };
-
-      socket.onclose = (event) => {
-        if (event.code === 1000 || !isMountedRef.current) return;
-        if (mailReconnectAttemptsRef.current < 3) {
-          mailReconnectAttemptsRef.current++;
-          setTimeout(() => connectMailSocket(), 2000 * mailReconnectAttemptsRef.current);
+    const handleWsMessage = (event) => {
+      const data = event.detail;
+      if (data && (data.type === 'NEW_MAIL' || data.type === 'new-email')) {
+        const mail = data.mail || data.payload;
+        const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+        if (mail && (mail.ownerEmail === auth.email || mail.recipient === auth.email || mail.workspaceId === auth.workspaceId)) {
+          console.log('[MailApp] Real-time mail event received via global event bus. Invalidating cache...');
+          queryClient.invalidateQueries(['mails']);
         }
-      };
-
-      socket.onerror = () => {
-        console.error('[Mail] WebSocket error');
-      };
+      }
     };
-
-    connectMailSocket();
-
+    window.addEventListener('ws-message', handleWsMessage);
     return () => {
-      isMountedRef.current = false;
-      if (mailSocketRef.current) {
-        mailSocketRef.current.onclose = null;
-        mailSocketRef.current.onerror = null;
-        if (mailSocketRef.current.readyState === 1) {
-          mailSocketRef.current.close(1000, 'Unmount');
-        } else if (mailSocketRef.current.readyState === 0) {
-          // If connecting, closing will throw browser warning, but we must close it to avoid leaks.
-          mailSocketRef.current.close(1000, 'Unmount');
-        }
-      }
+      window.removeEventListener('ws-message', handleWsMessage);
     };
   }, []);
 

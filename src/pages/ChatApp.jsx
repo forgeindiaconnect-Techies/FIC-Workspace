@@ -420,94 +420,90 @@ const ChatApp = () => {
       }));
     });
 
-    // Real WebSocket for presence via wssMail
-    const email = auth.email || auth.user?.email || '';
-    const token = auth.token || auth.user?.token || localStorage.getItem('token');
-    if (email) {
-      const wsUrl = getSocketUrl().replace('http', 'ws') + `/ws/mail?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token || '')}`;
-      const ws = new WebSocket(wsUrl);
-      
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'presence-update') {
-            const onlineEmails = data.onlineEmails || [];
-            setChannels(prev => prev.map(ch => {
-              if (['dm', 'direct'].includes(ch.type)) {
-                // Determine if any other member in this DM is online
-                const otherMembers = ch.members.filter(m => m !== email);
-                const isOnline = otherMembers.some(m => onlineEmails.includes(m));
-                return { ...ch, isOnline };
-              }
-              return ch;
-            }));
-            
-            setSelected(prev => {
-              if (['dm', 'direct'].includes(prev?.type)) {
-                const otherMembers = prev.members.filter(m => m !== email);
-                const isOnline = otherMembers.some(m => onlineEmails.includes(m));
-                return { ...prev, isOnline };
-              }
-              return prev;
-            });
+    // Listen to global events via the window event bus instead of establishing a duplicate WebSocket
+    const handleWsMessage = (event) => {
+      try {
+        const data = event.detail;
+        if (!data) return;
 
-            // Update members online status
-            setMembers(prev => prev.map(m => ({
-              ...m,
-              isOnline: onlineEmails.includes(m.email)
-            })));
-          } else if (data.type === 'new-channel') {
-            fetchChannels();
-          } else if (data.type === 'NEW_MESSAGE') {
-            const message = data.message;
-            if (selectedIdRef.current === message.conversationId || selectedIdRef.current === message.channelId) {
-              setMessages(prev => {
-                if (prev.some(m => m._id === message._id)) return prev;
-                return [...prev, {
-                  _id: message._id,
-                  conversationId: message.conversationId,
-                  sender: message.senderEmail === email ? 'You' : message.senderName,
-                  senderName: message.senderName,
-                  senderEmail: message.senderEmail,
-                  content: message.content,
-                  fileUrl: message.fileUrl,
-                  fileType: message.fileType,
-                  originalName: message.originalName,
-                  timestamp: message.timestamp
-                }];
-              });
+        if (data.type === 'presence-update') {
+          const onlineEmails = data.onlineEmails || [];
+          setChannels(prev => prev.map(ch => {
+            if (['dm', 'direct'].includes(ch.type)) {
+              // Determine if any other member in this DM is online
+              const otherMembers = ch.members.filter(m => m !== email);
+              const isOnline = otherMembers.some(m => onlineEmails.includes(m));
+              return { ...ch, isOnline };
             }
+            return ch;
+          }));
+          
+          setSelected(prev => {
+            if (['dm', 'direct'].includes(prev?.type)) {
+              const otherMembers = prev.members.filter(m => m !== email);
+              const isOnline = otherMembers.some(m => onlineEmails.includes(m));
+              return { ...prev, isOnline };
+            }
+            return prev;
+          });
 
-            setChannels(prev => prev.map(ch => {
-              if (ch._id === message.conversationId || ch._id === message.channelId) {
-                const isSelected = selectedIdRef.current === ch._id;
-                return {
-                  ...ch,
-                  lastMessage: message.timestamp,
-                  lastMessageContent: message.content || `Sent a file: ${message.originalName || 'Attachment'}`,
-                  hasMessages: true,
-                  unreadCount: isSelected ? 0 : (ch.unreadCount || 0) + 1
-                };
-              }
-              return ch;
-            }));
-          } else if (data.type === 'group-deleted') {
-            setChannels(prev => prev.filter(c => c._id !== data.payload.groupId));
-            setSelected(prev => prev?._id === data.payload.groupId ? null : prev);
-          } else if (data.type === 'meeting-update') {
-            setMeetingUpdateTrigger(prev => prev + 1);
+          // Update members online status
+          setMembers(prev => prev.map(m => ({
+            ...m,
+            isOnline: onlineEmails.includes(m.email)
+          })));
+        } else if (data.type === 'new-channel') {
+          fetchChannels();
+        } else if (data.type === 'NEW_MESSAGE') {
+          const message = data.message;
+          if (selectedIdRef.current === message.conversationId || selectedIdRef.current === message.channelId) {
+            setMessages(prev => {
+              if (prev.some(m => m._id === message._id)) return prev;
+              return [...prev, {
+                _id: message._id,
+                conversationId: message.conversationId,
+                sender: message.senderEmail === email ? 'You' : message.senderName,
+                senderName: message.senderName,
+                senderEmail: message.senderEmail,
+                content: message.content,
+                fileUrl: message.fileUrl,
+                fileType: message.fileType,
+                originalName: message.originalName,
+                timestamp: message.timestamp
+              }];
+            });
           }
-        } catch (e) {}
-      };
-      
-      // Store ws in a ref if needed, or just let it close on unmount
-      socketRef.current.realWs = ws;
-    }
+
+          setChannels(prev => prev.map(ch => {
+            if (ch._id === message.conversationId || ch._id === message.channelId) {
+              const isSelected = selectedIdRef.current === ch._id;
+              return {
+                ...ch,
+                lastMessage: message.timestamp,
+                lastMessageContent: message.content || `Sent a file: ${message.originalName || 'Attachment'}`,
+                hasMessages: true,
+                unreadCount: isSelected ? 0 : (ch.unreadCount || 0) + 1
+              };
+            }
+            return ch;
+          }));
+        } else if (data.type === 'group-deleted') {
+          setChannels(prev => prev.filter(c => c._id !== data.payload.groupId));
+          setSelected(prev => prev?._id === data.payload.groupId ? null : prev);
+        } else if (data.type === 'meeting-update') {
+          setMeetingUpdateTrigger(prev => prev + 1);
+        }
+      } catch (e) {
+        console.error('[ChatApp] Event bus message processing error:', e);
+      }
+    };
+
+    window.addEventListener('ws-message', handleWsMessage);
 
     return () => {
+      window.removeEventListener('ws-message', handleWsMessage);
       if (socketRef.current) {
         if (socketRef.current.disconnect) socketRef.current.disconnect();
-        if (socketRef.current.realWs) socketRef.current.realWs.close();
       }
     };
   }, []);

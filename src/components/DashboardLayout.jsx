@@ -16,70 +16,18 @@ const DashboardLayout = ({ children, isAdmin = false }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [onlineCount, setOnlineCount] = useState(1);
-  const [activeToast, setActiveToast] = useState(null);
 
   React.useEffect(() => {
-    if (activeToast) {
-      const timer = setTimeout(() => setActiveToast(null), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [activeToast]);
-
-  React.useEffect(() => {
-    const auth = JSON.parse(localStorage.getItem('auth') || '{}');
-    const email = auth.email || auth.user?.email || '';
-    const token = auth.token || auth.user?.token || localStorage.getItem('token');
-    if (!email) return;
-
-    // Register browser Web Push notifications (closed-tab state)
-    registerWebPush();
-
-    const showDesktopNotification = (title, body) => {
-      if (typeof window === 'undefined' || !('Notification' in window)) return;
-      if (Notification.permission === 'granted') {
-        try {
-          new Notification(title, { body, icon: '/logo.png' });
-        } catch (e) {
-          console.warn('Failed to display desktop notification:', e);
-        }
+    const handleWsMessage = (event) => {
+      const data = event.detail;
+      if (data && data.type === 'presence-update') {
+        setOnlineCount(data.onlineEmails?.length || 1);
       }
     };
-
-    let ws;
-    import('../api').then(({ getSocketUrl }) => {
-      const wsUrl = getSocketUrl().replace('http', 'ws') + `/ws/mail?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token || '')}`;
-      ws = new WebSocket(wsUrl);
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'presence-update') {
-            setOnlineCount(data.onlineEmails?.length || 1);
-          } else if (data.type === 'NEW_MESSAGE') {
-            showDesktopNotification(
-              `New Message from ${data.message.senderName || 'Workspace'}`,
-              data.message.content || 'Sent a file.'
-            );
-            setActiveToast({
-              title: `New Message from ${data.message.senderName || 'Workspace'}`,
-              body: data.message.content || 'Sent a file.',
-              type: 'message'
-            });
-          } else if (data.type === 'NEW_MAIL') {
-            showDesktopNotification(
-              `New Email: ${data.mail.subject || '(No Subject)'}`,
-              `From: ${data.mail.senderName || data.mail.senderEmail}\n${data.mail.body?.substring(0, 60) || ''}`
-            );
-            setActiveToast({
-              title: `New Email: ${data.mail.subject || '(No Subject)'}`,
-              body: `From: ${data.mail.senderName || data.mail.senderEmail}`,
-              type: 'mail'
-            });
-          }
-        } catch (e) {}
-      };
-    }).catch(() => {});
-    
-    return () => { if (ws) ws.close(); };
+    window.addEventListener('ws-message', handleWsMessage);
+    return () => {
+      window.removeEventListener('ws-message', handleWsMessage);
+    };
   }, []);
 
   const basePath = workspaceId ? `/w/${workspaceId}` : '';
@@ -294,49 +242,6 @@ const DashboardLayout = ({ children, isAdmin = false }) => {
                 </button>
               ))}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* In-App Visual Toast Notification Popup */}
-      {activeToast && (
-        <div
-          className="fixed top-4 right-4 z-50 max-w-sm w-80 rounded-xl border shadow-2xl p-4 flex gap-3 cursor-pointer transform transition-all duration-300 hover:scale-102 animate-up"
-          style={{
-            background: 'var(--surface)',
-            borderColor: 'var(--border)',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-          }}
-          onClick={() => {
-            const targetPath = activeToast.type === 'message'
-              ? `/w/${workspaceId || 'forge-india-connect'}/chat`
-              : `/w/${workspaceId || 'forge-india-connect'}/mail`;
-            navigate(targetPath);
-            setActiveToast(null);
-          }}
-        >
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-500 flex items-center gap-1">
-                {activeToast.type === 'message' ? '💬 New Chat Message' : '✉️ New Email'}
-              </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveToast(null);
-                }}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
-                style={{ color: 'var(--text-3)' }}
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <p className="text-sm font-semibold truncate" style={{ color: 'var(--text)' }}>
-              {activeToast.title}
-            </p>
-            <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-3)' }}>
-              {activeToast.body}
-            </p>
           </div>
         </div>
       )}

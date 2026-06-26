@@ -160,6 +160,52 @@ export async function threadsRoutes(fastify: FastifyInstance) {
       });
 
       broadcastToWorkspace(workspaceId, 'NEW_POST', post);
+
+      try {
+        // Find all other users in the workspace to notify them over activeMailSockets and Web Push
+        const members = await User.find({ workspaceId }).select('email').lean();
+        const memberEmails = members.map(m => normalizeEmail(m.email));
+        const recipientEmails = memberEmails.filter(email => email !== currentEmail);
+
+        if (recipientEmails.length > 0) {
+          // 1. Notify online members via global notification sockets
+          const { activeMailSockets } = require('../services/mailSockets');
+          if (activeMailSockets) {
+            const wsMessage = JSON.stringify({
+              type: 'NEW_POST',
+              post: {
+                _id: post._id,
+                workspaceId: post.workspaceId,
+                authorEmail: post.authorEmail,
+                authorName: post.authorName,
+                content: post.content,
+                createdAt: post.createdAt
+              }
+            });
+            recipientEmails.forEach(email => {
+              if (activeMailSockets.has(email)) {
+                activeMailSockets.get(email)?.send(wsMessage);
+              }
+            });
+          }
+
+          // 2. Dispatch Web Push for offline/closed-tab members
+          const { sendWebPush } = require('../services/webPush');
+          if (sendWebPush) {
+            sendWebPush(
+              recipientEmails,
+              {
+                title: `New Post in Workspace`,
+                body: `${currentName}: ${post.content.slice(0, 60)}${post.content.length > 60 ? '...' : ''}`,
+                url: `/w/${workspaceId}/chat`
+              }
+            ).catch((err: any) => console.error('[Threads] Web push error:', err));
+          }
+        }
+      } catch (notifyErr: any) {
+        console.error('[Threads] Notification dispatch error:', notifyErr);
+      }
+
       return reply.code(201).send(post);
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to create post', details: err.message });
@@ -235,6 +281,53 @@ export async function threadsRoutes(fastify: FastifyInstance) {
       });
 
       broadcastToWorkspace(post.workspaceId, 'NEW_COMMENT', comment);
+
+      try {
+        // Find all other users in the workspace to notify them over activeMailSockets and Web Push
+        const members = await User.find({ workspaceId: post.workspaceId }).select('email').lean();
+        const memberEmails = members.map(m => normalizeEmail(m.email));
+        const recipientEmails = memberEmails.filter(email => email !== currentEmail);
+
+        if (recipientEmails.length > 0) {
+          // 1. Notify online members via global notification sockets
+          const { activeMailSockets } = require('../services/mailSockets');
+          if (activeMailSockets) {
+            const wsMessage = JSON.stringify({
+              type: 'NEW_COMMENT',
+              comment: {
+                _id: comment._id,
+                postId: comment.postId,
+                parentCommentId: comment.parentCommentId,
+                authorEmail: comment.authorEmail,
+                authorName: comment.authorName,
+                content: comment.content,
+                createdAt: comment.createdAt
+              }
+            });
+            recipientEmails.forEach(email => {
+              if (activeMailSockets.has(email)) {
+                activeMailSockets.get(email)?.send(wsMessage);
+              }
+            });
+          }
+
+          // 2. Dispatch Web Push for offline/closed-tab members
+          const { sendWebPush } = require('../services/webPush');
+          if (sendWebPush) {
+            sendWebPush(
+              recipientEmails,
+              {
+                title: `New Comment in Workspace`,
+                body: `${currentName}: ${comment.content.slice(0, 60)}${comment.content.length > 60 ? '...' : ''}`,
+                url: `/w/${post.workspaceId}/chat`
+              }
+            ).catch((err: any) => console.error('[Threads] Web push error:', err));
+          }
+        }
+      } catch (notifyErr: any) {
+        console.error('[Threads] Comment notification dispatch error:', notifyErr);
+      }
+
       return reply.code(201).send(comment);
     } catch (err: any) {
       return reply.code(500).send({ error: 'Failed to create comment', details: err.message });

@@ -30,6 +30,122 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// src/models/User.ts
+var import_mongoose, UserSchema, User;
+var init_User = __esm({
+  "src/models/User.ts"() {
+    "use strict";
+    import_mongoose = require("mongoose");
+    UserSchema = new import_mongoose.Schema({
+      name: { type: String, required: true },
+      email: { type: String, required: true, unique: true, index: true },
+      passwordHash: { type: String },
+      password: { type: String },
+      // Fallback for web application compatibility
+      workspaceId: { type: String },
+      role: { type: String, default: "Member" },
+      avatarUrl: { type: String },
+      googleId: { type: String },
+      appleId: { type: String },
+      mfaSecret: { type: String },
+      mfaEnabled: { type: Boolean, default: false },
+      expoPushToken: { type: String },
+      webPushSubscriptions: [{
+        endpoint: { type: String, required: true },
+        keys: {
+          p256dh: { type: String, required: true },
+          auth: { type: String, required: true }
+        }
+      }],
+      createdAt: { type: Date, default: Date.now }
+    });
+    User = (0, import_mongoose.model)("User", UserSchema);
+  }
+});
+
+// src/services/webPush.ts
+var webPush_exports = {};
+__export(webPush_exports, {
+  getVapidPublicKey: () => getVapidPublicKey,
+  sendWebPush: () => sendWebPush
+});
+function getVapidPublicKey() {
+  return vapidPublicKey;
+}
+async function sendWebPush(recipientEmails, payload) {
+  try {
+    if (!recipientEmails || recipientEmails.length === 0) return;
+    const normalizedEmails = recipientEmails.map((email) => email.trim().toLowerCase());
+    const users = await User.find({
+      email: { $in: normalizedEmails },
+      "webPushSubscriptions.0": { $exists: true }
+    }).select("email webPushSubscriptions");
+    if (users.length === 0) {
+      return;
+    }
+    const payloadString = JSON.stringify(payload);
+    for (const user of users) {
+      if (!user.webPushSubscriptions || user.webPushSubscriptions.length === 0) continue;
+      const activeSubscriptions = [...user.webPushSubscriptions];
+      let hasPruned = false;
+      for (let i = activeSubscriptions.length - 1; i >= 0; i--) {
+        const sub = activeSubscriptions[i];
+        try {
+          const pushSubscription = {
+            endpoint: sub.endpoint,
+            keys: {
+              p256dh: sub.keys.p256dh,
+              auth: sub.keys.auth
+            }
+          };
+          await import_web_push.default.sendNotification(pushSubscription, payloadString);
+        } catch (err) {
+          if (err.statusCode === 410 || err.statusCode === 404) {
+            console.log(`[WebPush] Pruning expired or revoked subscription for user ${user.email} (Endpoint: ${sub.endpoint})`);
+            activeSubscriptions.splice(i, 1);
+            hasPruned = true;
+          } else {
+            console.error(`[WebPush] Error sending push notification to ${user.email}:`, err.message || err);
+          }
+        }
+      }
+      if (hasPruned) {
+        user.webPushSubscriptions = activeSubscriptions;
+        await user.save();
+      }
+    }
+  } catch (error) {
+    console.error("[WebPush] Failed to dispatch web push notifications:", error);
+  }
+}
+var import_web_push, vapidPublicKey, vapidPrivateKey;
+var init_webPush = __esm({
+  "src/services/webPush.ts"() {
+    "use strict";
+    import_web_push = __toESM(require("web-push"));
+    init_User();
+    vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
+    vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
+    if (!vapidPublicKey || !vapidPrivateKey) {
+      console.log("[WebPush] VAPID keys not configured in environment. Generating dynamic VAPID keys...");
+      const keys = import_web_push.default.generateVAPIDKeys();
+      vapidPublicKey = keys.publicKey;
+      vapidPrivateKey = keys.privateKey;
+      console.log("[WebPush] Generated VAPID Public Key:", vapidPublicKey);
+    }
+    try {
+      import_web_push.default.setVapidDetails(
+        "mailto:admin@fic-workspace.app",
+        vapidPublicKey,
+        vapidPrivateKey
+      );
+      console.log("[WebPush] VAPID details configured successfully.");
+    } catch (e) {
+      console.error("[WebPush] Failed to set VAPID details:", e);
+    }
+  }
+});
+
 // src/models/Transcript.ts
 var import_mongoose10, TranscriptSchema, Transcript;
 var init_Transcript = __esm({
@@ -104,8 +220,21 @@ var init_transcription = __esm({
 var mailSockets_exports = {};
 __export(mailSockets_exports, {
   activeMailSockets: () => activeMailSockets,
+  broadcastPresence: () => broadcastPresence,
   handleMailSocket: () => handleMailSocket
 });
+function broadcastPresence() {
+  const onlineEmails = Array.from(activeMailSockets.keys());
+  const payload = JSON.stringify({ type: "presence-update", onlineEmails });
+  for (const socket of activeMailSockets.values()) {
+    if (socket.readyState === 1) {
+      try {
+        socket.send(payload);
+      } catch (e) {
+      }
+    }
+  }
+}
 function handleMailSocket(socket, req) {
   const logFile = import_path.default.join(__dirname, "../../socket_debug.log");
   const log = (msg) => {
@@ -129,13 +258,16 @@ function handleMailSocket(socket, req) {
   if (email) {
     log(`Successfully established Mail Socket for user: ${email}`);
     activeMailSockets.set(email, socket);
+    broadcastPresence();
     socket.on("close", (code, reason) => {
       log(`Mail Socket closed for user: ${email}. Code: ${code}, Reason: "${reason ? reason.toString() : ""}"`);
       activeMailSockets.delete(email);
+      broadcastPresence();
     });
     socket.on("error", (err) => {
       log(`Mail Socket error for user ${email}: ${err.message}`);
       activeMailSockets.delete(email);
+      broadcastPresence();
     });
   } else {
     log(`Closing socket: Email identifier missing or empty.`);
@@ -186,33 +318,7 @@ var import_multipart = __toESM(require("@fastify/multipart"));
 // src/routes/auth.ts
 var import_bcrypt = __toESM(require("bcrypt"));
 var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
-
-// src/models/User.ts
-var import_mongoose = require("mongoose");
-var UserSchema = new import_mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true, index: true },
-  passwordHash: { type: String },
-  password: { type: String },
-  // Fallback for web application compatibility
-  workspaceId: { type: String },
-  role: { type: String, default: "Member" },
-  avatarUrl: { type: String },
-  googleId: { type: String },
-  appleId: { type: String },
-  mfaSecret: { type: String },
-  mfaEnabled: { type: Boolean, default: false },
-  expoPushToken: { type: String },
-  webPushSubscriptions: [{
-    endpoint: { type: String, required: true },
-    keys: {
-      p256dh: { type: String, required: true },
-      auth: { type: String, required: true }
-    }
-  }],
-  createdAt: { type: Date, default: Date.now }
-});
-var User = (0, import_mongoose.model)("User", UserSchema);
+init_User();
 
 // src/models/Tenant.ts
 var import_mongoose2 = require("mongoose");
@@ -426,76 +532,8 @@ async function authenticate(request, reply) {
   }
 }
 
-// src/services/webPush.ts
-var import_web_push = __toESM(require("web-push"));
-var vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
-var vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
-if (!vapidPublicKey || !vapidPrivateKey) {
-  console.log("[WebPush] VAPID keys not configured in environment. Generating dynamic VAPID keys...");
-  const keys = import_web_push.default.generateVAPIDKeys();
-  vapidPublicKey = keys.publicKey;
-  vapidPrivateKey = keys.privateKey;
-  console.log("[WebPush] Generated VAPID Public Key:", vapidPublicKey);
-}
-try {
-  import_web_push.default.setVapidDetails(
-    "mailto:admin@fic-workspace.app",
-    vapidPublicKey,
-    vapidPrivateKey
-  );
-  console.log("[WebPush] VAPID details configured successfully.");
-} catch (e) {
-  console.error("[WebPush] Failed to set VAPID details:", e);
-}
-function getVapidPublicKey() {
-  return vapidPublicKey;
-}
-async function sendWebPush(recipientEmails, payload) {
-  try {
-    if (!recipientEmails || recipientEmails.length === 0) return;
-    const normalizedEmails = recipientEmails.map((email) => email.trim().toLowerCase());
-    const users = await User.find({
-      email: { $in: normalizedEmails },
-      "webPushSubscriptions.0": { $exists: true }
-    }).select("email webPushSubscriptions");
-    if (users.length === 0) {
-      return;
-    }
-    const payloadString = JSON.stringify(payload);
-    for (const user of users) {
-      if (!user.webPushSubscriptions || user.webPushSubscriptions.length === 0) continue;
-      const activeSubscriptions = [...user.webPushSubscriptions];
-      let hasPruned = false;
-      for (let i = activeSubscriptions.length - 1; i >= 0; i--) {
-        const sub = activeSubscriptions[i];
-        try {
-          const pushSubscription = {
-            endpoint: sub.endpoint,
-            keys: {
-              p256dh: sub.keys.p256dh,
-              auth: sub.keys.auth
-            }
-          };
-          await import_web_push.default.sendNotification(pushSubscription, payloadString);
-        } catch (err) {
-          if (err.statusCode === 410 || err.statusCode === 404) {
-            console.log(`[WebPush] Pruning expired or revoked subscription for user ${user.email} (Endpoint: ${sub.endpoint})`);
-            activeSubscriptions.splice(i, 1);
-            hasPruned = true;
-          } else {
-            console.error(`[WebPush] Error sending push notification to ${user.email}:`, err.message || err);
-          }
-        }
-      }
-      if (hasPruned) {
-        user.webPushSubscriptions = activeSubscriptions;
-        await user.save();
-      }
-    }
-  } catch (error) {
-    console.error("[WebPush] Failed to dispatch web push notifications:", error);
-  }
-}
+// src/routes/auth.ts
+init_webPush();
 
 // src/utils/redis.ts
 var import_ioredis = __toESM(require("ioredis"));
@@ -1240,6 +1278,9 @@ var RecordingSchema = new import_mongoose7.Schema({
 });
 var Recording = (0, import_mongoose7.model)("Recording", RecordingSchema);
 
+// src/routes/meetings.ts
+init_User();
+
 // src/models/Mail.ts
 var import_mongoose8 = __toESM(require("mongoose"));
 var mailSchema = new import_mongoose8.default.Schema({
@@ -1292,13 +1333,16 @@ var import_path2 = __toESM(require("path"));
 var import_os = __toESM(require("os"));
 var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
 var import_bcrypt2 = __toESM(require("bcrypt"));
+init_User();
 init_transcription();
 
 // src/services/summarizer.ts
 var import_groq_sdk2 = __toESM(require("groq-sdk"));
 init_Transcript();
+init_User();
 
 // src/services/pushNotifications.ts
+init_User();
 async function sendPushNotification(recipientEmails, title, body, data) {
   try {
     if (!recipientEmails || recipientEmails.length === 0) {
@@ -1353,6 +1397,7 @@ async function sendPushNotification(recipientEmails, title, body, data) {
 }
 
 // src/services/summarizer.ts
+init_webPush();
 var groq2 = null;
 if (process.env.GROQ_API_KEY) {
   groq2 = new import_groq_sdk2.default({ apiKey: process.env.GROQ_API_KEY });
@@ -1728,6 +1773,7 @@ function handleAudioSocket(ws) {
 }
 
 // src/routes/meetings.ts
+init_webPush();
 async function meetingRoutes(fastify2) {
   async function generate9DigitJoinCode(preferredCode) {
     const normalizedPreferredCode = preferredCode ? normalizeJoinCode(preferredCode) : "";
@@ -2449,6 +2495,7 @@ async function meetingRoutes(fastify2) {
 
 // src/routes/mail.ts
 init_mailSockets();
+init_webPush();
 var import_groq_sdk3 = __toESM(require("groq-sdk"));
 var groq3 = null;
 if (process.env.GROQ_API_KEY) {
@@ -2907,6 +2954,7 @@ Context: "${context || "Professional email"}"`;
 // src/routes/kural.ts
 var import_mongoose15 = require("mongoose");
 var import_cloudinary = require("cloudinary");
+init_User();
 
 // src/models/KuralConversation.ts
 var import_mongoose12 = require("mongoose");
@@ -2977,6 +3025,7 @@ StorySchema.index({ workspaceId: 1, createdAt: -1 });
 var Story = (0, import_mongoose14.model)("Story", StorySchema);
 
 // src/routes/kural.ts
+init_webPush();
 var cloudinaryFolder = process.env.CLOUDINARY_FOLDER || "chat_uploads";
 var cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME || "";
 var cloudinaryApiKey = process.env.CLOUDINARY_API_KEY || "";
@@ -3645,6 +3694,7 @@ async function kuralRoutes(fastify2) {
 
 // src/routes/members.ts
 var import_bcrypt4 = __toESM(require("bcrypt"));
+init_User();
 var defaultWorkspaceId2 = "forge-india-connect";
 function publicUser(user) {
   return {
@@ -4294,6 +4344,9 @@ var ThreadCommentSchema = new import_mongoose21.Schema({
 }, { timestamps: true });
 var ThreadComment = (0, import_mongoose21.model)("ThreadComment", ThreadCommentSchema);
 
+// src/routes/threads.ts
+init_User();
+
 // src/services/threadSockets.ts
 var import_fs4 = __toESM(require("fs"));
 var import_path3 = __toESM(require("path"));
@@ -4472,6 +4525,45 @@ async function threadsRoutes(fastify2) {
         visibilityData
       });
       broadcastToWorkspace(workspaceId, "NEW_POST", post);
+      try {
+        const members = await User.find({ workspaceId }).select("email").lean();
+        const memberEmails = members.map((m) => normalizeEmail3(m.email));
+        const recipientEmails = memberEmails.filter((email) => email !== currentEmail);
+        if (recipientEmails.length > 0) {
+          const { activeMailSockets: activeMailSockets2 } = (init_mailSockets(), __toCommonJS(mailSockets_exports));
+          if (activeMailSockets2) {
+            const wsMessage = JSON.stringify({
+              type: "NEW_POST",
+              post: {
+                _id: post._id,
+                workspaceId: post.workspaceId,
+                authorEmail: post.authorEmail,
+                authorName: post.authorName,
+                content: post.content,
+                createdAt: post.createdAt
+              }
+            });
+            recipientEmails.forEach((email) => {
+              if (activeMailSockets2.has(email)) {
+                activeMailSockets2.get(email)?.send(wsMessage);
+              }
+            });
+          }
+          const { sendWebPush: sendWebPush2 } = (init_webPush(), __toCommonJS(webPush_exports));
+          if (sendWebPush2) {
+            sendWebPush2(
+              recipientEmails,
+              {
+                title: `New Post in Workspace`,
+                body: `${currentName}: ${post.content.slice(0, 60)}${post.content.length > 60 ? "..." : ""}`,
+                url: `/w/${workspaceId}/chat`
+              }
+            ).catch((err) => console.error("[Threads] Web push error:", err));
+          }
+        }
+      } catch (notifyErr) {
+        console.error("[Threads] Notification dispatch error:", notifyErr);
+      }
       return reply.code(201).send(post);
     } catch (err) {
       return reply.code(500).send({ error: "Failed to create post", details: err.message });
@@ -4530,6 +4622,46 @@ async function threadsRoutes(fastify2) {
         content
       });
       broadcastToWorkspace(post.workspaceId, "NEW_COMMENT", comment);
+      try {
+        const members = await User.find({ workspaceId: post.workspaceId }).select("email").lean();
+        const memberEmails = members.map((m) => normalizeEmail3(m.email));
+        const recipientEmails = memberEmails.filter((email) => email !== currentEmail);
+        if (recipientEmails.length > 0) {
+          const { activeMailSockets: activeMailSockets2 } = (init_mailSockets(), __toCommonJS(mailSockets_exports));
+          if (activeMailSockets2) {
+            const wsMessage = JSON.stringify({
+              type: "NEW_COMMENT",
+              comment: {
+                _id: comment._id,
+                postId: comment.postId,
+                parentCommentId: comment.parentCommentId,
+                authorEmail: comment.authorEmail,
+                authorName: comment.authorName,
+                content: comment.content,
+                createdAt: comment.createdAt
+              }
+            });
+            recipientEmails.forEach((email) => {
+              if (activeMailSockets2.has(email)) {
+                activeMailSockets2.get(email)?.send(wsMessage);
+              }
+            });
+          }
+          const { sendWebPush: sendWebPush2 } = (init_webPush(), __toCommonJS(webPush_exports));
+          if (sendWebPush2) {
+            sendWebPush2(
+              recipientEmails,
+              {
+                title: `New Comment in Workspace`,
+                body: `${currentName}: ${comment.content.slice(0, 60)}${comment.content.length > 60 ? "..." : ""}`,
+                url: `/w/${post.workspaceId}/chat`
+              }
+            ).catch((err) => console.error("[Threads] Web push error:", err));
+          }
+        }
+      } catch (notifyErr) {
+        console.error("[Threads] Comment notification dispatch error:", notifyErr);
+      }
       return reply.code(201).send(comment);
     } catch (err) {
       return reply.code(500).send({ error: "Failed to create comment", details: err.message });
@@ -4597,6 +4729,7 @@ async function threadsRoutes(fastify2) {
 // src/services/webrtc.ts
 var import_ws2 = require("ws");
 var import_jsonwebtoken4 = __toESM(require("jsonwebtoken"));
+init_User();
 var import_mongoose22 = require("mongoose");
 var JWT_SECRET2 = process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var rooms = /* @__PURE__ */ new Map();
@@ -5003,6 +5136,7 @@ init_mailSockets();
 
 // src/utils/seedDefaultUser.ts
 var import_bcrypt5 = __toESM(require("bcrypt"));
+init_User();
 async function ensureDefaultUser() {
   const config = loadSecurityConfig();
   const seedPassword = config.seedAdminPassword;

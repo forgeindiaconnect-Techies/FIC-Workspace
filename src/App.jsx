@@ -24,6 +24,7 @@ import MeetingSummarizer from './pages/MeetingSummarizer';
 import ChatAuth from './pages/ChatAuth';
 import ModulePlaceholder from './pages/ModulePlaceholder';
 import { ThemeProvider } from './context/ThemeContext';
+import NotificationManager from './components/NotificationManager';
 
 function App() {
   useEffect(() => {
@@ -43,6 +44,7 @@ function App() {
   return (
     <ThemeProvider>
       <Router>
+        <NotificationManager />
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
