@@ -216,6 +216,70 @@ var init_transcription = __esm({
   }
 });
 
+// src/services/pushNotifications.ts
+var pushNotifications_exports = {};
+__export(pushNotifications_exports, {
+  sendPushNotification: () => sendPushNotification
+});
+async function sendPushNotification(recipientEmails, title, body, data) {
+  try {
+    if (!recipientEmails || recipientEmails.length === 0) {
+      return;
+    }
+    const normalizedEmails = recipientEmails.map((email) => email.trim().toLowerCase());
+    const users = await User.find({
+      email: { $in: normalizedEmails },
+      expoPushToken: { $exists: true, $ne: "" }
+    }).select("email expoPushToken");
+    if (users.length === 0) {
+      console.log(`[PushService] No registered push tokens found for recipients: ${normalizedEmails.join(", ")}`);
+      return;
+    }
+    const messages = [];
+    const seenTokens = /* @__PURE__ */ new Set();
+    for (const user of users) {
+      if (user.expoPushToken && !seenTokens.has(user.expoPushToken)) {
+        seenTokens.add(user.expoPushToken);
+        messages.push({
+          to: user.expoPushToken,
+          sound: "default",
+          title,
+          body,
+          data
+        });
+      }
+    }
+    if (messages.length === 0) {
+      return;
+    }
+    console.log(`[PushService] Dispatching push notifications to ${messages.length} token(s)...`);
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip, deflate"
+      },
+      body: JSON.stringify(messages)
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[PushService] Expo Push gateway returned status ${response.status}: ${errorText}`);
+      return;
+    }
+    const result = await response.json();
+    console.log("[PushService] Expo push result:", JSON.stringify(result));
+  } catch (error) {
+    console.error("[PushService] Failed to send push notifications:", error);
+  }
+}
+var init_pushNotifications = __esm({
+  "src/services/pushNotifications.ts"() {
+    "use strict";
+    init_User();
+  }
+});
+
 // src/services/mailSockets.ts
 var mailSockets_exports = {};
 __export(mailSockets_exports, {
@@ -1340,63 +1404,7 @@ init_transcription();
 var import_groq_sdk2 = __toESM(require("groq-sdk"));
 init_Transcript();
 init_User();
-
-// src/services/pushNotifications.ts
-init_User();
-async function sendPushNotification(recipientEmails, title, body, data) {
-  try {
-    if (!recipientEmails || recipientEmails.length === 0) {
-      return;
-    }
-    const normalizedEmails = recipientEmails.map((email) => email.trim().toLowerCase());
-    const users = await User.find({
-      email: { $in: normalizedEmails },
-      expoPushToken: { $exists: true, $ne: "" }
-    }).select("email expoPushToken");
-    if (users.length === 0) {
-      console.log(`[PushService] No registered push tokens found for recipients: ${normalizedEmails.join(", ")}`);
-      return;
-    }
-    const messages = [];
-    const seenTokens = /* @__PURE__ */ new Set();
-    for (const user of users) {
-      if (user.expoPushToken && !seenTokens.has(user.expoPushToken)) {
-        seenTokens.add(user.expoPushToken);
-        messages.push({
-          to: user.expoPushToken,
-          sound: "default",
-          title,
-          body,
-          data
-        });
-      }
-    }
-    if (messages.length === 0) {
-      return;
-    }
-    console.log(`[PushService] Dispatching push notifications to ${messages.length} token(s)...`);
-    const response = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate"
-      },
-      body: JSON.stringify(messages)
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[PushService] Expo Push gateway returned status ${response.status}: ${errorText}`);
-      return;
-    }
-    const result = await response.json();
-    console.log("[PushService] Expo push result:", JSON.stringify(result));
-  } catch (error) {
-    console.error("[PushService] Failed to send push notifications:", error);
-  }
-}
-
-// src/services/summarizer.ts
+init_pushNotifications();
 init_webPush();
 var groq2 = null;
 if (process.env.GROQ_API_KEY) {
@@ -1773,6 +1781,7 @@ function handleAudioSocket(ws) {
 }
 
 // src/routes/meetings.ts
+init_pushNotifications();
 init_webPush();
 async function meetingRoutes(fastify2) {
   async function generate9DigitJoinCode(preferredCode) {
@@ -2495,6 +2504,7 @@ async function meetingRoutes(fastify2) {
 
 // src/routes/mail.ts
 init_mailSockets();
+init_pushNotifications();
 init_webPush();
 var import_groq_sdk3 = __toESM(require("groq-sdk"));
 var groq3 = null;
@@ -3025,6 +3035,7 @@ StorySchema.index({ workspaceId: 1, createdAt: -1 });
 var Story = (0, import_mongoose14.model)("Story", StorySchema);
 
 // src/routes/kural.ts
+init_pushNotifications();
 init_webPush();
 var cloudinaryFolder = process.env.CLOUDINARY_FOLDER || "chat_uploads";
 var cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME || "";
@@ -4560,6 +4571,19 @@ async function threadsRoutes(fastify2) {
               }
             ).catch((err) => console.error("[Threads] Web push error:", err));
           }
+          const { sendPushNotification: sendPushNotification2 } = (init_pushNotifications(), __toCommonJS(pushNotifications_exports));
+          if (sendPushNotification2) {
+            sendPushNotification2(
+              recipientEmails,
+              `New Post in Workspace`,
+              `${currentName}: ${post.content.slice(0, 60)}${post.content.length > 60 ? "..." : ""}`,
+              {
+                type: "post",
+                workspaceId,
+                postId: post._id.toString()
+              }
+            ).catch((err) => console.error("[Threads] Mobile push error:", err));
+          }
         }
       } catch (notifyErr) {
         console.error("[Threads] Notification dispatch error:", notifyErr);
@@ -4657,6 +4681,19 @@ async function threadsRoutes(fastify2) {
                 url: `/w/${post.workspaceId}/chat`
               }
             ).catch((err) => console.error("[Threads] Web push error:", err));
+          }
+          const { sendPushNotification: sendPushNotification2 } = (init_pushNotifications(), __toCommonJS(pushNotifications_exports));
+          if (sendPushNotification2) {
+            sendPushNotification2(
+              recipientEmails,
+              `New Comment in Workspace`,
+              `${currentName}: ${comment.content.slice(0, 60)}${comment.content.length > 60 ? "..." : ""}`,
+              {
+                type: "post",
+                workspaceId: post.workspaceId,
+                postId: post._id.toString()
+              }
+            ).catch((err) => console.error("[Threads] Mobile push error:", err));
           }
         }
       } catch (notifyErr) {

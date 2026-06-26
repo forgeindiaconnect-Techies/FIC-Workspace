@@ -201,6 +201,21 @@ export async function threadsRoutes(fastify: FastifyInstance) {
               }
             ).catch((err: any) => console.error('[Threads] Web push error:', err));
           }
+
+          // 3. Dispatch Expo Mobile Push Notifications
+          const { sendPushNotification } = require('../services/pushNotifications');
+          if (sendPushNotification) {
+            sendPushNotification(
+              recipientEmails,
+              `New Post in Workspace`,
+              `${currentName}: ${post.content.slice(0, 60)}${post.content.length > 60 ? '...' : ''}`,
+              {
+                type: 'post',
+                workspaceId,
+                postId: post._id.toString()
+              }
+            ).catch((err: any) => console.error('[Threads] Mobile push error:', err));
+          }
         }
       } catch (notifyErr: any) {
         console.error('[Threads] Notification dispatch error:', notifyErr);
@@ -322,6 +337,21 @@ export async function threadsRoutes(fastify: FastifyInstance) {
                 url: `/w/${post.workspaceId}/chat`
               }
             ).catch((err: any) => console.error('[Threads] Web push error:', err));
+          }
+
+          // 3. Dispatch Expo Mobile Push Notifications
+          const { sendPushNotification } = require('../services/pushNotifications');
+          if (sendPushNotification) {
+            sendPushNotification(
+              recipientEmails,
+              `New Comment in Workspace`,
+              `${currentName}: ${comment.content.slice(0, 60)}${comment.content.length > 60 ? '...' : ''}`,
+              {
+                type: 'post',
+                workspaceId: post.workspaceId,
+                postId: post._id.toString()
+              }
+            ).catch((err: any) => console.error('[Threads] Mobile push error:', err));
           }
         }
       } catch (notifyErr: any) {
