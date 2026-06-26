@@ -46,7 +46,33 @@ async function dispatchSummaryMail(meeting: any, summaryHtml: string) {
 
     // Create Inbox copy for each participant
     for (const email of recipientEmails) {
-      await Mail.create({ ...mailDoc, ownerEmail: email, folder: 'inbox' });
+      try {
+        const summaryMail = await Mail.create({ ...mailDoc, ownerEmail: email, folder: 'inbox' });
+
+        // Trigger WebSocket broadcast for real-time visual toasts
+        const { activeMailSockets } = require('./mailSockets');
+        if (activeMailSockets && activeMailSockets.has(email)) {
+          const ws = activeMailSockets.get(email);
+          if (ws?.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'NEW_MAIL', mail: summaryMail }));
+          }
+        }
+
+        // Trigger remote push notification for background/terminated devices
+        const { sendPushNotification } = require('./pushNotifications');
+        sendPushNotification(
+          [email],
+          `New Email: Meeting Summary: ${meeting.title}`,
+          `From: Forge India Connect AI`,
+          {
+            type: 'mail',
+            mailId: summaryMail._id.toString(),
+            senderEmail: 'ai-assistant@nexus.app',
+          }
+        ).catch((err: any) => console.error('[Summarizer] Push error:', err));
+      } catch (e) {
+        console.error('[Summarizer] Failed to dispatch summary mail notifications for', email, e);
+      }
     }
 
     console.log(`[Summarizer]  Summary mail dispatched to ${recipientEmails.length} participant(s): ${recipientEmails.join(', ')}`);

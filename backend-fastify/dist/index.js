@@ -30,6 +30,32 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// src/models/User.ts
+var import_mongoose, UserSchema, User;
+var init_User = __esm({
+  "src/models/User.ts"() {
+    "use strict";
+    import_mongoose = require("mongoose");
+    UserSchema = new import_mongoose.Schema({
+      name: { type: String, required: true },
+      email: { type: String, required: true, unique: true, index: true },
+      passwordHash: { type: String },
+      password: { type: String },
+      // Fallback for web application compatibility
+      workspaceId: { type: String },
+      role: { type: String, default: "Member" },
+      avatarUrl: { type: String },
+      googleId: { type: String },
+      appleId: { type: String },
+      mfaSecret: { type: String },
+      mfaEnabled: { type: Boolean, default: false },
+      expoPushToken: { type: String },
+      createdAt: { type: Date, default: Date.now }
+    });
+    User = (0, import_mongoose.model)("User", UserSchema);
+  }
+});
+
 // src/models/Transcript.ts
 var import_mongoose10, TranscriptSchema, Transcript;
 var init_Transcript = __esm({
@@ -107,10 +133,10 @@ __export(mailSockets_exports, {
   handleMailSocket: () => handleMailSocket
 });
 function handleMailSocket(socket, req) {
-  const logFile = import_path2.default.join(__dirname, "../../socket_debug.log");
+  const logFile = import_path.default.join(__dirname, "../../socket_debug.log");
   const log = (msg) => {
     try {
-      import_fs3.default.appendFileSync(logFile, `[${(/* @__PURE__ */ new Date()).toISOString()}] ${msg}
+      import_fs2.default.appendFileSync(logFile, `[${(/* @__PURE__ */ new Date()).toISOString()}] ${msg}
 `);
     } catch (e) {
     }
@@ -142,13 +168,77 @@ function handleMailSocket(socket, req) {
     socket.close(1008, "Email identifier required");
   }
 }
-var import_fs3, import_path2, activeMailSockets;
+var import_fs2, import_path, activeMailSockets;
 var init_mailSockets = __esm({
   "src/services/mailSockets.ts"() {
     "use strict";
-    import_fs3 = __toESM(require("fs"));
-    import_path2 = __toESM(require("path"));
+    import_fs2 = __toESM(require("fs"));
+    import_path = __toESM(require("path"));
     activeMailSockets = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/services/pushNotifications.ts
+var pushNotifications_exports = {};
+__export(pushNotifications_exports, {
+  sendPushNotification: () => sendPushNotification
+});
+async function sendPushNotification(recipientEmails, title, body, data) {
+  try {
+    if (!recipientEmails || recipientEmails.length === 0) {
+      return;
+    }
+    const normalizedEmails = recipientEmails.map((email) => email.trim().toLowerCase());
+    const users = await User.find({
+      email: { $in: normalizedEmails },
+      expoPushToken: { $exists: true, $ne: "" }
+    }).select("email expoPushToken");
+    if (users.length === 0) {
+      console.log(`[PushService] No registered push tokens found for recipients: ${normalizedEmails.join(", ")}`);
+      return;
+    }
+    const messages = [];
+    const seenTokens = /* @__PURE__ */ new Set();
+    for (const user of users) {
+      if (user.expoPushToken && !seenTokens.has(user.expoPushToken)) {
+        seenTokens.add(user.expoPushToken);
+        messages.push({
+          to: user.expoPushToken,
+          sound: "default",
+          title,
+          body,
+          data
+        });
+      }
+    }
+    if (messages.length === 0) {
+      return;
+    }
+    console.log(`[PushService] Dispatching push notifications to ${messages.length} token(s)...`);
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip, deflate"
+      },
+      body: JSON.stringify(messages)
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[PushService] Expo Push gateway returned status ${response.status}: ${errorText}`);
+      return;
+    }
+    const result = await response.json();
+    console.log("[PushService] Expo push result:", JSON.stringify(result));
+  } catch (error) {
+    console.error("[PushService] Failed to send push notifications:", error);
+  }
+}
+var init_pushNotifications = __esm({
+  "src/services/pushNotifications.ts"() {
+    "use strict";
+    init_User();
   }
 });
 
@@ -186,26 +276,7 @@ var import_multipart = __toESM(require("@fastify/multipart"));
 // src/routes/auth.ts
 var import_bcrypt = __toESM(require("bcrypt"));
 var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
-
-// src/models/User.ts
-var import_mongoose = require("mongoose");
-var UserSchema = new import_mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true, index: true },
-  passwordHash: { type: String },
-  password: { type: String },
-  // Fallback for web application compatibility
-  workspaceId: { type: String },
-  role: { type: String, default: "Member" },
-  avatarUrl: { type: String },
-  googleId: { type: String },
-  appleId: { type: String },
-  mfaSecret: { type: String },
-  mfaEnabled: { type: Boolean, default: false },
-  expoPushToken: { type: String },
-  createdAt: { type: Date, default: Date.now }
-});
-var User = (0, import_mongoose.model)("User", UserSchema);
+init_User();
 
 // src/models/Tenant.ts
 var import_mongoose2 = require("mongoose");
@@ -1102,6 +1173,9 @@ var RecordingSchema = new import_mongoose7.Schema({
 });
 var Recording = (0, import_mongoose7.model)("Recording", RecordingSchema);
 
+// src/routes/meetings.ts
+init_User();
+
 // src/models/Mail.ts
 var import_mongoose8 = __toESM(require("mongoose"));
 var mailSchema = new import_mongoose8.default.Schema({
@@ -1149,16 +1223,18 @@ init_Transcript();
 
 // src/services/aiBot.ts
 var import_ws = __toESM(require("ws"));
-var import_fs2 = __toESM(require("fs"));
-var import_path = __toESM(require("path"));
+var import_fs3 = __toESM(require("fs"));
+var import_path2 = __toESM(require("path"));
 var import_os = __toESM(require("os"));
 var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
 var import_bcrypt2 = __toESM(require("bcrypt"));
+init_User();
 init_transcription();
 
 // src/services/summarizer.ts
 var import_groq_sdk2 = __toESM(require("groq-sdk"));
 init_Transcript();
+init_User();
 var groq2 = null;
 if (process.env.GROQ_API_KEY) {
   groq2 = new import_groq_sdk2.default({ apiKey: process.env.GROQ_API_KEY });
@@ -1190,7 +1266,29 @@ async function dispatchSummaryMail(meeting, summaryHtml) {
     };
     await Mail.create({ ...mailDoc, ownerEmail: "ai-assistant@nexus.app", folder: "sent" });
     for (const email of recipientEmails) {
-      await Mail.create({ ...mailDoc, ownerEmail: email, folder: "inbox" });
+      try {
+        const summaryMail = await Mail.create({ ...mailDoc, ownerEmail: email, folder: "inbox" });
+        const { activeMailSockets: activeMailSockets2 } = (init_mailSockets(), __toCommonJS(mailSockets_exports));
+        if (activeMailSockets2 && activeMailSockets2.has(email)) {
+          const ws = activeMailSockets2.get(email);
+          if (ws?.readyState === 1) {
+            ws.send(JSON.stringify({ type: "NEW_MAIL", mail: summaryMail }));
+          }
+        }
+        const { sendPushNotification: sendPushNotification2 } = (init_pushNotifications(), __toCommonJS(pushNotifications_exports));
+        sendPushNotification2(
+          [email],
+          `New Email: Meeting Summary: ${meeting.title}`,
+          `From: Forge India Connect AI`,
+          {
+            type: "mail",
+            mailId: summaryMail._id.toString(),
+            senderEmail: "ai-assistant@nexus.app"
+          }
+        ).catch((err) => console.error("[Summarizer] Push error:", err));
+      } catch (e) {
+        console.error("[Summarizer] Failed to dispatch summary mail notifications for", email, e);
+      }
     }
     console.log(`[Summarizer]  Summary mail dispatched to ${recipientEmails.length} participant(s): ${recipientEmails.join(", ")}`);
   } catch (err) {
@@ -1479,9 +1577,9 @@ function handleAudioSocket(ws) {
       }
       const tmpDir = import_os.default.tmpdir();
       const fileName = `chunk_${currentMeetingId}_${currentUserId}_${Date.now()}.webm`;
-      const filePath = import_path.default.join(tmpDir, fileName);
+      const filePath = import_path2.default.join(tmpDir, fileName);
       try {
-        import_fs2.default.writeFileSync(filePath, message);
+        import_fs3.default.writeFileSync(filePath, message);
         const text = await transcribeChunk(currentMeetingId, currentUserId, currentSpeakerName, filePath);
         if (text) {
           console.log(`[AudioSocket] Transcribed: "${text.slice(0, 60)}..."`);
@@ -1490,7 +1588,7 @@ function handleAudioSocket(ws) {
         console.error("[AudioSocket] Error processing chunk:", e.message);
       } finally {
         try {
-          import_fs2.default.unlinkSync(filePath);
+          import_fs3.default.unlinkSync(filePath);
         } catch {
         }
       }
@@ -1660,18 +1758,40 @@ async function meetingRoutes(fastify2) {
   </div>
           `;
           for (const email of targetEmails) {
-            Mail.create({
-              workspaceId,
-              ownerEmail: email,
-              folder: "inbox",
-              senderName: "Forge India Connect AI",
-              senderEmail: "nexus-ai@workspace.app",
-              recipientEmails: [email],
-              subject: `Invitation: ${meeting.title}`,
-              body: mailBody,
-              attachments: [],
-              isRead: false
-            }).catch((e) => console.error("Failed to create invite email for", email, e));
+            try {
+              const inviteMail = await Mail.create({
+                workspaceId,
+                ownerEmail: email,
+                folder: "inbox",
+                senderName: "Forge India Connect AI",
+                senderEmail: "nexus-ai@workspace.app",
+                recipientEmails: [email],
+                subject: `Invitation: ${meeting.title}`,
+                body: mailBody,
+                attachments: [],
+                isRead: false
+              });
+              const { activeMailSockets: activeMailSockets2 } = (init_mailSockets(), __toCommonJS(mailSockets_exports));
+              if (activeMailSockets2 && activeMailSockets2.has(email)) {
+                const ws = activeMailSockets2.get(email);
+                if (ws?.readyState === 1) {
+                  ws.send(JSON.stringify({ type: "NEW_MAIL", mail: inviteMail }));
+                }
+              }
+              const { sendPushNotification: sendPushNotification2 } = (init_pushNotifications(), __toCommonJS(pushNotifications_exports));
+              sendPushNotification2(
+                [email],
+                `New Email: Invitation: ${meeting.title}`,
+                `From: Forge India Connect AI`,
+                {
+                  type: "mail",
+                  mailId: inviteMail._id.toString(),
+                  senderEmail: "nexus-ai@workspace.app"
+                }
+              ).catch((err) => console.error("[Meetings Invite] Push error:", err));
+            } catch (e) {
+              console.error("Failed to create invite email for", email, e);
+            }
           }
         }
       } catch (e) {
@@ -2197,62 +2317,7 @@ async function meetingRoutes(fastify2) {
 
 // src/routes/mail.ts
 init_mailSockets();
-
-// src/services/pushNotifications.ts
-async function sendPushNotification(recipientEmails, title, body, data) {
-  try {
-    if (!recipientEmails || recipientEmails.length === 0) {
-      return;
-    }
-    const normalizedEmails = recipientEmails.map((email) => email.trim().toLowerCase());
-    const users = await User.find({
-      email: { $in: normalizedEmails },
-      expoPushToken: { $exists: true, $ne: "" }
-    }).select("email expoPushToken");
-    if (users.length === 0) {
-      console.log(`[PushService] No registered push tokens found for recipients: ${normalizedEmails.join(", ")}`);
-      return;
-    }
-    const messages = [];
-    const seenTokens = /* @__PURE__ */ new Set();
-    for (const user of users) {
-      if (user.expoPushToken && !seenTokens.has(user.expoPushToken)) {
-        seenTokens.add(user.expoPushToken);
-        messages.push({
-          to: user.expoPushToken,
-          sound: "default",
-          title,
-          body,
-          data
-        });
-      }
-    }
-    if (messages.length === 0) {
-      return;
-    }
-    console.log(`[PushService] Dispatching push notifications to ${messages.length} token(s)...`);
-    const response = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate"
-      },
-      body: JSON.stringify(messages)
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[PushService] Expo Push gateway returned status ${response.status}: ${errorText}`);
-      return;
-    }
-    const result = await response.json();
-    console.log("[PushService] Expo push result:", JSON.stringify(result));
-  } catch (error) {
-    console.error("[PushService] Failed to send push notifications:", error);
-  }
-}
-
-// src/routes/mail.ts
+init_pushNotifications();
 var import_groq_sdk3 = __toESM(require("groq-sdk"));
 var groq3 = null;
 if (process.env.GROQ_API_KEY) {
@@ -2695,6 +2760,7 @@ Context: "${context || "Professional email"}"`;
 // src/routes/kural.ts
 var import_mongoose15 = require("mongoose");
 var import_cloudinary = require("cloudinary");
+init_User();
 
 // src/models/KuralConversation.ts
 var import_mongoose12 = require("mongoose");
@@ -2765,6 +2831,7 @@ StorySchema.index({ workspaceId: 1, createdAt: -1 });
 var Story = (0, import_mongoose14.model)("Story", StorySchema);
 
 // src/routes/kural.ts
+init_pushNotifications();
 var cloudinaryFolder = process.env.CLOUDINARY_FOLDER || "chat_uploads";
 var cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME || "";
 var cloudinaryApiKey = process.env.CLOUDINARY_API_KEY || "";
@@ -3425,6 +3492,7 @@ async function kuralRoutes(fastify2) {
 
 // src/routes/members.ts
 var import_bcrypt4 = __toESM(require("bcrypt"));
+init_User();
 var defaultWorkspaceId2 = "forge-india-connect";
 function publicUser(user) {
   return {
@@ -4377,6 +4445,7 @@ async function threadsRoutes(fastify2) {
 // src/services/webrtc.ts
 var import_ws2 = require("ws");
 var import_jsonwebtoken4 = __toESM(require("jsonwebtoken"));
+init_User();
 var import_mongoose22 = require("mongoose");
 var JWT_SECRET2 = process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var rooms = /* @__PURE__ */ new Map();
@@ -4783,6 +4852,7 @@ init_mailSockets();
 
 // src/utils/seedDefaultUser.ts
 var import_bcrypt5 = __toESM(require("bcrypt"));
+init_User();
 async function ensureDefaultUser() {
   const config = loadSecurityConfig();
   const seedPassword = config.seedAdminPassword;

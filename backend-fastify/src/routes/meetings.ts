@@ -190,18 +190,44 @@ export async function meetingRoutes(fastify: FastifyInstance) {
           `;
 
           for (const email of targetEmails) {
-            Mail.create({
-              workspaceId,
-              ownerEmail: email,
-              folder: 'inbox',
-              senderName: 'Forge India Connect AI',
-              senderEmail: 'nexus-ai@workspace.app',
-              recipientEmails: [email],
-              subject: `Invitation: ${meeting.title}`,
-              body: mailBody,
-              attachments: [],
-              isRead: false
-            }).catch((e: any) => console.error('Failed to create invite email for', email, e));
+            try {
+              const inviteMail = await Mail.create({
+                workspaceId,
+                ownerEmail: email,
+                folder: 'inbox',
+                senderName: 'Forge India Connect AI',
+                senderEmail: 'nexus-ai@workspace.app',
+                recipientEmails: [email],
+                subject: `Invitation: ${meeting.title}`,
+                body: mailBody,
+                attachments: [],
+                isRead: false
+              });
+
+              // Trigger WebSocket broadcast for real-time visual toasts
+              const { activeMailSockets } = require('../services/mailSockets');
+              if (activeMailSockets && activeMailSockets.has(email)) {
+                const ws = activeMailSockets.get(email);
+                if (ws?.readyState === 1) {
+                  ws.send(JSON.stringify({ type: 'NEW_MAIL', mail: inviteMail }));
+                }
+              }
+
+              // Trigger remote push notification for background/terminated devices
+              const { sendPushNotification } = require('../services/pushNotifications');
+              sendPushNotification(
+                [email],
+                `New Email: Invitation: ${meeting.title}`,
+                `From: Forge India Connect AI`,
+                {
+                  type: 'mail',
+                  mailId: inviteMail._id.toString(),
+                  senderEmail: 'nexus-ai@workspace.app',
+                }
+              ).catch((err: any) => console.error('[Meetings Invite] Push error:', err));
+            } catch (e) {
+              console.error('Failed to create invite email for', email, e);
+            }
           }
         }
       } catch (e) {
