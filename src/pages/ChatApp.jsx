@@ -458,7 +458,10 @@ const ChatApp = () => {
       setIsCalling(false);
       if (dialingAudio) dialingAudio.pause();
       if (ringingAudio) ringingAudio.pause();
-      if (peerRef.current) peerRef.current.signal(signal);
+      const pc = connectionRef.current;
+      if (pc && signal) {
+        pc.setRemoteDescription(new RTCSessionDescription(signal)).catch(console.warn);
+      }
     });
 
     socketRef.current.on("call-ended", () => {
@@ -1060,25 +1063,38 @@ const ChatApp = () => {
          throw new Error("Your browser does not support WebRTC. Please use a modern browser.");
       }
 
-      const peer = new Peer({ initiator: true, trickle: false, stream: currentStream });
-
-      peer.on("signal", (data) => {
-        socketRef.current.emit("call-user", {
-          userToCall,
-          signalData: data,
-          from: currentUserEmail,
-          name: currentUserName,
-          isVideo
-        });
-        playAudio(dialingAudio);
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
       });
+      connectionRef.current = pc;
 
-      peer.on("stream", (remoteStream) => {
-        if (userVideo.current) userVideo.current.srcObject = remoteStream;
-      });
+      currentStream.getTracks().forEach(track => pc.addTrack(track, currentStream));
 
-      connectionRef.current = peer;
-      peerRef.current = peer;
+      pc.ontrack = (event) => {
+        if (userVideo.current) userVideo.current.srcObject = event.streams[0];
+      };
+
+      // Wait for ICE gathering to complete (trickle: false) to match the signaling backend
+      pc.onicecandidate = (event) => {
+        if (!event.candidate) {
+          console.log("[WebRTC] ICE gathering complete. Sending call offer...");
+          socketRef.current.emit("call-user", {
+            userToCall,
+            signalData: pc.localDescription,
+            from: currentUserEmail,
+            name: currentUserName,
+            isVideo
+          });
+        }
+      };
+
+      pc.createOffer().then(offer => {
+        return pc.setLocalDescription(offer);
+      }).catch(err => console.error("Offer generation error:", err));
+
     }).catch(err => {
       console.error("Media access denied:", err);
       alert("Please allow camera and microphone access to make calls.");
@@ -1105,20 +1121,37 @@ const ChatApp = () => {
       setStream(currentStream);
       if (myVideo.current) myVideo.current.srcObject = currentStream;
 
-      const peer = new Peer({ initiator: false, trickle: false, stream: currentStream });
-      const target = callTargetEmail || caller;
-
-      peer.on("signal", (data) => {
-        socketRef.current.emit("answer-call", { signal: data, to: target });
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
       });
+      connectionRef.current = pc;
 
-      peer.on("stream", (remoteStream) => {
-        if (userVideo.current) userVideo.current.srcObject = remoteStream;
-      });
+      currentStream.getTracks().forEach(track => pc.addTrack(track, currentStream));
 
-      peer.signal(callerSignal);
-      connectionRef.current = peer;
-      peerRef.current = peer;
+      pc.ontrack = (event) => {
+        if (userVideo.current) userVideo.current.srcObject = event.streams[0];
+      };
+
+      pc.onicecandidate = (event) => {
+        if (!event.candidate) {
+          console.log("[WebRTC] ICE gathering complete. Sending call answer...");
+          const target = callTargetEmail || caller;
+          socketRef.current.emit("answer-call", { signal: pc.localDescription, to: target });
+        }
+      };
+
+      pc.setRemoteDescription(new RTCSessionDescription(callerSignal)).then(() => {
+        return pc.createAnswer();
+      }).then(answer => {
+        return pc.setLocalDescription(answer);
+      }).catch(err => console.error("Answer generation error:", err));
+
+    }).catch(err => {
+      console.error("Answer media error:", err);
+      setCallAccepted(false);
     });
   };
 
@@ -1132,7 +1165,13 @@ const ChatApp = () => {
     if (target) {
        socketRef.current.emit("end-call", { to: target });
     }
-    if (connectionRef.current) connectionRef.current.destroy();
+    
+    if (connectionRef.current) {
+      try {
+        connectionRef.current.close();
+      } catch (e) {}
+    }
+    connectionRef.current = null;
     
     setReceivingCall(false);
     setCallAccepted(false);
