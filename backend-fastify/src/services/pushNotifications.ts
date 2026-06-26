@@ -6,6 +6,7 @@ interface PushPayload {
   title: string;
   body: string;
   data?: Record<string, any>;
+  channelId?: string;
 }
 
 /**
@@ -52,7 +53,8 @@ export async function sendPushNotification(
           sound: 'default',
           title,
           body,
-          data
+          data,
+          channelId: 'default'
         });
       }
     }

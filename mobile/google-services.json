@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "545597074397",
+    "project_id": "workspace-2810d",
+    "storage_bucket": "workspace-2810d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:545597074397:android:e2bb87a130c23e8c68a434",
+        "android_client_info": {
+          "package_name": "com.nexus.workspace"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMl2-gyGiwBxqaOTue9lf7o7bB83bLL6Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
