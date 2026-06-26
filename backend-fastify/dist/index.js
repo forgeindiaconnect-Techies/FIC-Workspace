@@ -2178,6 +2178,11 @@ async function meetingRoutes(fastify2) {
 
 // src/routes/mail.ts
 init_mailSockets();
+var import_groq_sdk3 = __toESM(require("groq-sdk"));
+var groq3 = null;
+if (process.env.GROQ_API_KEY) {
+  groq3 = new import_groq_sdk3.default({ apiKey: process.env.GROQ_API_KEY });
+}
 async function fetchJsonWithTimeout(url, options, timeoutMs = 1e4) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -2242,7 +2247,7 @@ async function mailRoutes(fastify2) {
       const senderName = request.user.name || request.user.email.split("@")[0];
       const senderEmail = request.user.email;
       const workspaceId = request.user.workspaceId || "forge-india-connect";
-      const recipientList = Array.isArray(to) ? to : [to].filter(Boolean);
+      const recipientList = (Array.isArray(to) ? to : [to]).map((e) => String(e || "").trim()).filter(Boolean);
       if (recipientList.length === 0) {
         return reply.code(400).send({ error: "At least one recipient is required" });
       }
@@ -2344,44 +2349,33 @@ async function mailRoutes(fastify2) {
   fastify2.post("/smart-reply", async (request, reply) => {
     try {
       const { prompt, subject, context } = request.body;
-      const groqKey = process.env.GROQ_API_KEY;
       const geminiKey = process.env.GEMINI_API_KEY;
       const aiPrompt = `You are a highly professional AI email assistant. Your task is to draft or complete an email based on the following context.
 Context/Previous Email: ${context || "None"}
 Subject: ${subject || "None"}
 User Prompt / Draft: ${prompt}
-
+ 
 Important: Provide ONLY the final generated email body text. Do not include introductory conversational text like "Here is the email:" or quotes.`;
       let generatedText = "";
       let provider = "local-fallback";
       try {
-        if (groqKey) {
-          console.log("Routing smart-reply query to Groq...");
-          const data = await fetchJsonWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "llama-3.1-8b-instant",
-              messages: [{ role: "user", content: aiPrompt }]
-            })
+        if (groq3) {
+          console.log("[SmartReply] Routing to Groq SDK...");
+          const chatCompletion = await groq3.chat.completions.create({
+            model: "llama-3.1-8b-instant",
+            messages: [{ role: "user", content: aiPrompt }],
+            temperature: 0.2
           });
-          if (data.error) {
-            console.error("Groq API Error Response:", JSON.stringify(data.error));
-            throw new Error(data.error.message || "Groq error");
-          }
-          generatedText = data.choices?.[0]?.message?.content || "";
+          generatedText = chatCompletion.choices[0]?.message?.content || "";
           provider = "groq";
         } else if (geminiKey) {
-          console.log("Routing smart-reply query to Gemini...");
+          console.log("[SmartReply] Routing to Gemini...");
           const data = await fetchJsonWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ contents: [{ parts: [{ text: aiPrompt }] }] })
           });
-          if (data.error) {
-            console.error("Gemini API Error Response:", JSON.stringify(data.error));
-            throw new Error(data.error.message || "Gemini error");
-          }
+          if (data.error) throw new Error(data.error.message || "Gemini error");
           generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
           provider = "gemini";
         }
@@ -2461,7 +2455,7 @@ Important: Provide ONLY the final generated email body text. Do not include intr
       const senderName = request.user.name || request.user.email.split("@")[0];
       const senderEmail = request.user.email;
       const workspaceId = request.user.workspaceId || "forge-india-connect";
-      const recipientList = Array.isArray(to) ? to : [to].filter(Boolean);
+      const recipientList = (Array.isArray(to) ? to : [to]).map((e) => String(e || "").trim()).filter(Boolean);
       const draftMail = await Mail.create({
         workspaceId,
         ownerEmail: senderEmail,
@@ -2476,6 +2470,7 @@ Important: Provide ONLY the final generated email body text. Do not include intr
       });
       return reply.code(201).send(draftMail);
     } catch (err) {
+      console.error("[Draft POST Error]:", err.message);
       return reply.code(500).send({ error: "Failed to save draft", details: err.message });
     }
   });
@@ -2489,7 +2484,7 @@ Important: Provide ONLY the final generated email body text. Do not include intr
       if (!draft) {
         return reply.code(404).send({ error: "Draft not found" });
       }
-      const recipientList = Array.isArray(to) ? to : [to].filter(Boolean);
+      const recipientList = (Array.isArray(to) ? to : [to]).map((e) => String(e || "").trim()).filter(Boolean);
       draft.recipientEmails = recipientList;
       draft.subject = subject !== void 0 ? subject : draft.subject;
       draft.body = body !== void 0 ? body : draft.body;
@@ -2524,6 +2519,7 @@ Important: Provide ONLY the final generated email body text. Do not include intr
         return reply.code(200).send(draft);
       }
     } catch (err) {
+      console.error("[Draft PATCH Error]:", err.message);
       return reply.code(500).send({ error: "Failed to update draft", details: err.message });
     }
   });
@@ -2533,28 +2529,22 @@ Important: Provide ONLY the final generated email body text. Do not include intr
       if (!subject) {
         return reply.code(400).send({ error: "Subject is required to generate content" });
       }
-      const groqKey = process.env.GROQ_API_KEY;
       const geminiKey = process.env.GEMINI_API_KEY;
       const aiPrompt = `You are a highly professional AI email assistant. Write a professional, complete email with the subject line: "${subject}". 
 Your response MUST be formatted in clean HTML suitable for an email body. Do NOT use markdown. Do NOT use markdown code block syntax (like \`\`\`html). Use paragraph tags, bold tags, and list tags if appropriate.
 Provide ONLY the final email body content itself. Do not include any introductory conversational text or email headers (like Subject/To/From).`;
       let generatedHtml = "";
       try {
-        if (groqKey) {
-          console.log("Routing email generation to Groq...");
-          const data = await fetchJsonWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "llama-3.3-70b-versatile",
-              messages: [{ role: "user", content: aiPrompt }],
-              temperature: 0.5
-            })
+        if (groq3) {
+          console.log("[AI Composer] Routing to Groq SDK...");
+          const chatCompletion = await groq3.chat.completions.create({
+            model: "llama-3.3-70b-versatile",
+            messages: [{ role: "user", content: aiPrompt }],
+            temperature: 0.5
           });
-          if (data.error) throw new Error(data.error.message || "Groq error");
-          generatedHtml = data.choices?.[0]?.message?.content || "";
+          generatedHtml = chatCompletion.choices[0]?.message?.content || "";
         } else if (geminiKey) {
-          console.log("Routing email generation to Gemini...");
+          console.log("[AI Composer] Routing to Gemini...");
           const data = await fetchJsonWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -2581,7 +2571,6 @@ Provide ONLY the final email body content itself. Do not include any introductor
       if (!currentText) {
         return reply.code(200).send({ suggestion: "" });
       }
-      const groqKey = process.env.GROQ_API_KEY;
       const aiPrompt = `You are an email autocomplete assistant. Continue the following email draft by suggesting the next 3 to 6 words to complete the current sentence or thought. 
 Provide ONLY the suggested next words. Do NOT include introductory text, quotes, or conversational explanations.
 If the draft is already complete or no suggestion is natural, return nothing.
@@ -2589,20 +2578,14 @@ Email Draft: "${currentText}"
 Context: "${context || "Professional email"}"`;
       let suggestion = "";
       try {
-        if (groqKey) {
-          const data = await fetchJsonWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "llama-3.1-8b-instant",
-              messages: [{ role: "user", content: aiPrompt }],
-              temperature: 0.1,
-              max_tokens: 20
-            })
+        if (groq3) {
+          const chatCompletion = await groq3.chat.completions.create({
+            model: "llama-3.1-8b-instant",
+            messages: [{ role: "user", content: aiPrompt }],
+            temperature: 0.1,
+            max_tokens: 20
           });
-          if (!data.error) {
-            suggestion = data.choices?.[0]?.message?.content || "";
-          }
+          suggestion = chatCompletion.choices[0]?.message?.content || "";
         }
       } catch (e) {
       }
