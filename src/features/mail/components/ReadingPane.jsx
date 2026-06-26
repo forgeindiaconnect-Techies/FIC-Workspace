@@ -379,23 +379,23 @@ const ReadingPane = () => {
             </div>
 
             {/* Inline Reply Box */}
-            <div className="pt-8 pb-16">
-              <div className="bg-white border border-slate-200 rounded-lg p-4 focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all shadow-sm">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700">A</div>
-                  <span className="text-sm text-slate-600">Reply to <span className="font-semibold text-slate-900">{mail.sender}</span></span>
+            <div className="pt-4 pb-6">
+              <div className="bg-white border border-slate-200 rounded-lg p-3 focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all shadow-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-700">A</div>
+                  <span className="text-xs text-slate-500">Reply to <span className="font-semibold text-slate-800">{mail.sender}</span></span>
                 </div>
                 <textarea 
                   value={inlineReplyText}
                   onChange={(e) => setInlineReplyText(e.target.value)}
-                  className="w-full bg-transparent border-none outline-none text-sm text-slate-900 resize-y min-h-[100px]"
+                  className="w-full bg-transparent border-none outline-none text-sm text-slate-900 resize-y min-h-[60px]"
                   placeholder="Write your response..."
                 />
                 {inlineAttachments.length > 0 && (
-                  <div className="flex gap-2 flex-wrap mb-3 border-t border-slate-100 pt-3">
+                  <div className="flex gap-2 flex-wrap mb-2 border-t border-slate-100 pt-2">
                     {inlineAttachments.map((file, i) => (
-                      <div key={i} className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded text-xs font-medium text-slate-700">
-                        <Paperclip size={12} className="text-slate-400" />
+                      <div key={i} className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded text-xs font-medium text-slate-700">
+                        <Paperclip size={11} className="text-slate-400" />
                         <span className="truncate max-w-[150px]">{file.name}</span>
                         <button onClick={() => setInlineAttachments(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-red-500 ml-1">
                           ✕
@@ -405,23 +405,23 @@ const ReadingPane = () => {
                   </div>
                 )}
                 {isUploadingAttachment && (
-                  <div className="text-xs text-blue-600 font-medium mb-3">Uploading attachment...</div>
+                  <div className="text-[11px] text-blue-600 font-medium mb-2 animate-pulse">Uploading attachment...</div>
                 )}
-                <div className="flex items-center justify-between mt-3">
-                   <div className="flex items-center gap-1">
+                <div className="flex items-center justify-between mt-2 border-t border-slate-100/60 pt-2">
+                   <div className="flex items-center gap-0.5">
                      <input 
                        type="file" 
                        ref={inlineFileRef} 
                        onChange={handleInlineAttachmentUpload} 
                        style={{ display: 'none' }} 
                      />
-                     <button className="p-1.5 hover:bg-slate-100 rounded text-slate-500 transition-colors" title="Pop out reply"><Maximize2 size={16} /></button>
-                     <button onClick={() => inlineFileRef.current?.click()} className="p-1.5 hover:bg-slate-100 rounded text-slate-500 transition-colors" title="Attach file"><Paperclip size={16} /></button>
+                     <button className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors" title="Pop out reply"><Maximize2 size={14} /></button>
+                     <button onClick={() => inlineFileRef.current?.click()} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors" title="Attach file"><Paperclip size={14} /></button>
                    </div>
                    <button 
                      onClick={() => sendReplyMutation.mutate()} 
                      disabled={sendReplyMutation.isPending || isUploadingAttachment || (!inlineReplyText.trim() && inlineAttachments.length === 0)}
-                     className="bg-blue-600 hover:bg-blue-700 text-white h-8 px-4 rounded text-sm font-medium transition-colors disabled:opacity-50"
+                     className="bg-blue-600 hover:bg-blue-700 text-white h-7.5 px-3 rounded text-xs font-medium transition-colors disabled:opacity-50"
                    >
                      {sendReplyMutation.isPending ? 'Sending...' : 'Send'}
                    </button>
