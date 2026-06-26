@@ -2449,10 +2449,167 @@ Important: Provide ONLY the final generated email body text. Do not include intr
         body: formData.toString()
       });
       const data = await res.json();
-      if (!res.ok) return reply.code(500).send({ error: "Cloudinary error", details: data });
+      if (!res.ok) return reply.code(500).send({ error: "Upload failed", details: data });
       return reply.code(200).send({ url: data.secure_url, publicId: data.public_id, bytes: data.bytes });
     } catch (err) {
       return reply.code(500).send({ error: "Upload failed", details: err.message });
+    }
+  });
+  fastify2.post("/draft", async (request, reply) => {
+    try {
+      const { to, subject, body, attachments } = request.body;
+      const senderName = request.user.name || request.user.email.split("@")[0];
+      const senderEmail = request.user.email;
+      const workspaceId = request.user.workspaceId || "forge-india-connect";
+      const recipientList = Array.isArray(to) ? to : [to].filter(Boolean);
+      const draftMail = await Mail.create({
+        workspaceId,
+        ownerEmail: senderEmail,
+        folder: "drafts",
+        senderName,
+        senderEmail,
+        recipientEmails: recipientList,
+        subject: subject || "(No Subject)",
+        body: body || "",
+        attachments: attachments || [],
+        isRead: true
+      });
+      return reply.code(201).send(draftMail);
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to save draft", details: err.message });
+    }
+  });
+  fastify2.patch("/:id", async (request, reply) => {
+    try {
+      const { to, subject, body, attachments, isDraft } = request.body;
+      const senderName = request.user.name || request.user.email.split("@")[0];
+      const senderEmail = request.user.email;
+      const workspaceId = request.user.workspaceId || "forge-india-connect";
+      const draft = await Mail.findOne({ _id: request.params.id, ownerEmail: senderEmail });
+      if (!draft) {
+        return reply.code(404).send({ error: "Draft not found" });
+      }
+      const recipientList = Array.isArray(to) ? to : [to].filter(Boolean);
+      draft.recipientEmails = recipientList;
+      draft.subject = subject !== void 0 ? subject : draft.subject;
+      draft.body = body !== void 0 ? body : draft.body;
+      draft.attachments = attachments !== void 0 ? attachments : draft.attachments;
+      if (isDraft === false) {
+        draft.folder = "sent";
+        draft.isRead = true;
+        await draft.save();
+        for (const recipientEmail of recipientList) {
+          const inboxMail = await Mail.create({
+            workspaceId,
+            ownerEmail: recipientEmail,
+            folder: "inbox",
+            senderName,
+            senderEmail,
+            recipientEmails: recipientList,
+            subject: draft.subject,
+            body: draft.body,
+            attachments: draft.attachments,
+            isRead: false
+          });
+          if (activeMailSockets.has(recipientEmail)) {
+            const ws = activeMailSockets.get(recipientEmail);
+            if (ws?.readyState === 1) {
+              ws.send(JSON.stringify({ type: "NEW_MAIL", mail: inboxMail }));
+            }
+          }
+        }
+        return reply.code(200).send(draft);
+      } else {
+        await draft.save();
+        return reply.code(200).send(draft);
+      }
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to update draft", details: err.message });
+    }
+  });
+  fastify2.post("/generate", async (request, reply) => {
+    try {
+      const { subject } = request.body;
+      if (!subject) {
+        return reply.code(400).send({ error: "Subject is required to generate content" });
+      }
+      const groqKey = process.env.GROQ_API_KEY;
+      const geminiKey = process.env.GEMINI_API_KEY;
+      const aiPrompt = `You are a highly professional AI email assistant. Write a professional, complete email with the subject line: "${subject}". 
+Your response MUST be formatted in clean HTML suitable for an email body. Do NOT use markdown. Do NOT use markdown code block syntax (like \`\`\`html). Use paragraph tags, bold tags, and list tags if appropriate.
+Provide ONLY the final email body content itself. Do not include any introductory conversational text or email headers (like Subject/To/From).`;
+      let generatedHtml = "";
+      try {
+        if (groqKey) {
+          console.log("Routing email generation to Groq...");
+          const data = await fetchJsonWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "llama-3.3-70b-versatile",
+              messages: [{ role: "user", content: aiPrompt }],
+              temperature: 0.5
+            })
+          });
+          if (data.error) throw new Error(data.error.message || "Groq error");
+          generatedHtml = data.choices?.[0]?.message?.content || "";
+        } else if (geminiKey) {
+          console.log("Routing email generation to Gemini...");
+          const data = await fetchJsonWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contents: [{ parts: [{ text: aiPrompt }] }] })
+          });
+          if (data.error) throw new Error(data.error.message || "Gemini error");
+          generatedHtml = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        }
+      } catch (aiErr) {
+        console.warn("AI Provider generation failed. Detail:", aiErr.message);
+      }
+      if (!generatedHtml) {
+        generatedHtml = `<p>Dear Team,</p><p>I am writing regarding <strong>${subject}</strong>.</p><p>Please find the details regarding this matter attached, and let me know if you have any questions or feedback.</p><p>Best regards,<br/>${request.user.name || "AI Assistant"}</p>`;
+      }
+      generatedHtml = generatedHtml.replace(/```html/g, "").replace(/```/g, "").trim();
+      return reply.code(200).send({ content: generatedHtml });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to generate email content", details: err.message });
+    }
+  });
+  fastify2.post("/smart-compose", async (request, reply) => {
+    try {
+      const { currentText, context } = request.body;
+      if (!currentText) {
+        return reply.code(200).send({ suggestion: "" });
+      }
+      const groqKey = process.env.GROQ_API_KEY;
+      const aiPrompt = `You are an email autocomplete assistant. Continue the following email draft by suggesting the next 3 to 6 words to complete the current sentence or thought. 
+Provide ONLY the suggested next words. Do NOT include introductory text, quotes, or conversational explanations.
+If the draft is already complete or no suggestion is natural, return nothing.
+Email Draft: "${currentText}"
+Context: "${context || "Professional email"}"`;
+      let suggestion = "";
+      try {
+        if (groqKey) {
+          const data = await fetchJsonWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "llama-3.1-8b-instant",
+              messages: [{ role: "user", content: aiPrompt }],
+              temperature: 0.1,
+              max_tokens: 20
+            })
+          });
+          if (!data.error) {
+            suggestion = data.choices?.[0]?.message?.content || "";
+          }
+        }
+      } catch (e) {
+      }
+      suggestion = suggestion.replace(/^["'\s]+|["'\s]+$/g, "");
+      return reply.code(200).send({ suggestion });
+    } catch (err) {
+      return reply.code(200).send({ suggestion: "" });
     }
   });
 }
