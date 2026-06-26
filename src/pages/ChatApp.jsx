@@ -333,7 +333,8 @@ const ChatApp = () => {
     fetchCallHistory();
     
     // Real WebSocket connection for native voice/video call signaling
-    const wsUrl = getSocketUrl(`/ws/calls?token=${localStorage.getItem('token')}`);
+    const wsBase = getSocketUrl().replace('http', 'ws');
+    const wsUrl = `${wsBase}/ws/calls?token=${encodeURIComponent(localStorage.getItem('token'))}`;
     const ws = new WebSocket(wsUrl);
     const listeners = {};
 
@@ -1037,6 +1038,9 @@ const ChatApp = () => {
     setCallTargetEmail(userToCall);
     setCallTargetName(targetName);
     
+    // Play dialing audio feedback immediately
+    playAudio(dialingAudio);
+    
     navigator.mediaDevices.getUserMedia({ 
       video: isVideo, 
       audio: { 
@@ -1079,6 +1083,7 @@ const ChatApp = () => {
       console.error("Media access denied:", err);
       alert("Please allow camera and microphone access to make calls.");
       setIsCalling(false);
+      if (dialingAudio) dialingAudio.pause();
     });
   };
 
