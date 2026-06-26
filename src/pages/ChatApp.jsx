@@ -217,8 +217,18 @@ const ChatApp = () => {
 
   const fetchCallHistory = async () => {
     if (!currentUserEmail) return;
-    // Backend endpoint /api/calls doesn't exist yet, mock to prevent 404 console error
-    setCallHistory([]);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(getApiUrl('/api/chat/call-logs'), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCallHistory(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch call history:', err);
+    }
   };
 
   useEffect(() => {
@@ -322,16 +332,108 @@ const ChatApp = () => {
     fetchMembers();
     fetchCallHistory();
     
-    // Mock socket since backend uses native websockets without socket.io support
-    socketRef.current = { on: () => {}, emit: () => {}, disconnect: () => {} };
-    
-    socketRef.current.on("connect", () => {
-      console.log("Connected to Chat Signaling Server");
-      socketRef.current.emit("register-user", { 
-        email: auth.email,
-        mobile: auth.mobile
-      });
-    });
+    // Real WebSocket connection for native voice/video call signaling
+    const wsUrl = getSocketUrl(`/ws/calls?token=${localStorage.getItem('token')}`);
+    const ws = new WebSocket(wsUrl);
+    const listeners = {};
+
+    ws.onopen = () => {
+      console.log("[ChatApp] Connected to Call Signaling Server");
+      // Register immediately
+      ws.send(JSON.stringify({
+        type: 'register',
+        data: { token: localStorage.getItem('token') }
+      }));
+      if (listeners["connect"]) {
+        listeners["connect"].forEach(cb => cb());
+      }
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        const { type } = msg;
+
+        if (type === 'incoming_call') {
+          if (listeners["call-incoming"]) {
+            listeners["call-incoming"].forEach(cb => cb({
+              from: msg.callerEmail,
+              name: msg.callerName,
+              signal: msg.offer,
+              isVideo: msg.isVideo || false
+            }));
+          }
+        } else if (type === 'call_answered') {
+          if (listeners["call-accepted"]) {
+            listeners["call-accepted"].forEach(cb => cb(msg.answer));
+          }
+        } else if (type === 'call_ended') {
+          if (listeners["call-ended"]) {
+            listeners["call-ended"].forEach(cb => cb());
+          }
+        } else if (type === 'call_declined') {
+          if (listeners["call-ended"]) {
+            listeners["call-ended"].forEach(cb => cb());
+          }
+        } else if (type === 'call_unavailable') {
+          if (listeners["call-error"]) {
+            listeners["call-error"].forEach(cb => cb({ message: "User is offline or unavailable." }));
+          }
+        }
+      } catch (e) {
+        console.warn("[ChatApp] Parse signaling message failed:", e);
+      }
+    };
+
+    ws.onclose = () => {
+      console.log("[ChatApp] Call Signaling connection closed.");
+    };
+
+    socketRef.current = {
+      on: (event, callback) => {
+        if (!listeners[event]) listeners[event] = [];
+        listeners[event].push(callback);
+      },
+      emit: (event, payload) => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.warn("[ChatApp] Call signaling socket not open, event ignored:", event);
+          return;
+        }
+        
+        if (event === 'register-user') {
+          // Handled on open
+        } else if (event === 'call-user') {
+          ws.send(JSON.stringify({
+            type: 'call_user',
+            data: {
+              targetEmail: payload.userToCall,
+              callerName: payload.name,
+              offer: payload.signalData
+            }
+          }));
+        } else if (event === 'answer-call') {
+          ws.send(JSON.stringify({
+            type: 'call_answer',
+            data: {
+              targetEmail: payload.to,
+              answer: payload.signal
+            }
+          }));
+        } else if (event === 'end-call') {
+          ws.send(JSON.stringify({
+            type: 'call_ended',
+            data: {
+              targetEmail: payload.to
+            }
+          }));
+        }
+      },
+      disconnect: () => {
+        try {
+          ws.close();
+        } catch (e) {}
+      }
+    };
 
     socketRef.current.on("call-incoming", (data) => {
       console.log("Incoming call from:", data.from);
@@ -1034,14 +1136,19 @@ const ChatApp = () => {
 
     // Save to history
     if (callTargetEmail) {
-      fetch(getApiUrl('/api/calls'), {
+      const token = localStorage.getItem('token');
+      fetch(getApiUrl('/api/chat/call-logs'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
-          from: currentUserEmail,
-          to: callTargetEmail,
-          type: isVideoCall ? 'video' : 'voice',
-          status: callAccepted ? 'completed' : 'busy',
+          calleeEmail: callTargetEmail,
+          callerName: currentUserName,
+          calleeName: callTargetName || callTargetEmail,
+          callType: isVideoCall ? 'video' : 'voice',
+          status: callAccepted ? 'answered' : 'missed',
           duration: callTime
         })
       }).then(() => fetchCallHistory()).catch(e => console.error("History save failed:", e));

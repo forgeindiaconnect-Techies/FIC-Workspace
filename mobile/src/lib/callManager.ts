@@ -138,7 +138,7 @@ class CallManager {
     }
 
     this.ws.onopen = () => {
-      this.send({ type: 'register', email: this.userEmail, token: this.token });
+      this.send({ type: 'register', data: { token: this.token } });
     };
 
     this.ws.onmessage = (event) => {
@@ -311,7 +311,7 @@ class CallManager {
 
     pc.onicecandidate = (ev: any) => {
       if (ev.candidate) {
-        this.send({ type: 'ice_candidate', targetEmail, candidate: ev.candidate });
+        this.send({ type: 'ice_candidate', data: { targetEmail, candidate: ev.candidate } });
       }
     };
 
@@ -326,9 +326,11 @@ class CallManager {
 
       this.send({
         type: 'call_user',
-        targetEmail, 
-        callerName, 
-        sdp: pc.localDescription,
+        data: {
+          targetEmail, 
+          callerName, 
+          offer: pc.localDescription,
+        }
       });
       return true;
     } catch (err) {
@@ -369,7 +371,7 @@ class CallManager {
 
     pc.onicecandidate = (ev: any) => {
       if (ev.candidate) {
-        this.send({ type: 'ice_candidate', targetEmail: this.peerEmail, candidate: ev.candidate });
+        this.send({ type: 'ice_candidate', data: { targetEmail: this.peerEmail, candidate: ev.candidate } });
       }
     };
 
@@ -387,9 +389,11 @@ class CallManager {
       await pc.setLocalDescription(answer);
 
       this.send({
-        type: 'call_accepted',
-        targetEmail: this.peerEmail, 
-        sdp: pc.localDescription,
+        type: 'call_answer',
+        data: {
+          targetEmail: this.peerEmail, 
+          answer: pc.localDescription,
+        }
       });
 
       this.setState('connected');
@@ -414,7 +418,7 @@ class CallManager {
     }
     if (!this.peerEmail) return false;
 
-    this.send({ type: 'call_declined', targetEmail: this.peerEmail });
+    this.send({ type: 'call_declined', data: { targetEmail: this.peerEmail } });
     this.cleanupPeer();
     this.setState('idle');
     return true;
@@ -435,7 +439,7 @@ class CallManager {
       this.logCallHistory('answered');
     }
 
-    this.send({ type: 'call_ended', targetEmail: this.peerEmail });
+    this.send({ type: 'call_ended', data: { targetEmail: this.peerEmail } });
     this.cleanupPeer();
     this.setState('idle');
     return true;
