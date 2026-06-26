@@ -56,8 +56,8 @@ const ChatApp = () => {
   const [editUsername, setEditUsername] = useState(currentUserUsername.replace('@', ''));
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [lastMessageStatus, setLastMessageStatus] = useState({});
-  const [ringingAudio] = useState(typeof Audio !== 'undefined' ? new Audio('https://www.soundjay.com/phone/phone-calling-1.mp3') : null);
-  const [dialingAudio] = useState(typeof Audio !== 'undefined' ? new Audio('https://www.soundjay.com/phone/phone-calling-1.mp3') : null);
+  const [ringingAudio] = useState(typeof Audio !== 'undefined' ? new Audio('/phone-calling-1.wav') : null);
+  const [dialingAudio] = useState(typeof Audio !== 'undefined' ? new Audio('/phone-calling-1.wav') : null);
 
   if (ringingAudio) ringingAudio.loop = true;
   if (dialingAudio) dialingAudio.loop = true;
