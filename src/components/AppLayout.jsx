@@ -108,7 +108,13 @@ export const SidebarProfile = () => {
   const profileAvatar = auth.avatarUrl || auth.profilePicture;
   const profileInitial = profileName?.charAt(0)?.toUpperCase() || 'A';
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const { unregisterWebPush } = await import('../utils/webPushHelper');
+      await unregisterWebPush();
+    } catch (e) {
+      console.warn('[AppLayout] Push unregistration failed:', e);
+    }
     localStorage.removeItem('auth');
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
@@ -154,7 +160,13 @@ const AppLayout = ({ children, appName, appIcon: AppIcon, appColor = '#00C17E' }
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const { unregisterWebPush } = await import('../utils/webPushHelper');
+      await unregisterWebPush();
+    } catch (e) {
+      console.warn('[AppLayout] Push unregistration failed:', e);
+    }
     localStorage.removeItem('auth');
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');

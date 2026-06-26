@@ -24,7 +24,13 @@ const Sidebar = () => {
   } = useMailStore();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const { unregisterWebPush } = await import('../../../utils/webPushHelper');
+      await unregisterWebPush();
+    } catch (e) {
+      console.warn('[MailSidebar] Push unregistration failed:', e);
+    }
     localStorage.removeItem('auth');
     localStorage.removeItem('token');
     navigate('/login');

@@ -30,7 +30,13 @@ const ChatSettings = () => {
     setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const { unregisterWebPush } = await import('../utils/webPushHelper');
+      await unregisterWebPush();
+    } catch (e) {
+      console.warn('[ChatSettings] Push unregistration failed:', e);
+    }
     localStorage.removeItem('auth');
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');

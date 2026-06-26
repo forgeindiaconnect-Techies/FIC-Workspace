@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { AppSwitcher } from './AppLayout';
-import { registerWebPush } from '../utils/webPushHelper';
 
 const DashboardLayout = ({ children, isAdmin = false }) => {
   const { workspaceId } = useParams();
@@ -45,7 +44,13 @@ const DashboardLayout = ({ children, isAdmin = false }) => {
 
   const navItems = !workspaceId ? superNav : isAdmin ? adminNav : workspaceNav;
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const { unregisterWebPush } = await import('../utils/webPushHelper');
+      await unregisterWebPush();
+    } catch (e) {
+      console.warn('[DashboardLayout] Push unregistration failed:', e);
+    }
     localStorage.removeItem('auth');
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
