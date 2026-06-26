@@ -1268,6 +1268,22 @@ export default function Meetings() {
           if (msg.type === 'error') {
             console.warn('[Signaling] Server error:', msg.message);
           }
+          if (msg.type === 'mute-all') {
+            if (msg.mute) {
+              setIsMuted(true);
+              if (Platform.OS === 'web') {
+                window.alert('The host has muted all participants');
+              } else {
+                Alert.alert('Host Action', 'The host has muted all participants');
+              }
+            } else {
+              if (Platform.OS === 'web') {
+                window.alert('The host has allowed participants to unmute');
+              } else {
+                Alert.alert('Host Action', 'The host has allowed participants to unmute');
+              }
+            }
+          }
           if (msg.type === 'chat-message') {
             setChatMsgs(prev => [...prev, {
               id: String(Date.now()) + Math.random(),
@@ -1415,6 +1431,8 @@ export default function Meetings() {
     setRemoteStreams({});
     setRemoteScreenStreams({});
     peerIdRef.current = null;
+    setAudioOutputModal(false);
+    setMuteAllActive(false);
   };
 
   const normalizeCode = (c: string) => {
@@ -1703,7 +1721,16 @@ export default function Meetings() {
                 <View style={{ backgroundColor: '#1e293b', borderRadius: 12, overflow: 'hidden' }}>
                   {[
                     { label: 'Mute All Participants', desc: 'Silence everyone instantly', active: muteAllActive,
-                      onPress: () => { setMuteAllActive(true); Alert.alert('Muted', 'All participants have been muted'); }},
+                      onPress: () => {
+                        const newState = !muteAllActive;
+                        setMuteAllActive(newState);
+                        if (Platform.OS === 'web') {
+                          window.alert(newState ? 'All participants have been muted' : 'All participants have been allowed to unmute');
+                        } else {
+                          Alert.alert(newState ? 'Muted' : 'Unmuted', newState ? 'All participants have been muted' : 'All participants have been allowed to unmute');
+                        }
+                        sendSignal('mute-all', { mute: newState });
+                      }},
                     { label: 'Prevent Participants from Unmuting', active: preventUnmute,
                       onPress: () => setPreventUnmute(p => !p) },
                     { label: 'Request All to Unmute', desc: 'Send unmute request to everyone',
@@ -2687,7 +2714,7 @@ export default function Meetings() {
       </Modal>
 
       {/* AUDIO OUTPUT MODAL */}
-      <Modal visible={audioOutputModal} transparent animationType="slide" onRequestClose={() => setAudioOutputModal(false)}>
+      <Modal visible={audioOutputModal && !!activeRoom} transparent animationType="slide" onRequestClose={() => setAudioOutputModal(false)}>
         <View style={s.modalOverlay}>
           <View style={s.bottomSheet}>
             <View style={s.sheetHeader}>

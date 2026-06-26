@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { Mail } from '../models/Mail';
 import { authenticate } from '../middlewares/auth';
 import { activeMailSockets } from '../services/mailSockets';
+import { sendPushNotification } from '../services/pushNotifications';
 import Groq from 'groq-sdk';
 
 let groq: Groq | null = null;
@@ -133,6 +134,18 @@ export async function mailRoutes(fastify: FastifyInstance) {
             ws.send(JSON.stringify({ type: 'NEW_MAIL', mail: inboxMail }));
           }
         }
+
+        // Dispatch remote push notification
+        sendPushNotification(
+          [recipientEmail],
+          `New Email: ${subject || '(No Subject)'}`,
+          `From: ${senderName || senderEmail}`,
+          {
+            type: 'mail',
+            mailId: inboxMail._id.toString(),
+            senderEmail,
+          }
+        ).catch((err: any) => console.error('[Mail] Remote push error:', err));
       }
 
       return reply.code(201).send(sentMail);
@@ -413,6 +426,18 @@ Important: Provide ONLY the final generated email body text. Do not include intr
               ws.send(JSON.stringify({ type: 'NEW_MAIL', mail: inboxMail }));
             }
           }
+
+          // Dispatch remote push notification
+          sendPushNotification(
+            [recipientEmail],
+            `New Email: ${draft.subject || '(No Subject)'}`,
+            `From: ${senderName || senderEmail}`,
+            {
+              type: 'mail',
+              mailId: inboxMail._id.toString(),
+              senderEmail,
+            }
+          ).catch((err: any) => console.error('[Mail Draft] Remote push error:', err));
         }
         return reply.code(200).send(draft);
       } else {

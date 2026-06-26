@@ -157,19 +157,19 @@ var MutedUser_exports = {};
 __export(MutedUser_exports, {
   MutedUser: () => MutedUser
 });
-var import_mongoose19, MutedUserSchema, MutedUser;
+var import_mongoose18, MutedUserSchema, MutedUser;
 var init_MutedUser = __esm({
   "src/models/MutedUser.ts"() {
     "use strict";
-    import_mongoose19 = require("mongoose");
-    MutedUserSchema = new import_mongoose19.Schema({
+    import_mongoose18 = require("mongoose");
+    MutedUserSchema = new import_mongoose18.Schema({
       userId: { type: String, required: true },
       userEmail: { type: String, required: true },
       mutedUserEmail: { type: String, required: true },
       createdAt: { type: Date, default: Date.now }
     });
     MutedUserSchema.index({ userEmail: 1, mutedUserEmail: 1 }, { unique: true });
-    MutedUser = (0, import_mongoose19.model)("MutedUser", MutedUserSchema);
+    MutedUser = (0, import_mongoose18.model)("MutedUser", MutedUserSchema);
   }
 });
 
@@ -202,6 +202,7 @@ var UserSchema = new import_mongoose.Schema({
   appleId: { type: String },
   mfaSecret: { type: String },
   mfaEnabled: { type: Boolean, default: false },
+  expoPushToken: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
 var User = (0, import_mongoose.model)("User", UserSchema);
@@ -1030,6 +1031,24 @@ async function authRoutes(fastify2) {
       return reply.code(200).send({ message: "Password updated successfully." });
     } catch (err) {
       return reply.code(500).send({ error: "Failed to change password.", details: err.message });
+    }
+  });
+  fastify2.post("/push-token", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { token } = request.body;
+      if (!token) {
+        return reply.code(400).send({ error: "Push token is required." });
+      }
+      const user = await User.findById(request.user.id);
+      if (!user) {
+        return reply.code(404).send({ error: "User not found." });
+      }
+      user.expoPushToken = token;
+      await user.save();
+      console.log(`[Auth] Registered push token for user ${user.email}`);
+      return reply.code(200).send({ success: true, message: "Push token registered successfully." });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to register push token.", details: err.message });
     }
   });
 }
@@ -2178,6 +2197,62 @@ async function meetingRoutes(fastify2) {
 
 // src/routes/mail.ts
 init_mailSockets();
+
+// src/services/pushNotifications.ts
+async function sendPushNotification(recipientEmails, title, body, data) {
+  try {
+    if (!recipientEmails || recipientEmails.length === 0) {
+      return;
+    }
+    const normalizedEmails = recipientEmails.map((email) => email.trim().toLowerCase());
+    const users = await User.find({
+      email: { $in: normalizedEmails },
+      expoPushToken: { $exists: true, $ne: "" }
+    }).select("email expoPushToken");
+    if (users.length === 0) {
+      console.log(`[PushService] No registered push tokens found for recipients: ${normalizedEmails.join(", ")}`);
+      return;
+    }
+    const messages = [];
+    const seenTokens = /* @__PURE__ */ new Set();
+    for (const user of users) {
+      if (user.expoPushToken && !seenTokens.has(user.expoPushToken)) {
+        seenTokens.add(user.expoPushToken);
+        messages.push({
+          to: user.expoPushToken,
+          sound: "default",
+          title,
+          body,
+          data
+        });
+      }
+    }
+    if (messages.length === 0) {
+      return;
+    }
+    console.log(`[PushService] Dispatching push notifications to ${messages.length} token(s)...`);
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip, deflate"
+      },
+      body: JSON.stringify(messages)
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[PushService] Expo Push gateway returned status ${response.status}: ${errorText}`);
+      return;
+    }
+    const result = await response.json();
+    console.log("[PushService] Expo push result:", JSON.stringify(result));
+  } catch (error) {
+    console.error("[PushService] Failed to send push notifications:", error);
+  }
+}
+
+// src/routes/mail.ts
 var import_groq_sdk3 = __toESM(require("groq-sdk"));
 var groq3 = null;
 if (process.env.GROQ_API_KEY) {
@@ -2282,6 +2357,16 @@ async function mailRoutes(fastify2) {
             ws.send(JSON.stringify({ type: "NEW_MAIL", mail: inboxMail }));
           }
         }
+        sendPushNotification(
+          [recipientEmail],
+          `New Email: ${subject || "(No Subject)"}`,
+          `From: ${senderName || senderEmail}`,
+          {
+            type: "mail",
+            mailId: inboxMail._id.toString(),
+            senderEmail
+          }
+        ).catch((err) => console.error("[Mail] Remote push error:", err));
       }
       return reply.code(201).send(sentMail);
     } catch (err) {
@@ -2512,6 +2597,16 @@ Important: Provide ONLY the final generated email body text. Do not include intr
               ws.send(JSON.stringify({ type: "NEW_MAIL", mail: inboxMail }));
             }
           }
+          sendPushNotification(
+            [recipientEmail],
+            `New Email: ${draft.subject || "(No Subject)"}`,
+            `From: ${senderName || senderEmail}`,
+            {
+              type: "mail",
+              mailId: inboxMail._id.toString(),
+              senderEmail
+            }
+          ).catch((err) => console.error("[Mail Draft] Remote push error:", err));
         }
         return reply.code(200).send(draft);
       } else {
@@ -2598,7 +2693,7 @@ Context: "${context || "Professional email"}"`;
 }
 
 // src/routes/kural.ts
-var import_mongoose16 = require("mongoose");
+var import_mongoose15 = require("mongoose");
 var import_cloudinary = require("cloudinary");
 
 // src/models/KuralConversation.ts
@@ -2668,26 +2763,6 @@ var StorySchema = new import_mongoose14.Schema({
 });
 StorySchema.index({ workspaceId: 1, createdAt: -1 });
 var Story = (0, import_mongoose14.model)("Story", StorySchema);
-
-// src/models/CallLog.ts
-var import_mongoose15 = __toESM(require("mongoose"));
-var CallLogSchema = new import_mongoose15.Schema(
-  {
-    callerEmail: { type: String, required: true },
-    calleeEmail: { type: String, required: true },
-    callerName: { type: String, required: true },
-    calleeName: { type: String, required: true },
-    callType: { type: String, enum: ["audio", "video"], default: "audio" },
-    status: { type: String, enum: ["answered", "missed", "declined"], default: "answered" },
-    duration: { type: Number, default: 0 },
-    timestamp: { type: Date, default: Date.now },
-    deletedBy: { type: [String], default: [] }
-  },
-  { timestamps: true }
-);
-CallLogSchema.index({ callerEmail: 1, timestamp: -1 });
-CallLogSchema.index({ calleeEmail: 1, timestamp: -1 });
-var CallLog = import_mongoose15.default.model("CallLog", CallLogSchema);
 
 // src/routes/kural.ts
 var cloudinaryFolder = process.env.CLOUDINARY_FOLDER || "chat_uploads";
@@ -2962,7 +3037,7 @@ async function kuralRoutes(fastify2) {
       const { groupId } = request.params;
       const { emails = [] } = request.body;
       const currentEmail = normalizeEmail(request.user?.email || "");
-      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) {
+      if (!import_mongoose15.Types.ObjectId.isValid(groupId)) {
         return reply.code(400).send({ error: "Invalid group ID." });
       }
       if (!Array.isArray(emails) || emails.length === 0) {
@@ -3016,7 +3091,7 @@ async function kuralRoutes(fastify2) {
       const { groupId } = request.params;
       const { name } = request.body;
       const currentEmail = normalizeEmail(request.user?.email || "");
-      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: "Invalid group ID." });
+      if (!import_mongoose15.Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: "Invalid group ID." });
       if (!name || name.trim() === "") return reply.code(400).send({ error: "Name is required." });
       const conversation = await KuralConversation.findOne({ _id: groupId, participantEmails: currentEmail });
       if (!conversation) return reply.code(404).send({ error: "Group not found or you are not a member." });
@@ -3032,7 +3107,7 @@ async function kuralRoutes(fastify2) {
       const { groupId } = request.params;
       const { avatarUrl } = request.body;
       const currentEmail = normalizeEmail(request.user?.email || "");
-      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: "Invalid group ID." });
+      if (!import_mongoose15.Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: "Invalid group ID." });
       if (!avatarUrl) return reply.code(400).send({ error: "avatarUrl is required." });
       const conversation = await KuralConversation.findOne({ _id: groupId, participantEmails: currentEmail });
       if (!conversation) return reply.code(404).send({ error: "Group not found or you are not a member." });
@@ -3046,7 +3121,7 @@ async function kuralRoutes(fastify2) {
   fastify2.delete("/groups/:groupId", async (request, reply) => {
     try {
       const { groupId } = request.params;
-      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) {
+      if (!import_mongoose15.Types.ObjectId.isValid(groupId)) {
         return reply.code(400).send({ error: "Invalid group id." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
@@ -3088,7 +3163,7 @@ async function kuralRoutes(fastify2) {
       const { groupId, email } = request.params;
       const currentEmail = normalizeEmail(request.user?.email || "");
       const emailToRemove = normalizeEmail(email);
-      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: "Invalid group ID." });
+      if (!import_mongoose15.Types.ObjectId.isValid(groupId)) return reply.code(400).send({ error: "Invalid group ID." });
       if (!emailToRemove) return reply.code(400).send({ error: "Email to remove is required." });
       const conversation = await KuralConversation.findOne({ _id: groupId, participantEmails: currentEmail });
       if (!conversation) return reply.code(404).send({ error: "Group not found or you are not a member." });
@@ -3103,7 +3178,7 @@ async function kuralRoutes(fastify2) {
     try {
       const { groupId } = request.params;
       const currentEmail = normalizeEmail(request.user?.email || "");
-      if (!import_mongoose16.Types.ObjectId.isValid(groupId)) {
+      if (!import_mongoose15.Types.ObjectId.isValid(groupId)) {
         return reply.code(400).send({ error: "Invalid group ID." });
       }
       const conversation = await KuralConversation.findOne({
@@ -3121,7 +3196,7 @@ async function kuralRoutes(fastify2) {
   fastify2.get("/:workspaceId/:channelId", async (request, reply) => {
     try {
       const { workspaceId, channelId } = request.params;
-      if (!import_mongoose16.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose15.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
@@ -3157,7 +3232,7 @@ async function kuralRoutes(fastify2) {
       const fileUrl = body.fileUrl || null;
       const fileType = body.fileType || null;
       const originalName = String(body.originalName || "").trim() || null;
-      if (!import_mongoose16.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose15.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       if (!content && !fileUrl) {
@@ -3184,6 +3259,43 @@ async function kuralRoutes(fastify2) {
       conversation.lastMessageContent = content || `Sent a file: ${originalName || "Attachment"}`;
       conversation.lastMessageTime = message.createdAt;
       await conversation.save();
+      const { activeMailSockets: activeMailSockets2 } = (init_mailSockets(), __toCommonJS(mailSockets_exports));
+      if (activeMailSockets2) {
+        const payload = {
+          _id: message._id,
+          conversationId: message.conversationId,
+          channelId: conversation._id.toString(),
+          sender: message.senderName || currentEmail,
+          senderName: message.senderName,
+          senderEmail: message.senderEmail,
+          content: message.content,
+          fileUrl: message.fileUrl,
+          fileType: message.fileType,
+          originalName: message.originalName,
+          timestamp: message.createdAt
+        };
+        const messageStr = JSON.stringify({ type: "NEW_MESSAGE", message: payload });
+        conversation.participantEmails.forEach((email) => {
+          const normEmail = normalizeEmail(email);
+          if (normEmail !== currentEmail && activeMailSockets2.has(normEmail)) {
+            activeMailSockets2.get(normEmail)?.send(messageStr);
+          }
+        });
+      }
+      const otherParticipants = conversation.participantEmails.map((email) => normalizeEmail(email)).filter((email) => email !== currentEmail);
+      if (otherParticipants.length > 0) {
+        sendPushNotification(
+          otherParticipants,
+          `New Message from ${message.senderName || currentEmail}`,
+          content || `Sent a file: ${originalName || "Attachment"}`,
+          {
+            type: "chat",
+            conversationId: conversation._id.toString(),
+            channelId: conversation._id.toString(),
+            senderEmail: currentEmail
+          }
+        ).catch((err) => console.error("[Kural] Remote push error:", err));
+      }
       return reply.code(201).send({
         _id: message._id,
         conversationId: message.conversationId,
@@ -3233,7 +3345,7 @@ async function kuralRoutes(fastify2) {
   fastify2.delete("/delete-conversation/:channelId", async (request, reply) => {
     try {
       const { channelId } = request.params;
-      if (!import_mongoose16.Types.ObjectId.isValid(channelId)) {
+      if (!import_mongoose15.Types.ObjectId.isValid(channelId)) {
         return reply.code(400).send({ error: "Invalid Kural channel id." });
       }
       const currentEmail = normalizeEmail(request.user?.email || "");
@@ -3292,7 +3404,7 @@ async function kuralRoutes(fastify2) {
     try {
       const { id } = request.params;
       const currentEmail = normalizeEmail(request.user?.email || "");
-      if (!import_mongoose16.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose15.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid CallLog ID" });
       }
       const log = await CallLog.findById(id);
@@ -3380,8 +3492,8 @@ async function memberRoutes(fastify2) {
 }
 
 // src/models/Task.ts
-var import_mongoose17 = require("mongoose");
-var TaskSchema = new import_mongoose17.Schema({
+var import_mongoose16 = require("mongoose");
+var TaskSchema = new import_mongoose16.Schema({
   workspaceId: { type: String, required: true, index: true },
   title: { type: String, required: true },
   description: { type: String },
@@ -3409,7 +3521,7 @@ TaskSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var Task = (0, import_mongoose17.model)("Task", TaskSchema);
+var Task = (0, import_mongoose16.model)("Task", TaskSchema);
 
 // src/routes/tasks.ts
 var defaultWorkspaceId3 = "forge-india-connect";
@@ -3489,8 +3601,8 @@ async function taskRoutes(fastify2) {
 }
 
 // src/models/Document.ts
-var import_mongoose18 = require("mongoose");
-var DocumentSchema = new import_mongoose18.Schema({
+var import_mongoose17 = require("mongoose");
+var DocumentSchema = new import_mongoose17.Schema({
   workspaceId: { type: String, required: true, index: true },
   title: { type: String, required: true },
   type: {
@@ -3502,7 +3614,7 @@ var DocumentSchema = new import_mongoose18.Schema({
   ownerName: { type: String },
   sizeBytes: { type: Number, default: 0 },
   url: { type: String },
-  content: { type: import_mongoose18.Schema.Types.Mixed },
+  content: { type: import_mongoose17.Schema.Types.Mixed },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
@@ -3511,7 +3623,7 @@ DocumentSchema.pre("save", function(next) {
   this.updatedAt = /* @__PURE__ */ new Date();
   next();
 });
-var WorkspaceDocument = (0, import_mongoose18.model)("WorkspaceDocument", DocumentSchema);
+var WorkspaceDocument = (0, import_mongoose17.model)("WorkspaceDocument", DocumentSchema);
 
 // src/routes/docs.ts
 var defaultWorkspaceId4 = "forge-india-connect";
@@ -3724,7 +3836,7 @@ async function superadminRoutes(fastify2) {
 }
 
 // src/routes/status.ts
-var import_mongoose20 = require("mongoose");
+var import_mongoose19 = require("mongoose");
 function normalizeEmail2(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -3793,7 +3905,7 @@ async function statusRoutes(fastify2) {
     try {
       const { id } = request.params;
       const currentEmail = normalizeEmail2(request.user?.email || "");
-      if (!import_mongoose20.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose19.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid status id." });
       }
       const existingStatus = await Story.findById(id);
@@ -3813,7 +3925,7 @@ async function statusRoutes(fastify2) {
       const { id } = request.params;
       const { emoji } = request.body;
       const currentEmail = normalizeEmail2(request.user?.email || "");
-      if (!import_mongoose20.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose19.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid status id." });
       }
       const status = await Story.findByIdAndUpdate(
@@ -3832,7 +3944,7 @@ async function statusRoutes(fastify2) {
       const { id } = request.params;
       const { text } = request.body;
       const currentEmail = normalizeEmail2(request.user?.email || "");
-      if (!import_mongoose20.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose19.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid status id." });
       }
       const status = await Story.findById(id);
@@ -3911,7 +4023,7 @@ async function statusRoutes(fastify2) {
     try {
       const { id } = request.params;
       const currentEmail = normalizeEmail2(request.user?.email || "");
-      if (!import_mongoose20.Types.ObjectId.isValid(id)) {
+      if (!import_mongoose19.Types.ObjectId.isValid(id)) {
         return reply.code(400).send({ error: "Invalid status id." });
       }
       const status = await Story.findById(id);
@@ -3931,8 +4043,8 @@ async function statusRoutes(fastify2) {
 var import_cloudinary2 = require("cloudinary");
 
 // src/models/ThreadPost.ts
-var import_mongoose21 = require("mongoose");
-var ThreadPostSchema = new import_mongoose21.Schema({
+var import_mongoose20 = require("mongoose");
+var ThreadPostSchema = new import_mongoose20.Schema({
   workspaceId: { type: String, required: true, index: true },
   authorEmail: { type: String, required: true },
   authorName: { type: String, required: true },
@@ -3948,11 +4060,11 @@ var ThreadPostSchema = new import_mongoose21.Schema({
   isPinned: { type: Boolean, default: false },
   isReported: { type: Boolean, default: false }
 }, { timestamps: true });
-var ThreadPost = (0, import_mongoose21.model)("ThreadPost", ThreadPostSchema);
+var ThreadPost = (0, import_mongoose20.model)("ThreadPost", ThreadPostSchema);
 
 // src/models/ThreadComment.ts
-var import_mongoose22 = require("mongoose");
-var ThreadCommentSchema = new import_mongoose22.Schema({
+var import_mongoose21 = require("mongoose");
+var ThreadCommentSchema = new import_mongoose21.Schema({
   postId: { type: String, required: true, index: true },
   parentCommentId: { type: String, index: true },
   authorEmail: { type: String, required: true },
@@ -3960,7 +4072,7 @@ var ThreadCommentSchema = new import_mongoose22.Schema({
   content: { type: String, required: true },
   likes: [{ type: String }]
 }, { timestamps: true });
-var ThreadComment = (0, import_mongoose22.model)("ThreadComment", ThreadCommentSchema);
+var ThreadComment = (0, import_mongoose21.model)("ThreadComment", ThreadCommentSchema);
 
 // src/services/threadSockets.ts
 var import_fs4 = __toESM(require("fs"));
@@ -4265,7 +4377,7 @@ async function threadsRoutes(fastify2) {
 // src/services/webrtc.ts
 var import_ws2 = require("ws");
 var import_jsonwebtoken4 = __toESM(require("jsonwebtoken"));
-var import_mongoose23 = require("mongoose");
+var import_mongoose22 = require("mongoose");
 var JWT_SECRET2 = process.env.JWT_SECRET || "nexus-jwt-secret-key";
 var rooms = /* @__PURE__ */ new Map();
 function send(ws, payload) {
@@ -4394,6 +4506,15 @@ function handleWebRtcSignalling(ws) {
       });
       return;
     }
+    if (type === "mute-all") {
+      const { mute } = data;
+      broadcastToRoom(meetingId, peerId, {
+        type: "mute-all",
+        fromPeerId: peerId,
+        mute
+      });
+      return;
+    }
     if (type === "chat-message") {
       broadcastToRoom(meetingId, peerId, {
         type: "chat-message",
@@ -4404,7 +4525,7 @@ function handleWebRtcSignalling(ws) {
     }
     if (type === "end-meeting-all") {
       broadcastToRoom(meetingId, peerId, { type: "meeting-ended" });
-      const query = import_mongoose23.Types.ObjectId.isValid(meetingId) ? { _id: meetingId } : { joinCode: meetingId };
+      const query = import_mongoose22.Types.ObjectId.isValid(meetingId) ? { _id: meetingId } : { joinCode: meetingId };
       Meeting.updateOne(query, { status: "ended" }).catch((err) => console.error("[WebRTC] Failed to update meeting status:", err));
       return;
     }
@@ -4450,7 +4571,7 @@ async function cleanupPeer(roomId, pid) {
   const baseUserId = pid.split("_")[0];
   try {
     let meetingQuery = { _id: roomId };
-    if (!import_mongoose23.Types.ObjectId.isValid(roomId)) {
+    if (!import_mongoose22.Types.ObjectId.isValid(roomId)) {
       meetingQuery = { joinCode: roomId };
     }
     const meeting = await Meeting.findOne(meetingQuery);
@@ -4469,16 +4590,39 @@ async function cleanupPeer(roomId, pid) {
     }
     const activeParticipantCount = await Participant.countDocuments(query);
     if (activeParticipantCount === 0 && meeting.status !== "ended") {
-      meeting.status = "ended";
-      await meeting.save();
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      if (meeting.aiEnabled) {
-        await stopAIBot(meeting._id.toString());
-      } else {
-        summarizeMeeting(meeting._id.toString()).catch((err) => {
-          console.warn("[WebRTC] Summary generation failed:", err.message);
-        });
-      }
+      console.log(`[WebRTC] Room ${meeting._id} is empty. Starting 30s grace period before ending meeting...`);
+      setTimeout(async () => {
+        try {
+          const currentMeeting = await Meeting.findById(meeting._id);
+          if (!currentMeeting || currentMeeting.status === "ended") return;
+          const currentAiBotUser = await User.findOne({ email: "ai-assistant@nexus.app" });
+          const currentQuery = {
+            meetingId: currentMeeting._id,
+            leftAt: { $exists: false }
+          };
+          if (currentAiBotUser) {
+            currentQuery.userId = { $ne: currentAiBotUser._id };
+          }
+          const currentActiveCount = await Participant.countDocuments(currentQuery);
+          if (currentActiveCount === 0) {
+            console.log(`[WebRTC] Grace period expired. Ending room ${currentMeeting._id}...`);
+            currentMeeting.status = "ended";
+            await currentMeeting.save();
+            await new Promise((resolve) => setTimeout(resolve, 2500));
+            if (currentMeeting.aiEnabled) {
+              await stopAIBot(currentMeeting._id.toString());
+            } else {
+              summarizeMeeting(currentMeeting._id.toString()).catch((err) => {
+                console.warn("[WebRTC] Summary generation failed:", err.message);
+              });
+            }
+          } else {
+            console.log(`[WebRTC] Participant reconnected during grace period. Room ${currentMeeting._id} remains active.`);
+          }
+        } catch (err) {
+          console.error("[WebRTC] Error during grace period check:", err);
+        }
+      }, 3e4);
     }
   } catch (e) {
     console.error("[WebRTC] cleanupPeer DB update error:", e);

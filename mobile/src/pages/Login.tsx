@@ -16,6 +16,7 @@ import { Mail, Lock, LogIn, User, Building, CreditCard, X } from 'lucide-react-n
 import { api, setCustomServerUrl, getCustomServerUrl, useCloudServer, checkBackendHealth, getSession, getSocketUrl } from '../lib/api';
 import { callManager } from '../lib/callManager';
 import { useFonts, AbhayaLibre_600SemiBold } from '@expo-google-fonts/abhaya-libre';
+import { registerForPushNotificationsAsync } from '../lib/pushHelper';
 
 type AuthMode = 'login' | 'signup';
 
@@ -48,6 +49,7 @@ export default function Login() {
       const { token, user } = getSession();
       if (token && user?.email) {
         callManager.init(getSocketUrl(), token, user.email);
+        navigate('/home');
       }
     })();
   }, []);
@@ -85,6 +87,7 @@ export default function Login() {
         const { token, user } = getSession();
         if (token && user?.email) {
           callManager.init(getSocketUrl(), token, user.email);
+          registerForPushNotificationsAsync();
         }
         setLoading(false);
         navigate('/home');
@@ -107,6 +110,7 @@ export default function Login() {
       const { token, user } = getSession();
       if (token && user?.email) {
         callManager.init(getSocketUrl(), token, user.email);
+        registerForPushNotificationsAsync();
       }
       setLoading(false);
       navigate('/home');
@@ -124,6 +128,7 @@ export default function Login() {
       const { token, user } = getSession();
       if (token && user?.email) {
         callManager.init(getSocketUrl(), token, user.email);
+        registerForPushNotificationsAsync();
       }
       setLoading(false);
       setShowPayment(false);
@@ -143,6 +148,7 @@ export default function Login() {
       const { token, user } = getSession();
       if (token && user?.email) {
         callManager.init(getSocketUrl(), token, user.email);
+        registerForPushNotificationsAsync();
       }
       setLoading(false);
       navigate('/home');

@@ -458,6 +458,39 @@ const ChatApp = () => {
             })));
           } else if (data.type === 'new-channel') {
             fetchChannels();
+          } else if (data.type === 'NEW_MESSAGE') {
+            const message = data.message;
+            if (selectedIdRef.current === message.conversationId || selectedIdRef.current === message.channelId) {
+              setMessages(prev => {
+                if (prev.some(m => m._id === message._id)) return prev;
+                return [...prev, {
+                  _id: message._id,
+                  conversationId: message.conversationId,
+                  sender: message.senderEmail === email ? 'You' : message.senderName,
+                  senderName: message.senderName,
+                  senderEmail: message.senderEmail,
+                  content: message.content,
+                  fileUrl: message.fileUrl,
+                  fileType: message.fileType,
+                  originalName: message.originalName,
+                  timestamp: message.timestamp
+                }];
+              });
+            }
+
+            setChannels(prev => prev.map(ch => {
+              if (ch._id === message.conversationId || ch._id === message.channelId) {
+                const isSelected = selectedIdRef.current === ch._id;
+                return {
+                  ...ch,
+                  lastMessage: message.timestamp,
+                  lastMessageContent: message.content || `Sent a file: ${message.originalName || 'Attachment'}`,
+                  hasMessages: true,
+                  unreadCount: isSelected ? 0 : (ch.unreadCount || 0) + 1
+                };
+              }
+              return ch;
+            }));
           } else if (data.type === 'group-deleted') {
             setChannels(prev => prev.filter(c => c._id !== data.payload.groupId));
             setSelected(prev => prev?._id === data.payload.groupId ? null : prev);

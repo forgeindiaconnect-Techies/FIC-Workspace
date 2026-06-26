@@ -170,6 +170,16 @@ export function handleWebRtcSignalling(ws: WebSocket) {
       return;
     }
 
+    if (type === 'mute-all') {
+      const { mute } = data;
+      broadcastToRoom(meetingId, peerId, {
+        type: 'mute-all',
+        fromPeerId: peerId,
+        mute
+      });
+      return;
+    }
+
     if (type === 'chat-message') {
       broadcastToRoom(meetingId, peerId, {
         type: 'chat-message',
@@ -267,16 +277,46 @@ async function cleanupPeer(roomId: string, pid: string) {
     const activeParticipantCount = await Participant.countDocuments(query);
 
     if (activeParticipantCount === 0 && meeting.status !== 'ended') {
-      meeting.status = 'ended';
-      await meeting.save();
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      if (meeting.aiEnabled) {
-        await stopAIBot(meeting._id.toString());
-      } else {
-        summarizeMeeting(meeting._id.toString()).catch((err) => {
-          console.warn('[WebRTC] Summary generation failed:', err.message);
-        });
-      }
+      console.log(`[WebRTC] Room ${meeting._id} is empty. Starting 30s grace period before ending meeting...`);
+      setTimeout(async () => {
+        try {
+          // Fetch the meeting again to ensure we have fresh state
+          const currentMeeting = await Meeting.findById(meeting._id);
+          if (!currentMeeting || currentMeeting.status === 'ended') return;
+
+          // Fetch the AI bot user again just in case
+          const currentAiBotUser = await User.findOne({ email: 'ai-assistant@nexus.app' });
+          const currentQuery: any = {
+            meetingId: currentMeeting._id,
+            leftAt: { $exists: false }
+          };
+          if (currentAiBotUser) {
+            currentQuery.userId = { $ne: currentAiBotUser._id };
+          }
+
+          const currentActiveCount = await Participant.countDocuments(currentQuery);
+
+          if (currentActiveCount === 0) {
+            console.log(`[WebRTC] Grace period expired. Ending room ${currentMeeting._id}...`);
+            currentMeeting.status = 'ended';
+            await currentMeeting.save();
+            
+            // Small delay before stopping bot / summarizing
+            await new Promise((resolve) => setTimeout(resolve, 2500));
+            if (currentMeeting.aiEnabled) {
+              await stopAIBot(currentMeeting._id.toString());
+            } else {
+              summarizeMeeting(currentMeeting._id.toString()).catch((err) => {
+                console.warn('[WebRTC] Summary generation failed:', err.message);
+              });
+            }
+          } else {
+            console.log(`[WebRTC] Participant reconnected during grace period. Room ${currentMeeting._id} remains active.`);
+          }
+        } catch (err: any) {
+          console.error('[WebRTC] Error during grace period check:', err);
+        }
+      }, 30000); // 30 seconds grace period
     }
   } catch (e) {
     console.error('[WebRTC] cleanupPeer DB update error:', e);

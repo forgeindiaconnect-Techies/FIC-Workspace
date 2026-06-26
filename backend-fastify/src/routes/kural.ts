@@ -6,8 +6,8 @@ import { User } from '../models/User';
 import { KuralConversation } from '../models/KuralConversation';
 import { KuralMessage } from '../models/KuralMessage';
 import { Story } from '../models/Story';
-import { CallLog } from '../models/CallLog';
 import { authenticate } from '../middlewares/auth';
+import { sendPushNotification } from '../services/pushNotifications';
 
 const cloudinaryFolder = process.env.CLOUDINARY_FOLDER || 'chat_uploads';
 const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME || '';
@@ -634,6 +634,51 @@ export async function kuralRoutes(fastify: FastifyInstance) {
       conversation.lastMessageContent = content || `Sent a file: ${originalName || 'Attachment'}`;
       conversation.lastMessageTime = message.createdAt;
       await conversation.save();
+
+      // Broadcast new message to other participants via activeMailSockets
+      const { activeMailSockets } = require('../services/mailSockets');
+      if (activeMailSockets) {
+        const payload = {
+          _id: message._id,
+          conversationId: message.conversationId,
+          channelId: conversation._id.toString(),
+          sender: message.senderName || currentEmail,
+          senderName: message.senderName,
+          senderEmail: message.senderEmail,
+          content: message.content,
+          fileUrl: message.fileUrl,
+          fileType: message.fileType,
+          originalName: message.originalName,
+          timestamp: message.createdAt
+        };
+        const messageStr = JSON.stringify({ type: 'NEW_MESSAGE', message: payload });
+        
+        conversation.participantEmails.forEach((email: string) => {
+          const normEmail = normalizeEmail(email);
+          if (normEmail !== currentEmail && activeMailSockets.has(normEmail)) {
+            activeMailSockets.get(normEmail)?.send(messageStr);
+          }
+        });
+      }
+
+      // Dispatch remote push notifications to other participants
+      const otherParticipants = conversation.participantEmails
+        .map((email: string) => normalizeEmail(email))
+        .filter((email: string) => email !== currentEmail);
+
+      if (otherParticipants.length > 0) {
+        sendPushNotification(
+          otherParticipants,
+          `New Message from ${message.senderName || currentEmail}`,
+          content || `Sent a file: ${originalName || 'Attachment'}`,
+          {
+            type: 'chat',
+            conversationId: conversation._id.toString(),
+            channelId: conversation._id.toString(),
+            senderEmail: currentEmail,
+          }
+        ).catch((err: any) => console.error('[Kural] Remote push error:', err));
+      }
 
       return reply.code(201).send({
         _id: message._id,

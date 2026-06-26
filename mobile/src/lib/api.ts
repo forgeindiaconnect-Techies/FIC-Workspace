@@ -487,6 +487,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(tenantData),
       });
+    },
+    async registerPushToken(token: string) {
+      return request('/api/auth/push-token', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      });
     }
   },
 

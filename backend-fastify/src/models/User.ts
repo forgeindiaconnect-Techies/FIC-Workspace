@@ -12,6 +12,7 @@ export interface IUser extends Document {
   appleId?: string;
   mfaSecret?: string;
   mfaEnabled: boolean;
+  expoPushToken?: string;
   createdAt: Date;
 }
 
@@ -27,6 +28,7 @@ const UserSchema = new Schema<IUser>({
   appleId: { type: String },
   mfaSecret: { type: String },
   mfaEnabled: { type: Boolean, default: false },
+  expoPushToken: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
 

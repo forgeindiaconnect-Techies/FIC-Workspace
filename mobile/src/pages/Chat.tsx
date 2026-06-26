@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from '../lib/rout
 import {
   ActivityIndicator, Alert, Dimensions, KeyboardAvoidingView,
   Modal, Platform, ScrollView, StyleSheet, Text, TextInput,
-  TouchableOpacity, View, Image, useWindowDimensions,
+  TouchableOpacity, View, Image, useWindowDimensions, DeviceEventEmitter
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, ResizeMode, Audio } from 'expo-av';
@@ -366,6 +366,58 @@ export default function Chat() {
   }, [workspaceId, email, user?.id]);
 
   React.useEffect(() => { loadChannels(); }, [loadChannels]);
+
+  React.useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('new_chat_message', (message: any) => {
+      // If this message belongs to the currently active chat
+      if (selectedChat && (selectedChat.id === message.conversationId || selectedChat.id === message.channelId)) {
+        setMessages(prev => {
+          if (prev.some(m => m.id === message._id)) return prev;
+          return uniqueMessages([...prev, {
+            id: message._id,
+            user: message.senderName || 'Participant',
+            time: formatTime(message.timestamp),
+            text: message.content || (message.fileUrl ? `Sent a file: ${message.originalName || 'Attachment'}` : ''),
+            self: message.senderEmail === email,
+            fileUrl: message.fileUrl,
+            fileType: message.fileType,
+            originalName: message.originalName,
+          }]);
+        });
+      }
+
+      // Update channels list last message and unread count
+      setDirectMessages(prev => prev.map(ch => {
+        if (ch.id === message.conversationId || ch.id === message.channelId) {
+          const isSelected = selectedChat?.id === ch.id;
+          return {
+            ...ch,
+            lastMsg: message.content || `Sent a file: ${message.originalName || 'Attachment'}`,
+            time: formatTime(message.timestamp),
+            unread: isSelected ? 0 : (ch.unread || 0) + 1
+          };
+        }
+        return ch;
+      }));
+      
+      setGroupMessages(prev => prev.map(ch => {
+        if (ch.id === message.conversationId || ch.id === message.channelId) {
+          const isSelected = selectedChat?.id === ch.id;
+          return {
+            ...ch,
+            lastMsg: message.content || `Sent a file: ${message.originalName || 'Attachment'}`,
+            time: formatTime(message.timestamp),
+            unread: isSelected ? 0 : (ch.unread || 0) + 1
+          };
+        }
+        return ch;
+      }));
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [selectedChat, email]);
 
   /* -- load messages -- */
   React.useEffect(() => {

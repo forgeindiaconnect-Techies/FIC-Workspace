@@ -1,5 +1,20 @@
 import React from "react";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, Platform, DeviceEventEmitter, Animated, Text, TouchableOpacity, StyleSheet } from "react-native";
+import * as Notifications from 'expo-notifications';
+import { registerForPushNotificationsAsync } from "./lib/pushHelper";
+import { X } from 'lucide-react-native';
+
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { BrowserRouter, Routes, Route, Navigate } from "./lib/router";
 import AppLayout from "./components/AppLayout";
@@ -85,14 +100,119 @@ export default function App() {
   });
 
   React.useEffect(() => {
+    // Request local notification permissions on mount
+    const requestPermissions = async () => {
+      if (Platform.OS === 'web') return;
+      try {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        if (finalStatus !== 'granted') {
+          console.warn('[Notifications] Permission denied.');
+        }
+      } catch (e) {
+        console.warn('[Notifications] Request permission error:', e);
+      }
+    };
+    requestPermissions();
+
+    let globalMailWs: WebSocket | null = null;
+
     waitForSession().finally(() => {
       setLoading(false);
-      // Init call signaling after session is ready
+      
       const { token, user } = getSession();
       if (token && SOCKET_URL && user?.email) {
+        // Init call signaling
         callManager.init(SOCKET_URL, token, user.email);
+
+        // Register for remote push notifications
+        registerForPushNotificationsAsync();
+
+        // Connect global wssMail socket for background notifications and real-time events
+        try {
+          const wsBase = SOCKET_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+          const wsUrl = `${wsBase.replace(/\/+$/, '')}/ws/mail?email=${encodeURIComponent(user.email)}&token=${encodeURIComponent(token)}`;
+          console.log('[App] Connecting global notifications socket to:', wsUrl);
+          const ws = new WebSocket(wsUrl);
+          globalMailWs = ws;
+
+          ws.onmessage = async (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              
+              if (data.type === 'NEW_MESSAGE') {
+                // Emit event to update Chat UI in real-time if active
+                DeviceEventEmitter.emit('new_chat_message', data.message);
+
+                // Show in-app toast banner
+                DeviceEventEmitter.emit('show_in_app_toast', {
+                  title: `New Message from ${data.message.senderName || 'Workspace'}`,
+                  body: data.message.content || 'Sent a file.',
+                  type: 'chat',
+                  target: '/chat'
+                });
+
+                // Present OS-level local notification popup
+                if (Platform.OS !== 'web') {
+                  await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: `New Message from ${data.message.senderName || 'Workspace'}`,
+                      body: data.message.content || 'Sent a file.',
+                      sound: true,
+                    },
+                    trigger: null, // trigger immediately
+                  });
+                }
+              } else if (data.type === 'NEW_MAIL') {
+                // Emit event to update Mail UI in real-time if active
+                DeviceEventEmitter.emit('new_mail_received', data.mail);
+
+                // Show in-app toast banner
+                DeviceEventEmitter.emit('show_in_app_toast', {
+                  title: `New Email: ${data.mail.subject || '(No Subject)'}`,
+                  body: `From: ${data.mail.senderName || data.mail.senderEmail}`,
+                  type: 'mail',
+                  target: '/mail'
+                });
+
+                if (Platform.OS !== 'web') {
+                  await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: `New Email: ${data.mail.subject || '(No Subject)'}`,
+                      body: `From: ${data.mail.senderName || data.mail.senderEmail}`,
+                      sound: true,
+                    },
+                    trigger: null,
+                  });
+                }
+              }
+            } catch (e) {
+              console.warn('[App] Socket message parse error:', e);
+            }
+          };
+
+          ws.onclose = () => {
+            console.log('[App] Global notifications socket closed.');
+          };
+          
+          ws.onerror = (err) => {
+            console.warn('[App] Global notifications socket error:', err);
+          };
+        } catch (e) {
+          console.warn('[App] Global notifications socket init failed:', e);
+        }
       }
     });
+
+    return () => {
+      if (globalMailWs) {
+        try { globalMailWs.close(); } catch {}
+      }
+    };
   }, []);
 
   return (
@@ -113,6 +233,7 @@ export default function App() {
   ) : (
     <BrowserRouter>
       <DeepLinkHandler />
+      <InAppNotificationToast />
       <Routes>
         {/* Public route */}
         <Route path="/login" element={<Login />} />
@@ -148,3 +269,129 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+function InAppNotificationToast() {
+  const navigate = useNavigate();
+  const [toast, setToast] = React.useState<{ title: string; body: string; type: 'chat' | 'mail'; target: string } | null>(null);
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('show_in_app_toast', (data: any) => {
+      setToast(data);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    });
+
+    return () => sub.remove();
+  }, [fadeAnim]);
+
+  React.useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => {
+        dismiss();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  const dismiss = () => {
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => setToast(null));
+  };
+
+  if (!toast) return null;
+
+  return (
+    <Animated.View
+      style={[
+        styles.toastContainer,
+        {
+          opacity: fadeAnim,
+          transform: [
+            {
+              translateY: fadeAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-20, 0]
+              })
+            }
+          ]
+        }
+      ]}
+    >
+      <TouchableOpacity
+        style={styles.toastContent}
+        activeOpacity={0.9}
+        onPress={() => {
+          navigate(toast.target);
+          dismiss();
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toastType}>
+            {toast.type === 'chat' ? '💬 NEW MESSAGE' : '✉️ NEW EMAIL'}
+          </Text>
+          <Text style={styles.toastTitle} numberOfLines={1}>
+            {toast.title}
+          </Text>
+          <Text style={styles.toastBody} numberOfLines={1}>
+            {toast.body}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.closeButton} onPress={dismiss}>
+          <X size={16} color="#94a3b8" />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+const styles = StyleSheet.create({
+  toastContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 20,
+    left: 16,
+    right: 16,
+    zIndex: 9999,
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  toastContent: {
+    flexDirection: 'row',
+    padding: 14,
+    alignItems: 'center',
+  },
+  toastType: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#3b82f6',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  toastTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#f8fafc',
+  },
+  toastBody: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+  closeButton: {
+    padding: 6,
+    marginLeft: 8,
+  },
+});

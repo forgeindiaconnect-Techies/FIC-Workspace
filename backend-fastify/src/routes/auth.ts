@@ -592,4 +592,27 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({ error: 'Failed to change password.', details: err.message });
     }
   });
+
+  // 10. REGISTER PUSH TOKEN
+  fastify.post('/push-token', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { token } = request.body as any;
+      if (!token) {
+        return reply.code(400).send({ error: 'Push token is required.' });
+      }
+
+      const user = await User.findById(request.user!.id);
+      if (!user) {
+        return reply.code(404).send({ error: 'User not found.' });
+      }
+
+      user.expoPushToken = token;
+      await user.save();
+
+      console.log(`[Auth] Registered push token for user ${user.email}`);
+      return reply.code(200).send({ success: true, message: 'Push token registered successfully.' });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to register push token.', details: err.message });
+    }
+  });
 }
