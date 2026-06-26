@@ -62,24 +62,15 @@ async function transcribeChunk(meetingId, userId, speakerName, filePath) {
     const transcription = await groq.audio.transcriptions.create({
       file: import_fs.default.createReadStream(filePath),
       model: "whisper-large-v3",
-      prompt: "Meeting conversation in Tamil and English. Transcribe accurately.",
+      prompt: "\u0BB5\u0BA3\u0B95\u0BCD\u0B95\u0BAE\u0BCD, this is a meeting conversation in English and Tamil (\u0BA4\u0BAE\u0BBF\u0BB4\u0BCD). Transcribe accurately, preserving both English and Tamil words.",
       temperature: 0,
       response_format: "verbose_json"
     });
     const text = transcription.text.trim();
     const lowerText = text.toLowerCase();
     const cleanText = lowerText.replace(/[^a-z0-9\s]/g, "").trim();
-    const segments = transcription.segments || [];
-    let avgNoSpeechProb = 0;
-    if (segments.length > 0) {
-      avgNoSpeechProb = segments.reduce((acc, seg) => acc + (seg.no_speech_prob || 0), 0) / segments.length;
-    }
-    if (avgNoSpeechProb > 0.6) {
-      console.log(`[Transcription] Ignored silent chunk (no_speech_prob: ${avgNoSpeechProb.toFixed(2)})`);
-      return null;
-    }
-    const isHallucination = cleanText.includes("meeting conversation in tamil and english transcribe accurately") || cleanText.includes("meeting conversation transcribe accurately") || cleanText.includes("transcribe accurately") || cleanText.includes("tanscribe accurately") || cleanText.includes("we go on") || cleanText.includes("were going to go on") || cleanText.includes("you see were getting some different individuals") || cleanText === "thank you" || cleanText === "thanks" || cleanText === "subscribe" || cleanText === "terima kasih";
-    if (text && !isHallucination && cleanText.length > 0) {
+    const isHallucination = cleanText.includes("meeting conversation in tamil and english transcribe accurately") || cleanText.includes("meeting conversation transcribe accurately") || cleanText.includes("transcribe accurately") || cleanText.includes("tanscribe accurately") || cleanText.includes("we go on") || cleanText.includes("were going to go on") || cleanText.includes("you see were getting some different individuals") || cleanText.includes("transcription by") || cleanText.includes("transcribed by") || cleanText.includes("e\u011Fri de konu\u015Fay\u0131m") || cleanText.includes("tries to communicate") || cleanText === "thank you" || cleanText === "thanks" || cleanText === "tchau" || cleanText === "tchau tchau" || cleanText === "subscribe" || cleanText === "terima kasih";
+    if (text && !isHallucination && cleanText.length > 1) {
       await Transcript.create({
         meetingId,
         userId,
@@ -189,6 +180,7 @@ var import_websocket = __toESM(require("@fastify/websocket"));
 var import_dotenv2 = __toESM(require("dotenv"));
 var import_fs5 = __toESM(require("fs"));
 var import_path4 = __toESM(require("path"));
+var import_jsonwebtoken6 = __toESM(require("jsonwebtoken"));
 var import_multipart = __toESM(require("@fastify/multipart"));
 
 // src/routes/auth.ts
@@ -244,7 +236,159 @@ var RefreshToken = (0, import_mongoose3.model)("RefreshToken", RefreshTokenSchem
 
 // src/middlewares/auth.ts
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
-var getJwtSecret = () => process.env.JWT_SECRET || "nexus-jwt-secret-key";
+
+// src/utils/securityConfig.ts
+var import_crypto = __toESM(require("crypto"));
+var INSECURE_JWT_SECRETS = /* @__PURE__ */ new Set([
+  "nexus-jwt-secret-key",
+  "nexus-refresh-secret-key",
+  "your_jwt_secret_here",
+  "CHANGE_ME_generate_with_node_e_require_crypto_randomBytes_64_toString_hex",
+  "CHANGE_ME_generate_a_different_64_byte_hex_string",
+  "secret",
+  "jwt-secret",
+  "changeme"
+]);
+var INSECURE_PASSWORDS = /* @__PURE__ */ new Set([
+  "password123",
+  "password",
+  "admin",
+  "123456",
+  "demo_password_123!@#",
+  "AI_SECURE_PASSWORD_123!@#"
+]);
+function assertEnvVar(name, required = true) {
+  const value = process.env[name];
+  if (!value && required) {
+    throw new Error(
+      `[SECURITY] Missing required environment variable: ${name}. Set it in your .env file or deployment platform.`
+    );
+  }
+  return value || "";
+}
+function assertSecureSecret(name, value, minLength = 32) {
+  if (INSECURE_JWT_SECRETS.has(value)) {
+    throw new Error(
+      `[SECURITY] ${name} is using a known insecure default value. Generate a secure secret with: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+    );
+  }
+  if (value.length < minLength) {
+    throw new Error(
+      `[SECURITY] ${name} must be at least ${minLength} characters long. Current length: ${value.length}. Generate a longer secret.`
+    );
+  }
+}
+function generateRandomPassword() {
+  return import_crypto.default.randomBytes(16).toString("base64url") + "!A1";
+}
+var cachedConfig = null;
+function loadSecurityConfig(log) {
+  if (cachedConfig) return cachedConfig;
+  const logger = log || {
+    info: (m) => console.log(m),
+    warn: (m) => console.warn(m),
+    error: (m) => console.error(m)
+  };
+  const isRenderHost2 = !!(process.env.RENDER || process.env.RENDER_SERVICE_NAME);
+  const isProduction3 = process.env.NODE_ENV === "production" || isRenderHost2;
+  const jwtSecret = assertEnvVar("JWT_SECRET");
+  const jwtRefreshSecret = assertEnvVar("JWT_REFRESH_SECRET", isProduction3);
+  if (isProduction3) {
+    assertSecureSecret("JWT_SECRET", jwtSecret, 32);
+    if (jwtRefreshSecret) {
+      assertSecureSecret("JWT_REFRESH_SECRET", jwtRefreshSecret, 32);
+    }
+  } else {
+    if (INSECURE_JWT_SECRETS.has(jwtSecret)) {
+      logger.warn(
+        "[SECURITY] JWT_SECRET is using a known insecure default. This is tolerated in development but MUST be changed before deployment."
+      );
+    }
+  }
+  const effectiveRefreshSecret = jwtRefreshSecret || import_crypto.default.createHmac("sha256", jwtSecret).update("refresh-token-derivation").digest("hex");
+  const mongoUri = assertEnvVar("MONGO_URI");
+  const turnServerUrl = process.env.TURN_SERVER_URL || "";
+  const turnUsername = process.env.TURN_USERNAME || "";
+  const turnCredential = process.env.TURN_CREDENTIAL || "";
+  if (!turnServerUrl && isProduction3) {
+    logger.warn(
+      "[SECURITY] No TURN_SERVER_URL configured. WebRTC calls may fail behind symmetric NATs without a TURN relay."
+    );
+  }
+  let seedAdminPassword = process.env.SEED_ADMIN_PASSWORD || "";
+  if (!seedAdminPassword) {
+    seedAdminPassword = generateRandomPassword();
+    logger.info(
+      `[SECURITY] No SEED_ADMIN_PASSWORD set. Generated random password for seed accounts. Check server logs on first boot for the generated credentials.`
+    );
+  }
+  if (isProduction3 && INSECURE_PASSWORDS.has(seedAdminPassword)) {
+    throw new Error(
+      "[SECURITY] SEED_ADMIN_PASSWORD is using a known insecure value. Set a strong password in environment variables."
+    );
+  }
+  const corsOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  if (isProduction3 && corsOrigins.length === 0) {
+    logger.warn(
+      '[SECURITY] No CORS_ORIGINS configured. Set CORS_ORIGINS to a comma-separated list of allowed frontend domains. Example: CORS_ORIGINS="https://your-app.vercel.app,https://your-domain.com"'
+    );
+  }
+  cachedConfig = {
+    jwtSecret,
+    jwtRefreshSecret: effectiveRefreshSecret,
+    mongoUri,
+    turnServerUrl,
+    turnUsername,
+    turnCredential,
+    seedAdminPassword,
+    isProduction: isProduction3,
+    corsAllowedOrigins: corsOrigins
+  };
+  logger.info("[SECURITY] Security configuration validated successfully.");
+  return cachedConfig;
+}
+function getIceServers() {
+  const config = cachedConfig || loadSecurityConfig();
+  const servers = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" }
+  ];
+  if (config.turnServerUrl) {
+    servers.push({
+      urls: config.turnServerUrl,
+      username: config.turnUsername,
+      credential: config.turnCredential
+    });
+  }
+  return servers;
+}
+function validatePasswordStrength(password) {
+  if (!password || password.length < 8) {
+    return "Password must be at least 8 characters long.";
+  }
+  if (password.length > 128) {
+    return "Password must not exceed 128 characters.";
+  }
+  if (!/[a-z]/.test(password)) {
+    return "Password must contain at least one lowercase letter.";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "Password must contain at least one uppercase letter.";
+  }
+  if (!/[0-9]/.test(password)) {
+    return "Password must contain at least one digit.";
+  }
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) {
+    return "Password must contain at least one special character.";
+  }
+  if (INSECURE_PASSWORDS.has(password)) {
+    return "This password is too common. Please choose a stronger password.";
+  }
+  return null;
+}
+
+// src/middlewares/auth.ts
+var getJwtSecret = () => loadSecurityConfig().jwtSecret;
 async function authenticate(request, reply) {
   try {
     const authHeader = request.headers.authorization;
@@ -267,8 +411,10 @@ async function authenticate(request, reply) {
       return reply.code(403).send({ error: "Demo accounts have read-only access." });
     }
   } catch (err) {
-    console.error("JWT Verification failed! Error:", err.message);
-    return reply.code(401).send({ error: "Unauthorized: Session authentication failed." });
+    const isExpired = err.name === "TokenExpiredError";
+    return reply.code(401).send({
+      error: isExpired ? "Unauthorized: Access token has expired." : "Unauthorized: Session authentication failed."
+    });
   }
 }
 
@@ -430,8 +576,47 @@ function isMongoConnected() {
 }
 
 // src/routes/auth.ts
-var getJwtSecret2 = () => process.env.JWT_SECRET || "nexus-jwt-secret-key";
-var getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || "nexus-refresh-secret-key";
+var getJwtSecret2 = () => loadSecurityConfig().jwtSecret;
+var getJwtRefreshSecret = () => loadSecurityConfig().jwtRefreshSecret;
+var isProduction = () => loadSecurityConfig().isProduction;
+var signupSchema = {
+  body: {
+    type: "object",
+    required: ["name", "email", "password"],
+    properties: {
+      name: { type: "string", minLength: 2, maxLength: 100 },
+      email: { type: "string", format: "email", maxLength: 254 },
+      password: { type: "string", minLength: 8, maxLength: 128 },
+      avatarUrl: { type: "string", maxLength: 2048 }
+    },
+    additionalProperties: false
+  }
+};
+var loginSchema = {
+  body: {
+    type: "object",
+    required: ["email", "password"],
+    properties: {
+      email: { type: "string", format: "email", maxLength: 254 },
+      password: { type: "string", minLength: 1, maxLength: 128 }
+    },
+    additionalProperties: false
+  }
+};
+var subscriptionSignupSchema = {
+  body: {
+    type: "object",
+    required: ["name", "organisationName", "email", "password"],
+    properties: {
+      name: { type: "string", minLength: 2, maxLength: 100 },
+      organisationName: { type: "string", minLength: 2, maxLength: 200 },
+      email: { type: "string", format: "email", maxLength: 254 },
+      password: { type: "string", minLength: 8, maxLength: 128 },
+      subscriptionTier: { type: "string", enum: ["starter", "pro", "enterprise"] }
+    },
+    additionalProperties: false
+  }
+};
 async function authRoutes(fastify2) {
   async function issueTokens(user) {
     const email = user.email || user.adminEmail;
@@ -440,15 +625,15 @@ async function authRoutes(fastify2) {
     const accessToken = import_jsonwebtoken2.default.sign(
       { userId: user._id, email, name: user.name, role, workspaceId },
       getJwtSecret2(),
-      { expiresIn: "30d" }
+      { expiresIn: "15m" }
     );
     const refreshTokenString = import_jsonwebtoken2.default.sign(
       { userId: user._id },
       getJwtRefreshSecret(),
-      { expiresIn: "180d" }
+      { expiresIn: "7d" }
     );
     const expiresAt = /* @__PURE__ */ new Date();
-    expiresAt.setDate(expiresAt.getDate() + 180);
+    expiresAt.setDate(expiresAt.getDate() + 7);
     await RefreshToken.create({
       userId: user._id,
       token: refreshTokenString,
@@ -468,7 +653,7 @@ async function authRoutes(fastify2) {
       }
     };
   }
-  fastify2.post("/signup-subscription", async (request, reply) => {
+  fastify2.post("/signup-subscription", { schema: subscriptionSignupSchema }, async (request, reply) => {
     try {
       if (!isMongoConnected()) {
         return reply.code(503).send({ error: "Database is not connected." });
@@ -481,8 +666,9 @@ async function authRoutes(fastify2) {
       let maxUsers = 20;
       if (tier === "pro") maxUsers = 40;
       if (tier === "enterprise") maxUsers = 99999;
-      if (password.length < 6) {
-        return reply.code(400).send({ error: "Password must be at least 6 characters." });
+      const passwordError = validatePasswordStrength(password);
+      if (passwordError) {
+        return reply.code(400).send({ error: passwordError });
       }
       const normEmail = email.toLowerCase().trim();
       const existingUser = await User.findOne({ email: normEmail });
@@ -524,7 +710,7 @@ async function authRoutes(fastify2) {
       const tokenBundle = await issueTokens(user);
       return reply.code(201).send(tokenBundle);
     } catch (err) {
-      return reply.code(500).send({ error: "Failed to create subscription.", details: err.message });
+      return reply.code(500).send({ error: "Failed to create subscription.", ...isProduction() ? {} : { details: err.message } });
     }
   });
   fastify2.post("/demo", async (request, reply) => {
@@ -571,7 +757,7 @@ async function authRoutes(fastify2) {
       return reply.code(500).send({ error: "Failed to create or login to demo account.", details: err.message });
     }
   });
-  fastify2.post("/signup", async (request, reply) => {
+  fastify2.post("/signup", { schema: signupSchema }, async (request, reply) => {
     try {
       if (!isMongoConnected()) {
         return reply.code(503).send({
@@ -582,8 +768,9 @@ async function authRoutes(fastify2) {
       if (!name || !email || !password) {
         return reply.code(400).send({ error: "Name, email, and password are required." });
       }
-      if (password.length < 6) {
-        return reply.code(400).send({ error: "Password must be at least 6 characters." });
+      const passwordError = validatePasswordStrength(password);
+      if (passwordError) {
+        return reply.code(400).send({ error: passwordError });
       }
       const normEmail = email.toLowerCase().trim();
       const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normEmail);
@@ -613,10 +800,10 @@ async function authRoutes(fastify2) {
       const tokenBundle = await issueTokens(user);
       return reply.code(201).send(tokenBundle);
     } catch (err) {
-      return reply.code(500).send({ error: "Failed to create user account.", details: err.message });
+      return reply.code(500).send({ error: "Failed to create user account.", ...isProduction() ? {} : { details: err.message } });
     }
   });
-  fastify2.post("/login", async (request, reply) => {
+  fastify2.post("/login", { schema: loginSchema }, async (request, reply) => {
     try {
       if (!isMongoConnected()) {
         return reply.code(503).send({
@@ -682,7 +869,7 @@ async function authRoutes(fastify2) {
       const tokenBundle = await issueTokens(user);
       return reply.code(200).send(tokenBundle);
     } catch (err) {
-      return reply.code(500).send({ error: "Login handler error.", details: err.message });
+      return reply.code(500).send({ error: "Login handler error.", ...isProduction() ? {} : { details: err.message } });
     }
   });
   fastify2.post("/verify-mfa", async (request, reply) => {
@@ -706,7 +893,7 @@ async function authRoutes(fastify2) {
       const tokenBundle = await issueTokens(user);
       return reply.code(200).send(tokenBundle);
     } catch (err) {
-      return reply.code(401).send({ error: "MFA verification failed.", details: err.message });
+      return reply.code(401).send({ error: "MFA verification failed." });
     }
   });
   fastify2.post("/refresh", async (request, reply) => {
@@ -730,7 +917,7 @@ async function authRoutes(fastify2) {
       const tokenBundle = await issueTokens(user);
       return reply.code(200).send(tokenBundle);
     } catch (err) {
-      return reply.code(401).send({ error: "Token rotation failed.", details: err.message });
+      return reply.code(401).send({ error: "Token rotation failed." });
     }
   });
   fastify2.post("/mfa/setup", { preHandler: authenticate }, async (request, reply) => {
@@ -821,8 +1008,9 @@ async function authRoutes(fastify2) {
       if (!currentPassword || !newPassword) {
         return reply.code(400).send({ error: "Current password and new password are required." });
       }
-      if (newPassword.length < 6) {
-        return reply.code(400).send({ error: "New password must be at least 6 characters." });
+      const passwordError = validatePasswordStrength(newPassword);
+      if (passwordError) {
+        return reply.code(400).send({ error: passwordError });
       }
       const user = await User.findById(request.user.id);
       if (!user) return reply.code(404).send({ error: "User not found." });
@@ -1054,21 +1242,8 @@ The transcript may contain a mix of English and Tamil.
 Your summary MUST be entirely in English.
 Your response MUST be formatted in clean HTML suitable for an email body.
 Do NOT use markdown. Use bold tags, lists, and headers (h2, h3).
-Include the following sections exactly:
-<h2>Executive Summary</h2>
-(Brief 2-3 sentences overview)
-
-<h2>Main Topics</h2>
-<ul><li>Topic 1</li></ul>
-
-<h2>Key Decisions</h2>
-<ul><li>Decision 1</li></ul>
-
-<h2>Action Items</h2>
-<ul><li>[Owner Name] Task description (Deadline if any)</li></ul>
-
-<h2>Pending Topics & Follow-ups</h2>
-<ul><li>Follow-up 1</li></ul>
+Do NOT use a predefined rigid template. Dynamically analyze the meeting context and generate appropriate sections (e.g. Executive Summary, Main Discussion Points, Key Takeaways, Action Items, Ideas, etc.) based ONLY on what was actually discussed.
+Focus on capturing the real essence of the conversation accurately.
 
 Here is the meeting transcript:
 ${fullText}`;
@@ -2258,9 +2433,9 @@ Important: Provide ONLY the final generated email body text. Do not include intr
       const { fileBase64, fileName, mimeType } = request.body;
       if (!fileBase64) return reply.code(400).send({ error: "fileBase64 is required" });
       const timestamp = Math.floor(Date.now() / 1e3);
-      const crypto = await import("crypto");
+      const crypto2 = await import("crypto");
       const signatureStr = `folder=${FOLDER}&timestamp=${timestamp}${API_SECRET}`;
-      const signature = crypto.createHash("sha1").update(signatureStr).digest("hex");
+      const signature = crypto2.createHash("sha1").update(signatureStr).digest("hex");
       const formData = new URLSearchParams();
       formData.append("file", `data:${mimeType};base64,${fileBase64}`);
       formData.append("api_key", API_KEY);
@@ -2548,6 +2723,8 @@ async function channelRoutes(fastify2) {
         participantEmails: g.participantEmails,
         lastMessageContent: g.lastMessageContent,
         lastMessageTime: g.lastMessageTime || g.updatedAt,
+        createdBy: g.createdBy,
+        createdByEmail: g.createdByEmail,
         unread: 0,
         isOnline: true
       })));
@@ -4322,13 +4499,14 @@ init_mailSockets();
 
 // src/utils/seedDefaultUser.ts
 var import_bcrypt5 = __toESM(require("bcrypt"));
-var DEFAULT_EMAIL = "admin@fic.com";
-var DEFAULT_PASSWORD = "password123";
 async function ensureDefaultUser() {
+  const config = loadSecurityConfig();
+  const seedPassword = config.seedAdminPassword;
   const salt = await import_bcrypt5.default.genSalt(12);
+  const passwordHash = await import_bcrypt5.default.hash(seedPassword, salt);
+  const DEFAULT_EMAIL = "admin@fic.com";
   const existing = await User.findOne({ email: DEFAULT_EMAIL });
   if (!existing) {
-    const passwordHash = await import_bcrypt5.default.hash(DEFAULT_PASSWORD, salt);
     await User.create({
       name: "Forge India Administrator",
       email: DEFAULT_EMAIL,
@@ -4338,6 +4516,11 @@ async function ensureDefaultUser() {
       role: "company-admin",
       workspaceId: "forge-india-connect"
     });
+    console.log(
+      `[SEED] Created admin account: ${DEFAULT_EMAIL}
+       Password: ${process.env.SEED_ADMIN_PASSWORD ? "(from SEED_ADMIN_PASSWORD env var)" : seedPassword}
+       \u26A0\uFE0F  Change this password immediately after first login!`
+    );
   } else if (existing.name === "Nexus Administrator") {
     existing.name = "Forge India Administrator";
     existing.avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent("Forge India Administrator")}`;
@@ -4346,7 +4529,8 @@ async function ensureDefaultUser() {
   const AI_EMAIL = "ai-assistant@nexus.app";
   const aiExisting = await User.findOne({ email: AI_EMAIL });
   if (!aiExisting) {
-    const aiPasswordHash = await import_bcrypt5.default.hash("AI_SECURE_PASSWORD_123!@#", salt);
+    const aiPassword = require("crypto").randomBytes(32).toString("base64url");
+    const aiPasswordHash = await import_bcrypt5.default.hash(aiPassword, salt);
     await User.create({
       name: "Forge India Connect AI",
       email: AI_EMAIL,
@@ -4364,7 +4548,8 @@ async function ensureDefaultUser() {
   const SUPERADMIN_EMAIL = "superadmin@fic.com";
   const superAdminExisting = await User.findOne({ email: SUPERADMIN_EMAIL });
   if (!superAdminExisting) {
-    const saPasswordHash = await import_bcrypt5.default.hash("password123", salt);
+    const saPassword = require("crypto").randomBytes(20).toString("base64url");
+    const saPasswordHash = await import_bcrypt5.default.hash(saPassword, salt);
     await User.create({
       name: "Super Admin",
       email: SUPERADMIN_EMAIL,
@@ -4374,11 +4559,16 @@ async function ensureDefaultUser() {
       role: "super-admin",
       workspaceId: "fic-superadmin"
     });
+    console.log(
+      `[SEED] Created super-admin account: ${SUPERADMIN_EMAIL}
+       Password: ${saPassword}
+       \u26A0\uFE0F  This password is shown only ONCE. Save it securely and change it immediately!`
+    );
   }
   const DEMO_EMAIL = "demo@fic.com";
   const demoExisting = await User.findOne({ email: DEMO_EMAIL });
   if (!demoExisting) {
-    const demoPasswordHash = await import_bcrypt5.default.hash("password123", salt);
+    const demoPasswordHash = await import_bcrypt5.default.hash(seedPassword, salt);
     await User.create({
       name: "Demo User",
       email: DEMO_EMAIL,
@@ -4398,10 +4588,11 @@ var PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 var MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/nexus-zoom";
 var ENABLE_SOCKET_FILE_LOGS = process.env.ENABLE_SOCKET_FILE_LOGS === "true";
 var isRenderHost = !!(process.env.RENDER || process.env.RENDER_SERVICE_NAME);
-var isProduction = process.env.NODE_ENV === "production" || isRenderHost;
+var isProduction2 = process.env.NODE_ENV === "production" || isRenderHost;
 var isDefaultLocalUri = !process.env.MONGO_URI || MONGO_URI.includes("127.0.0.1");
+var securityConfig = loadSecurityConfig();
 var server = (0, import_fastify.default)({
-  logger: isProduction ? { level: "info" } : {
+  logger: isProduction2 ? { level: "info" } : {
     level: "info",
     transport: {
       target: "pino-pretty",
@@ -4423,7 +4614,7 @@ async function connectDatabase() {
     server.log.error(uriCheck);
     throw new Error(uriCheck);
   }
-  const maxAttempts = isProduction ? 5 : 1;
+  const maxAttempts = isProduction2 ? 5 : 1;
   let lastErr = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -4447,8 +4638,9 @@ async function connectDatabase() {
   }
 }
 async function bootstrap() {
+  const corsOrigin = securityConfig.corsAllowedOrigins.length > 0 ? securityConfig.corsAllowedOrigins : isProduction2 ? ["https://workspace-blue-theta-87.vercel.app"] : true;
   await server.register(import_cors.default, {
-    origin: true,
+    origin: corsOrigin,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Cache-Control", "Pragma", "x-speaker-name"]
   });
@@ -4498,38 +4690,55 @@ async function bootstrap() {
   await server.register(statusRoutes, { prefix: "/api/status" });
   await server.register(threadsRoutes, { prefix: "/api/threads" });
   server.get("/api/meet/ice-servers", async () => {
-    return [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" },
-      {
-        urls: "turn:free.expressturn.com:3478",
-        username: "000000002097290800",
-        credential: "XnOg5DVFwGY/30tgW+PnfhmXv0c="
-      }
-    ];
+    return getIceServers();
   });
-  server.get("/ws/webrtc", { websocket: true }, (connection, req) => {
-    server.log.info("New secure WebRTC client socket handshake initiated.");
+  function authenticateWs(connection, req) {
     const ws = connection.socket || connection;
-    handleWebRtcSignalling(ws);
+    try {
+      const url = new URL(req.url, "http://localhost");
+      const token = url.searchParams.get("token");
+      if (!token) {
+        ws.close(4001, "Authentication required: token query parameter missing");
+        return null;
+      }
+      const decoded = import_jsonwebtoken6.default.verify(token, securityConfig.jwtSecret);
+      if (!decoded || !decoded.userId) {
+        ws.close(4001, "Authentication failed: invalid token");
+        return null;
+      }
+      return { ws, user: decoded };
+    } catch (err) {
+      ws.close(4001, err.name === "TokenExpiredError" ? "Token expired" : "Authentication failed");
+      return null;
+    }
+  }
+  server.get("/ws/webrtc", { websocket: true }, (connection, req) => {
+    const auth = authenticateWs(connection, req);
+    if (!auth) return;
+    server.log.info(`Authenticated WebRTC client: ${auth.user.email}`);
+    handleWebRtcSignalling(auth.ws);
   });
   server.get("/ws/mail", { websocket: true }, (connection, req) => {
-    server.log.info("New secure Mail Socket connection initiated.");
-    const ws = connection.socket || connection;
-    handleMailSocket(ws, req);
+    const auth = authenticateWs(connection, req);
+    if (!auth) return;
+    server.log.info(`Authenticated Mail Socket: ${auth.user.email}`);
+    handleMailSocket(auth.ws, req);
   });
   server.get("/ws/audio", { websocket: true }, (connection, req) => {
-    const ws = connection.socket || connection;
-    handleAudioSocket(ws);
+    const auth = authenticateWs(connection, req);
+    if (!auth) return;
+    handleAudioSocket(auth.ws);
   });
   server.get("/ws/threads", { websocket: true }, (connection, req) => {
-    const ws = connection.socket || connection;
-    handleThreadsSocket(ws, req);
+    const auth = authenticateWs(connection, req);
+    if (!auth) return;
+    handleThreadsSocket(auth.ws, req);
   });
   server.get("/ws/calls", { websocket: true }, (connection, req) => {
-    server.log.info("New voice call signaling connection.");
-    const ws = connection.socket || connection;
-    handleCallSignaling(ws);
+    const auth = authenticateWs(connection, req);
+    if (!auth) return;
+    server.log.info(`Authenticated voice call signaling: ${auth.user.email}`);
+    handleCallSignaling(auth.ws);
   });
   server.get("/health", async () => {
     const connected = isMongoConnected();

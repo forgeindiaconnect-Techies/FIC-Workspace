@@ -106,7 +106,7 @@ async function bootstrap() {
   const corsOrigin = securityConfig.corsAllowedOrigins.length > 0
     ? securityConfig.corsAllowedOrigins
     : isProduction
-      ? false  // Deny all cross-origin in production if no origins configured
+      ? ['https://workspace-blue-theta-87.vercel.app']  // Allow the deployed Vercel frontend by default
       : true;  // Allow all in development
 
   await server.register(cors, {
