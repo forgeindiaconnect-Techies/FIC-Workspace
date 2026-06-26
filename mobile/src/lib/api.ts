@@ -60,7 +60,7 @@ const LOCAL_SOCKET_URL = stripTrailingSlash(configuredSocketUrl) || LOCAL_API_UR
 export const PRODUCTION_API_URL = 'https://workspace-backend-r9f8.onrender.com';
 const PRODUCTION_SOCKET_URL = 'wss://workspace-backend-r9f8.onrender.com';
 
-const forceLocalBackend = true; // Forced to true to hit the local endpoints
+const forceLocalBackend = process.env.EXPO_PUBLIC_USE_LOCAL === 'true';
 
 
 const shouldUseConfiguredApiUrl =
