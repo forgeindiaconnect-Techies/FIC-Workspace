@@ -97,6 +97,11 @@ function DeepLinkHandler() {
             navigate('/mail');
           } else if (data.type === 'post') {
             navigate('/chat');
+          } else if (data.type === 'incoming_call') {
+            const { callerEmail, callerName, offer, isVideo } = data as any;
+            if (callerEmail && offer) {
+              callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
+            }
           }
         }
       }
@@ -114,6 +119,11 @@ function DeepLinkHandler() {
             navigate('/mail');
           } else if (data.type === 'post') {
             navigate('/chat');
+          } else if (data.type === 'incoming_call') {
+            const { callerEmail, callerName, offer, isVideo } = data as any;
+            if (callerEmail && offer) {
+              callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
+            }
           }
         }
       } catch (err) {

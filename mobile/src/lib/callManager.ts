@@ -191,6 +191,16 @@ class CallManager {
     this.dispatch({ type: 'state_change', state: s });
   }
 
+  handleIncomingCallFromPush(callerEmail: string, callerName: string, offer: any, isVideo: boolean = false) {
+    this.peerEmail = callerEmail;
+    this.peerName = callerName || callerEmail;
+    this.callRole = 'callee';
+    this.pendingOffer = offer;
+    this.setState('ringing');
+    console.log('[CallManager] Incoming call from Push:', callerEmail);
+    this.dispatch({ type: 'incoming_call', caller: { email: callerEmail, name: callerName } });
+  }
+
   //  Inbound message handler 
 
   private async handleMessage(msg: any) {

@@ -5108,22 +5108,40 @@ function handleCallSignaling(ws) {
       return send2(ws, { type: "error", message: "not registered, send register first" });
     }
     if (type === "call_user") {
-      const { targetEmail, offer, callerName } = data;
+      const { targetEmail, offer, callerName, isVideo } = data;
       if (!targetEmail || !offer) {
         return send2(ws, { type: "error", message: "targetEmail and offer required" });
       }
       const normalizedTarget = targetEmail.toLowerCase().trim();
       const targetWs = onlineUsers.get(normalizedTarget);
       if (!targetWs || targetWs.readyState !== import_ws3.WebSocket.OPEN) {
-        console.log(`[CallSignaling] Target ${normalizedTarget} is offline/unavailable`);
-        return send2(ws, { type: "call_unavailable", targetEmail: normalizedTarget });
+        console.log(`[CallSignaling] Target ${normalizedTarget} is offline. Sending wake-up push notification.`);
+        try {
+          const { sendPushNotification: sendPushNotification2 } = (init_pushNotifications(), __toCommonJS(pushNotifications_exports));
+          sendPushNotification2(
+            [normalizedTarget],
+            `Incoming Call`,
+            `${callerName || registeredEmail} is calling you...`,
+            {
+              type: "incoming_call",
+              callerEmail: registeredEmail,
+              callerName: callerName || registeredEmail,
+              offer,
+              isVideo: isVideo || false
+            }
+          );
+        } catch (err) {
+          console.warn("[CallSignaling] Failed to send wake-up push notification:", err);
+        }
+        return;
       }
       console.log(`[CallSignaling] Relaying call from ${registeredEmail} to ${normalizedTarget}`);
       send2(targetWs, {
         type: "incoming_call",
         callerEmail: registeredEmail,
         callerName: callerName || registeredEmail,
-        offer
+        offer,
+        isVideo: isVideo || false
       });
       return;
     }

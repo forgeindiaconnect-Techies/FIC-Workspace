@@ -65,7 +65,7 @@ export function handleCallSignaling(ws: WebSocket) {
 
     //  CALL_USER (Caller  Callee) 
     if (type === 'call_user') {
-      const { targetEmail, offer, callerName } = data;
+      const { targetEmail, offer, callerName, isVideo } = data;
       if (!targetEmail || !offer) {
         return send(ws, { type: 'error', message: 'targetEmail and offer required' });
       }
@@ -74,9 +74,29 @@ export function handleCallSignaling(ws: WebSocket) {
       const targetWs = onlineUsers.get(normalizedTarget);
       
       if (!targetWs || targetWs.readyState !== WebSocket.OPEN) {
-        // Callee is offline
-        console.log(`[CallSignaling] Target ${normalizedTarget} is offline/unavailable`);
-        return send(ws, { type: 'call_unavailable', targetEmail: normalizedTarget });
+        // Callee is offline/backgrounded. Send a high-priority push notification to wake up their mobile device!
+        console.log(`[CallSignaling] Target ${normalizedTarget} is offline. Sending wake-up push notification.`);
+        
+        try {
+          const { sendPushNotification } = require('./pushNotifications');
+          sendPushNotification(
+            [normalizedTarget],
+            `Incoming Call`,
+            `${callerName || registeredEmail} is calling you...`,
+            {
+              type: 'incoming_call',
+              callerEmail: registeredEmail,
+              callerName: callerName || registeredEmail,
+              offer,
+              isVideo: isVideo || false
+            }
+          );
+        } catch (err) {
+          console.warn('[CallSignaling] Failed to send wake-up push notification:', err);
+        }
+
+        // Do NOT send call_unavailable immediately, letting the caller dial (ring) while the callee's device wakes up
+        return;
       }
 
       console.log(`[CallSignaling] Relaying call from ${registeredEmail} to ${normalizedTarget}`);
@@ -85,6 +105,7 @@ export function handleCallSignaling(ws: WebSocket) {
         callerEmail: registeredEmail,
         callerName: callerName || registeredEmail,
         offer,
+        isVideo: isVideo || false
       });
       return;
     }

@@ -359,7 +359,8 @@ const ChatApp = () => {
             data: {
               targetEmail: payload.userToCall,
               callerName: payload.name,
-              offer: payload.signalData
+              offer: payload.signalData,
+              isVideo: payload.isVideo
             }
           }));
         } else if (event === 'answer-call') {
