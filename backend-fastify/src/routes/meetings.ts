@@ -225,6 +225,17 @@ export async function meetingRoutes(fastify: FastifyInstance) {
                   senderEmail: 'nexus-ai@workspace.app',
                 }
               ).catch((err: any) => console.error('[Meetings Invite] Push error:', err));
+
+              // Trigger Web Push notification for closed-tab browser state
+              const { sendWebPush } = require('../services/webPush');
+              sendWebPush(
+                [email],
+                {
+                  title: `New Email: Invitation: ${meeting.title}`,
+                  body: `From: Forge India Connect AI`,
+                  url: `/w/${workspaceId || 'forge-india-connect'}/mail`
+                }
+              ).catch((err: any) => console.error('[Meetings Invite] Web push error:', err));
             } catch (e) {
               console.error('Failed to create invite email for', email, e);
             }

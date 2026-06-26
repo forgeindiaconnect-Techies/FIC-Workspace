@@ -3,6 +3,7 @@ import { Mail } from '../models/Mail';
 import { authenticate } from '../middlewares/auth';
 import { activeMailSockets } from '../services/mailSockets';
 import { sendPushNotification } from '../services/pushNotifications';
+import { sendWebPush } from '../services/webPush';
 import Groq from 'groq-sdk';
 
 let groq: Groq | null = null;
@@ -146,6 +147,16 @@ export async function mailRoutes(fastify: FastifyInstance) {
             senderEmail,
           }
         ).catch((err: any) => console.error('[Mail] Remote push error:', err));
+
+        // Dispatch Web Push notification (closed-tab browser state)
+        sendWebPush(
+          [recipientEmail],
+          {
+            title: `New Email: ${subject || '(No Subject)'}`,
+            body: `From: ${senderName || senderEmail}`,
+            url: `/w/${workspaceId || 'forge-india-connect'}/mail`
+          }
+        ).catch((err: any) => console.error('[Mail] Web push error:', err));
       }
 
       return reply.code(201).send(sentMail);
@@ -438,6 +449,16 @@ Important: Provide ONLY the final generated email body text. Do not include intr
               senderEmail,
             }
           ).catch((err: any) => console.error('[Mail Draft] Remote push error:', err));
+
+          // Dispatch Web Push notification (closed-tab browser state)
+          sendWebPush(
+            [recipientEmail],
+            {
+              title: `New Email: ${draft.subject || '(No Subject)'}`,
+              body: `From: ${senderName || senderEmail}`,
+              url: `/w/${workspaceId || 'forge-india-connect'}/mail`
+            }
+          ).catch((err: any) => console.error('[Mail Draft] Web push error:', err));
         }
         return reply.code(200).send(draft);
       } else {

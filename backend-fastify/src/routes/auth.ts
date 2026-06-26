@@ -615,4 +615,79 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({ error: 'Failed to register push token.', details: err.message });
     }
   });
+
+  // 11. GET VAPID PUBLIC KEY
+  fastify.get('/web-push/public-key', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { getVapidPublicKey } = require('../services/webPush');
+      return reply.code(200).send({ publicKey: getVapidPublicKey() });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to fetch VAPID public key.', details: err.message });
+    }
+  });
+
+  // 12. REGISTER WEB PUSH SUBSCRIPTION
+  fastify.post('/web-push/subscribe', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { subscription } = request.body as any;
+      if (!subscription || !subscription.endpoint || !subscription.keys) {
+        return reply.code(400).send({ error: 'Subscription object with endpoint and keys is required.' });
+      }
+
+      const user = await User.findById(request.user!.id);
+      if (!user) {
+        return reply.code(404).send({ error: 'User not found.' });
+      }
+
+      if (!user.webPushSubscriptions) {
+        user.webPushSubscriptions = [];
+      }
+
+      const exists = user.webPushSubscriptions.some(sub => sub.endpoint === subscription.endpoint);
+      if (!exists) {
+        user.webPushSubscriptions.push({
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: subscription.keys.p256dh,
+            auth: subscription.keys.auth
+          }
+        });
+        await user.save();
+        console.log(`[WebPush] Subscribed endpoint for user ${user.email}`);
+      }
+
+      return reply.code(200).send({ success: true, message: 'Web push subscription registered successfully.' });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to register web push subscription.', details: err.message });
+    }
+  });
+
+  // 13. UNREGISTER WEB PUSH SUBSCRIPTION
+  fastify.post('/web-push/unsubscribe', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { endpoint } = request.body as any;
+      if (!endpoint) {
+        return reply.code(400).send({ error: 'Subscription endpoint is required.' });
+      }
+
+      const user = await User.findById(request.user!.id);
+      if (!user) {
+        return reply.code(404).send({ error: 'User not found.' });
+      }
+
+      if (user.webPushSubscriptions) {
+        const originalLength = user.webPushSubscriptions.length;
+        user.webPushSubscriptions = user.webPushSubscriptions.filter(sub => sub.endpoint !== endpoint);
+        
+        if (user.webPushSubscriptions.length < originalLength) {
+          await user.save();
+          console.log(`[WebPush] Unsubscribed endpoint for user ${user.email}`);
+        }
+      }
+
+      return reply.code(200).send({ success: true, message: 'Web push subscription removed successfully.' });
+    } catch (err: any) {
+      return reply.code(500).send({ error: 'Failed to remove web push subscription.', details: err.message });
+    }
+  });
 }

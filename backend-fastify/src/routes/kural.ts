@@ -8,6 +8,7 @@ import { KuralMessage } from '../models/KuralMessage';
 import { Story } from '../models/Story';
 import { authenticate } from '../middlewares/auth';
 import { sendPushNotification } from '../services/pushNotifications';
+import { sendWebPush } from '../services/webPush';
 
 const cloudinaryFolder = process.env.CLOUDINARY_FOLDER || 'chat_uploads';
 const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME || '';
@@ -678,6 +679,15 @@ export async function kuralRoutes(fastify: FastifyInstance) {
             senderEmail: currentEmail,
           }
         ).catch((err: any) => console.error('[Kural] Remote push error:', err));
+
+        sendWebPush(
+          otherParticipants,
+          {
+            title: `New Message from ${message.senderName || currentEmail}`,
+            body: content || `Sent a file: ${originalName || 'Attachment'}`,
+            url: `/w/${workspaceId || 'forge-india-connect'}/chat`
+          }
+        ).catch((err: any) => console.error('[Kural] Web push error:', err));
       }
 
       return reply.code(201).send({

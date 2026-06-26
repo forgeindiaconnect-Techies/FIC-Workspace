@@ -13,6 +13,13 @@ export interface IUser extends Document {
   mfaSecret?: string;
   mfaEnabled: boolean;
   expoPushToken?: string;
+  webPushSubscriptions?: Array<{
+    endpoint: string;
+    keys: {
+      p256dh: string;
+      auth: string;
+    };
+  }>;
   createdAt: Date;
 }
 
@@ -29,6 +36,13 @@ const UserSchema = new Schema<IUser>({
   mfaSecret: { type: String },
   mfaEnabled: { type: Boolean, default: false },
   expoPushToken: { type: String },
+  webPushSubscriptions: [{
+    endpoint: { type: String, required: true },
+    keys: {
+      p256dh: { type: String, required: true },
+      auth: { type: String, required: true }
+    }
+  }],
   createdAt: { type: Date, default: Date.now }
 });
 

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { AppSwitcher } from './AppLayout';
+import { registerWebPush } from '../utils/webPushHelper';
 
 const DashboardLayout = ({ children, isAdmin = false }) => {
   const { workspaceId } = useParams();
@@ -30,12 +31,8 @@ const DashboardLayout = ({ children, isAdmin = false }) => {
     const token = auth.token || auth.user?.token || localStorage.getItem('token');
     if (!email) return;
 
-    // Request desktop notification permission on load
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-        Notification.requestPermission();
-      }
-    }
+    // Register browser Web Push notifications (closed-tab state)
+    registerWebPush();
 
     const showDesktopNotification = (title, body) => {
       if (typeof window === 'undefined' || !('Notification' in window)) return;

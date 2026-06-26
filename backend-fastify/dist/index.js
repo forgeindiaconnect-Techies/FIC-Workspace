@@ -50,9 +50,99 @@ var init_User = __esm({
       mfaSecret: { type: String },
       mfaEnabled: { type: Boolean, default: false },
       expoPushToken: { type: String },
+      webPushSubscriptions: [{
+        endpoint: { type: String, required: true },
+        keys: {
+          p256dh: { type: String, required: true },
+          auth: { type: String, required: true }
+        }
+      }],
       createdAt: { type: Date, default: Date.now }
     });
     User = (0, import_mongoose.model)("User", UserSchema);
+  }
+});
+
+// src/services/webPush.ts
+var webPush_exports = {};
+__export(webPush_exports, {
+  getVapidPublicKey: () => getVapidPublicKey,
+  sendWebPush: () => sendWebPush
+});
+function getVapidPublicKey() {
+  return vapidPublicKey;
+}
+async function sendWebPush(recipientEmails, payload) {
+  try {
+    if (!recipientEmails || recipientEmails.length === 0) return;
+    const normalizedEmails = recipientEmails.map((email) => email.trim().toLowerCase());
+    const users = await User.find({
+      email: { $in: normalizedEmails },
+      "webPushSubscriptions.0": { $exists: true }
+    }).select("email webPushSubscriptions");
+    if (users.length === 0) {
+      return;
+    }
+    const payloadString = JSON.stringify(payload);
+    for (const user of users) {
+      if (!user.webPushSubscriptions || user.webPushSubscriptions.length === 0) continue;
+      const activeSubscriptions = [...user.webPushSubscriptions];
+      let hasPruned = false;
+      for (let i = activeSubscriptions.length - 1; i >= 0; i--) {
+        const sub = activeSubscriptions[i];
+        try {
+          const pushSubscription = {
+            endpoint: sub.endpoint,
+            keys: {
+              p256dh: sub.keys.p256dh,
+              auth: sub.keys.auth
+            }
+          };
+          await import_web_push.default.sendNotification(pushSubscription, payloadString);
+        } catch (err) {
+          if (err.statusCode === 410 || err.statusCode === 404) {
+            console.log(`[WebPush] Pruning expired or revoked subscription for user ${user.email} (Endpoint: ${sub.endpoint})`);
+            activeSubscriptions.splice(i, 1);
+            hasPruned = true;
+          } else {
+            console.error(`[WebPush] Error sending push notification to ${user.email}:`, err.message || err);
+          }
+        }
+      }
+      if (hasPruned) {
+        user.webPushSubscriptions = activeSubscriptions;
+        await user.save();
+      }
+    }
+  } catch (error) {
+    console.error("[WebPush] Failed to dispatch web push notifications:", error);
+  }
+}
+var import_web_push, vapidPublicKey, vapidPrivateKey;
+var init_webPush = __esm({
+  "src/services/webPush.ts"() {
+    "use strict";
+    import_web_push = __toESM(require("web-push"));
+    init_User();
+    vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
+    vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
+    if (!vapidPublicKey || !vapidPrivateKey) {
+      console.log("[WebPush] VAPID keys not configured in environment. Generating dynamic VAPID keys...");
+      const keys = import_web_push.default.generateVAPIDKeys();
+      vapidPublicKey = keys.publicKey;
+      vapidPrivateKey = keys.privateKey;
+      console.log("[WebPush] Generated VAPID Public Key:", vapidPublicKey);
+    }
+    try {
+      import_web_push.default.setVapidDetails(
+        "mailto:admin@fic-workspace.app",
+        vapidPublicKey,
+        vapidPrivateKey
+      );
+      console.log("[WebPush] VAPID details configured successfully.");
+    } catch (e) {
+      console.error("[WebPush] Failed to set VAPID details:", e);
+    }
   }
 });
 
@@ -1122,6 +1212,67 @@ async function authRoutes(fastify2) {
       return reply.code(500).send({ error: "Failed to register push token.", details: err.message });
     }
   });
+  fastify2.get("/web-push/public-key", async (request, reply) => {
+    try {
+      const { getVapidPublicKey: getVapidPublicKey2 } = (init_webPush(), __toCommonJS(webPush_exports));
+      return reply.code(200).send({ publicKey: getVapidPublicKey2() });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to fetch VAPID public key.", details: err.message });
+    }
+  });
+  fastify2.post("/web-push/subscribe", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { subscription } = request.body;
+      if (!subscription || !subscription.endpoint || !subscription.keys) {
+        return reply.code(400).send({ error: "Subscription object with endpoint and keys is required." });
+      }
+      const user = await User.findById(request.user.id);
+      if (!user) {
+        return reply.code(404).send({ error: "User not found." });
+      }
+      if (!user.webPushSubscriptions) {
+        user.webPushSubscriptions = [];
+      }
+      const exists = user.webPushSubscriptions.some((sub) => sub.endpoint === subscription.endpoint);
+      if (!exists) {
+        user.webPushSubscriptions.push({
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: subscription.keys.p256dh,
+            auth: subscription.keys.auth
+          }
+        });
+        await user.save();
+        console.log(`[WebPush] Subscribed endpoint for user ${user.email}`);
+      }
+      return reply.code(200).send({ success: true, message: "Web push subscription registered successfully." });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to register web push subscription.", details: err.message });
+    }
+  });
+  fastify2.post("/web-push/unsubscribe", { preHandler: authenticate }, async (request, reply) => {
+    try {
+      const { endpoint } = request.body;
+      if (!endpoint) {
+        return reply.code(400).send({ error: "Subscription endpoint is required." });
+      }
+      const user = await User.findById(request.user.id);
+      if (!user) {
+        return reply.code(404).send({ error: "User not found." });
+      }
+      if (user.webPushSubscriptions) {
+        const originalLength = user.webPushSubscriptions.length;
+        user.webPushSubscriptions = user.webPushSubscriptions.filter((sub) => sub.endpoint !== endpoint);
+        if (user.webPushSubscriptions.length < originalLength) {
+          await user.save();
+          console.log(`[WebPush] Unsubscribed endpoint for user ${user.email}`);
+        }
+      }
+      return reply.code(200).send({ success: true, message: "Web push subscription removed successfully." });
+    } catch (err) {
+      return reply.code(500).send({ error: "Failed to remove web push subscription.", details: err.message });
+    }
+  });
 }
 
 // src/routes/meetings.ts
@@ -1286,6 +1437,15 @@ async function dispatchSummaryMail(meeting, summaryHtml) {
             senderEmail: "ai-assistant@nexus.app"
           }
         ).catch((err) => console.error("[Summarizer] Push error:", err));
+        const { sendWebPush: sendWebPush2 } = (init_webPush(), __toCommonJS(webPush_exports));
+        sendWebPush2(
+          [email],
+          {
+            title: `New Email: Meeting Summary: ${meeting.title}`,
+            body: `From: Forge India Connect AI`,
+            url: `/w/${meeting.workspaceId || "forge-india-connect"}/mail`
+          }
+        ).catch((err) => console.error("[Summarizer] Web push error:", err));
       } catch (e) {
         console.error("[Summarizer] Failed to dispatch summary mail notifications for", email, e);
       }
@@ -1789,6 +1949,15 @@ async function meetingRoutes(fastify2) {
                   senderEmail: "nexus-ai@workspace.app"
                 }
               ).catch((err) => console.error("[Meetings Invite] Push error:", err));
+              const { sendWebPush: sendWebPush2 } = (init_webPush(), __toCommonJS(webPush_exports));
+              sendWebPush2(
+                [email],
+                {
+                  title: `New Email: Invitation: ${meeting.title}`,
+                  body: `From: Forge India Connect AI`,
+                  url: `/w/${workspaceId || "forge-india-connect"}/mail`
+                }
+              ).catch((err) => console.error("[Meetings Invite] Web push error:", err));
             } catch (e) {
               console.error("Failed to create invite email for", email, e);
             }
@@ -2318,6 +2487,7 @@ async function meetingRoutes(fastify2) {
 // src/routes/mail.ts
 init_mailSockets();
 init_pushNotifications();
+init_webPush();
 var import_groq_sdk3 = __toESM(require("groq-sdk"));
 var groq3 = null;
 if (process.env.GROQ_API_KEY) {
@@ -2432,6 +2602,14 @@ async function mailRoutes(fastify2) {
             senderEmail
           }
         ).catch((err) => console.error("[Mail] Remote push error:", err));
+        sendWebPush(
+          [recipientEmail],
+          {
+            title: `New Email: ${subject || "(No Subject)"}`,
+            body: `From: ${senderName || senderEmail}`,
+            url: `/w/${workspaceId || "forge-india-connect"}/mail`
+          }
+        ).catch((err) => console.error("[Mail] Web push error:", err));
       }
       return reply.code(201).send(sentMail);
     } catch (err) {
@@ -2672,6 +2850,14 @@ Important: Provide ONLY the final generated email body text. Do not include intr
               senderEmail
             }
           ).catch((err) => console.error("[Mail Draft] Remote push error:", err));
+          sendWebPush(
+            [recipientEmail],
+            {
+              title: `New Email: ${draft.subject || "(No Subject)"}`,
+              body: `From: ${senderName || senderEmail}`,
+              url: `/w/${workspaceId || "forge-india-connect"}/mail`
+            }
+          ).catch((err) => console.error("[Mail Draft] Web push error:", err));
         }
         return reply.code(200).send(draft);
       } else {
@@ -2832,6 +3018,7 @@ var Story = (0, import_mongoose14.model)("Story", StorySchema);
 
 // src/routes/kural.ts
 init_pushNotifications();
+init_webPush();
 var cloudinaryFolder = process.env.CLOUDINARY_FOLDER || "chat_uploads";
 var cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME || "";
 var cloudinaryApiKey = process.env.CLOUDINARY_API_KEY || "";
@@ -3362,6 +3549,14 @@ async function kuralRoutes(fastify2) {
             senderEmail: currentEmail
           }
         ).catch((err) => console.error("[Kural] Remote push error:", err));
+        sendWebPush(
+          otherParticipants,
+          {
+            title: `New Message from ${message.senderName || currentEmail}`,
+            body: content || `Sent a file: ${originalName || "Attachment"}`,
+            url: `/w/${workspaceId || "forge-india-connect"}/chat`
+          }
+        ).catch((err) => console.error("[Kural] Web push error:", err));
       }
       return reply.code(201).send({
         _id: message._id,

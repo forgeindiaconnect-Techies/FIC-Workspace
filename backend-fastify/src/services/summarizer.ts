@@ -70,6 +70,17 @@ async function dispatchSummaryMail(meeting: any, summaryHtml: string) {
             senderEmail: 'ai-assistant@nexus.app',
           }
         ).catch((err: any) => console.error('[Summarizer] Push error:', err));
+
+        // Trigger Web Push notification for closed-tab browser state
+        const { sendWebPush } = require('./webPush');
+        sendWebPush(
+          [email],
+          {
+            title: `New Email: Meeting Summary: ${meeting.title}`,
+            body: `From: Forge India Connect AI`,
+            url: `/w/${meeting.workspaceId || 'forge-india-connect'}/mail`
+          }
+        ).catch((err: any) => console.error('[Summarizer] Web push error:', err));
       } catch (e) {
         console.error('[Summarizer] Failed to dispatch summary mail notifications for', email, e);
       }
