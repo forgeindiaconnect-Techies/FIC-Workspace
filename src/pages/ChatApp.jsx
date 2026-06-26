@@ -1340,7 +1340,25 @@ const ChatApp = () => {
                                            </span>
                                         </div>
                                      </div>
-                                     <div className="flex items-center gap-4">
+                                     <div className="flex items-center gap-2">
+                                       {['dm', 'direct'].includes(selected.type) && (
+                                         <>
+                                           <button
+                                             onClick={() => callUser(otherUserEmail, false)}
+                                             className="text-[#76777D] hover:text-[#2170E4] hover:bg-[#EFF4FF] p-2 rounded-full transition-all"
+                                             title="Voice Call"
+                                           >
+                                             <Phone size={20} />
+                                           </button>
+                                           <button
+                                             onClick={() => callUser(otherUserEmail, true)}
+                                             className="text-[#76777D] hover:text-[#2170E4] hover:bg-[#EFF4FF] p-2 rounded-full transition-all"
+                                             title="Video Call"
+                                           >
+                                             <Video size={20} />
+                                           </button>
+                                         </>
+                                       )}
                                        {( (['dm', 'direct'].includes(selected.type)) || ((['group', 'channel'].includes(selected.type) || selected.isGroup) && (selected.createdBy === currentUserEmail || selected.createdByEmail === currentUserEmail)) ) && (
                                          <button
                                            onClick={() => deleteGroup(selected._id, selected.name || getDMName(selected))}
