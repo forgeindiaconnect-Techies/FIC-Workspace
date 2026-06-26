@@ -81,7 +81,7 @@ export async function mailRoutes(fastify: FastifyInstance) {
       const { to, subject, body, attachments } = request.body;
       const senderName = request.user.name || request.user.email.split('@')[0];
       const senderEmail = request.user.email;
-      const workspaceId = request.user.workspaceId || 'antigraviity-hq';
+      const workspaceId = request.user.workspaceId || 'forge-india-connect';
       
       const recipientList = Array.isArray(to) ? to : [to].filter(Boolean);
 

@@ -33,7 +33,7 @@ async function mintAIBotToken(): Promise<{ token: string; userId: string } | nul
         avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=forgeai`,
         mfaEnabled: false,
         role: 'company-admin',
-        workspaceId: 'antigraviity-hq',
+        workspaceId: 'forge-india-connect',
       });
     } else if (aiUser.name !== AI_BOT_NAME) {
       // Update legacy name to Forge India Connect AI
@@ -44,7 +44,7 @@ async function mintAIBotToken(): Promise<{ token: string; userId: string } | nul
     }
 
     const token = jwt.sign(
-      { userId: aiUser._id, email: aiUser.email, name: aiUser.name, role: 'ai-bot', workspaceId: 'antigraviity-hq' },
+      { userId: aiUser._id, email: aiUser.email, name: aiUser.name, role: 'ai-bot', workspaceId: 'forge-india-connect' },
       JWT_SECRET,
       { expiresIn: '6h' }
     );

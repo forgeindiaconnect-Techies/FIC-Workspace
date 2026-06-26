@@ -436,7 +436,7 @@ async function authRoutes(fastify2) {
   async function issueTokens(user) {
     const email = user.email || user.adminEmail;
     const role = user.role || "company-admin";
-    const workspaceId = user.workspaceId || "antigraviity-hq";
+    const workspaceId = user.workspaceId || "forge-india-connect";
     const accessToken = import_jsonwebtoken2.default.sign(
       { userId: user._id, email, name: user.name, role, workspaceId },
       getJwtSecret2(),
@@ -898,7 +898,7 @@ var Recording = (0, import_mongoose7.model)("Recording", RecordingSchema);
 // src/models/Mail.ts
 var import_mongoose8 = __toESM(require("mongoose"));
 var mailSchema = new import_mongoose8.default.Schema({
-  workspaceId: { type: String, required: true, default: "antigraviity-hq" },
+  workspaceId: { type: String, required: true, default: "forge-india-connect" },
   ownerEmail: { type: String, required: true },
   // The user who owns this specific copy of the email
   folder: { type: String, enum: ["inbox", "sent", "drafts", "trash", "archive"], default: "inbox" },
@@ -971,7 +971,7 @@ async function dispatchSummaryMail(meeting, summaryHtml) {
     }
     const recipientEmails = users.map((u) => u.email);
     const mailDoc = {
-      workspaceId: "antigraviity-hq",
+      workspaceId: "forge-india-connect",
       senderName: "Forge India Connect AI",
       senderEmail: "ai-assistant@nexus.app",
       recipientEmails,
@@ -1141,7 +1141,7 @@ async function mintAIBotToken() {
         avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=forgeai`,
         mfaEnabled: false,
         role: "company-admin",
-        workspaceId: "antigraviity-hq"
+        workspaceId: "forge-india-connect"
       });
     } else if (aiUser.name !== AI_BOT_NAME) {
       aiUser.name = AI_BOT_NAME;
@@ -1150,7 +1150,7 @@ async function mintAIBotToken() {
       console.log(`[AIBot] Updated bot name to '${AI_BOT_NAME}' in database.`);
     }
     const token = import_jsonwebtoken3.default.sign(
-      { userId: aiUser._id, email: aiUser.email, name: aiUser.name, role: "ai-bot", workspaceId: "antigraviity-hq" },
+      { userId: aiUser._id, email: aiUser.email, name: aiUser.name, role: "ai-bot", workspaceId: "forge-india-connect" },
       JWT_SECRET,
       { expiresIn: "6h" }
     );
@@ -1402,7 +1402,7 @@ async function meetingRoutes(fastify2) {
         body: JSON.stringify({
           event: "meeting.created",
           data: {
-            workspaceId: "antigraviity-hq",
+            workspaceId: "forge-india-connect",
             title: meeting.title,
             host: request.user.name || "Host User",
             hostEmail: request.user.email || "host@antigraviity.com",
@@ -1418,7 +1418,7 @@ async function meetingRoutes(fastify2) {
         console.error(" [WEBHOOK] dispatch failed:", err.message);
       });
       try {
-        const workspaceId = request.user?.workspaceId || "antigraviity-hq";
+        const workspaceId = request.user?.workspaceId || "forge-india-connect";
         const allWorkspaceUsers = await User.find({ workspaceId });
         const { activeMailSockets: activeMailSockets2 } = (init_mailSockets(), __toCommonJS(mailSockets_exports));
         if (activeMailSockets2) {
@@ -1433,7 +1433,7 @@ async function meetingRoutes(fastify2) {
         console.error("Socket broadcast error:", e);
       }
       try {
-        const workspaceId = request.user?.workspaceId || "antigraviity-hq";
+        const workspaceId = request.user?.workspaceId || "forge-india-connect";
         const allUsers = await User.find({ workspaceId });
         const targetEmails = allUsers.map((u) => u.email).filter((e) => e !== request.user.email);
         if (targetEmails.length > 0) {
@@ -1612,7 +1612,7 @@ async function meetingRoutes(fastify2) {
   });
   fastify2.get("/rooms", { preHandler: authenticate }, async (request, reply) => {
     try {
-      const workspaceId = request.user?.workspaceId || "antigraviity-hq";
+      const workspaceId = request.user?.workspaceId || "forge-india-connect";
       const rooms2 = await Room.find({ workspaceId }).sort({ createdAt: -1 });
       return reply.code(200).send(rooms2);
     } catch (err) {
@@ -1622,7 +1622,7 @@ async function meetingRoutes(fastify2) {
   fastify2.post("/rooms", { preHandler: authenticate }, async (request, reply) => {
     try {
       const { title, tag, color } = request.body;
-      const workspaceId = request.user?.workspaceId || "antigraviity-hq";
+      const workspaceId = request.user?.workspaceId || "forge-india-connect";
       if (!title || !tag) return reply.code(400).send({ error: "Title and Tag are required." });
       const room = await Room.create({
         workspaceId,
@@ -1723,7 +1723,7 @@ async function meetingRoutes(fastify2) {
         });
       }
       try {
-        const workspaceId = request.user?.workspaceId || "antigraviity-hq";
+        const workspaceId = request.user?.workspaceId || "forge-india-connect";
         const allWorkspaceUsers = await User.find({ workspaceId });
         const { activeMailSockets: activeMailSockets2 } = (init_mailSockets(), __toCommonJS(mailSockets_exports));
         if (activeMailSockets2) {
@@ -1841,7 +1841,7 @@ async function meetingRoutes(fastify2) {
         console.error(" [WEBHOOK] dispatch failed:", err.message);
       });
       try {
-        const workspaceId = request.user?.workspaceId || "antigraviity-hq";
+        const workspaceId = request.user?.workspaceId || "forge-india-connect";
         const allWorkspaceUsers = await User.find({ workspaceId });
         const { activeMailSockets: activeMailSockets2 } = (init_mailSockets(), __toCommonJS(mailSockets_exports));
         if (activeMailSockets2) {
@@ -2066,7 +2066,7 @@ async function mailRoutes(fastify2) {
       const { to, subject, body, attachments } = request.body;
       const senderName = request.user.name || request.user.email.split("@")[0];
       const senderEmail = request.user.email;
-      const workspaceId = request.user.workspaceId || "antigraviity-hq";
+      const workspaceId = request.user.workspaceId || "forge-india-connect";
       const recipientList = Array.isArray(to) ? to : [to].filter(Boolean);
       if (recipientList.length === 0) {
         return reply.code(400).send({ error: "At least one recipient is required" });
@@ -2384,7 +2384,7 @@ import_cloudinary.v2.config({
   api_key: cloudinaryApiKey,
   api_secret: cloudinaryApiSecret
 });
-var defaultWorkspaceId = "antigraviity-hq";
+var defaultWorkspaceId = "forge-india-connect";
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -2996,7 +2996,7 @@ async function kuralRoutes(fastify2) {
 
 // src/routes/members.ts
 var import_bcrypt4 = __toESM(require("bcrypt"));
-var defaultWorkspaceId2 = "antigraviity-hq";
+var defaultWorkspaceId2 = "forge-india-connect";
 function publicUser(user) {
   return {
     _id: user._id,
@@ -3095,7 +3095,7 @@ TaskSchema.pre("save", function(next) {
 var Task = (0, import_mongoose17.model)("Task", TaskSchema);
 
 // src/routes/tasks.ts
-var defaultWorkspaceId3 = "antigraviity-hq";
+var defaultWorkspaceId3 = "forge-india-connect";
 async function taskRoutes(fastify2) {
   fastify2.addHook("preValidation", authenticate);
   fastify2.get("/:workspaceId", async (request, reply) => {
@@ -3197,7 +3197,7 @@ DocumentSchema.pre("save", function(next) {
 var WorkspaceDocument = (0, import_mongoose18.model)("WorkspaceDocument", DocumentSchema);
 
 // src/routes/docs.ts
-var defaultWorkspaceId4 = "antigraviity-hq";
+var defaultWorkspaceId4 = "forge-india-connect";
 async function docsRoutes(fastify2) {
   fastify2.addHook("preValidation", authenticate);
   fastify2.get("/:workspaceId", async (request, reply) => {
@@ -4336,7 +4336,7 @@ async function ensureDefaultUser() {
       avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent("Forge India Administrator")}`,
       mfaEnabled: false,
       role: "company-admin",
-      workspaceId: "antigraviity-hq"
+      workspaceId: "forge-india-connect"
     });
   } else if (existing.name === "Nexus Administrator") {
     existing.name = "Forge India Administrator";
@@ -4354,7 +4354,7 @@ async function ensureDefaultUser() {
       avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=forgeai`,
       mfaEnabled: false,
       role: "company-admin",
-      workspaceId: "antigraviity-hq"
+      workspaceId: "forge-india-connect"
     });
   } else if (aiExisting.name !== "Forge India Connect AI") {
     aiExisting.name = "Forge India Connect AI";

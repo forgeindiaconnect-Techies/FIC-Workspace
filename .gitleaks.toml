@@ -1,0 +1,46 @@
+# Gitleaks configuration for secret scanning
+# Run: gitleaks detect --source . --config .gitleaks.toml
+# Pre-commit: gitleaks protect --staged --config .gitleaks.toml
+
+title = "Forge India Connect — Secret Scanning Rules"
+
+[extend]
+# Use the default gitleaks rules as a baseline
+useDefault = true
+
+# ── Custom Rules ─────────────────────────────────────────────────────────────
+
+[[rules]]
+id = "mongodb-connection-string"
+description = "MongoDB Connection String with credentials"
+regex = '''mongodb(\+srv)?://[^:]+:[^@]+@'''
+tags = ["database", "mongodb"]
+
+[[rules]]
+id = "cloudinary-api-key"
+description = "Cloudinary API Key"
+regex = '''CLOUDINARY_API_KEY\s*=\s*["']?\d{15,}["']?'''
+tags = ["api", "cloudinary"]
+
+[[rules]]
+id = "groq-api-key"
+description = "Groq API Key"
+regex = '''gsk_[a-zA-Z0-9]{40,}'''
+tags = ["api", "groq"]
+
+[[rules]]
+id = "turn-credential"
+description = "TURN Server Credential"
+regex = '''credential\s*[:=]\s*["'][A-Za-z0-9+/=]{16,}["']'''
+tags = ["webrtc", "turn"]
+
+# ── Allowlist ─────────────────────────────────────────────────────────────────
+# Files and patterns that are intentionally excluded from scanning
+
+[allowlist]
+paths = [
+  '''node_modules/''',
+  '''\.env\.example$''',
+  '''package-lock\.json$''',
+  '''\.gitleaks\.toml$''',
+]

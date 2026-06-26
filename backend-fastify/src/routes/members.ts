@@ -4,7 +4,7 @@ import { User } from '../models/User';
 import { Tenant } from '../models/Tenant';
 import { authenticate } from '../middlewares/auth';
 
-const defaultWorkspaceId = 'antigraviity-hq';
+const defaultWorkspaceId = 'forge-india-connect';
 
 function publicUser(user: any) {
   return {

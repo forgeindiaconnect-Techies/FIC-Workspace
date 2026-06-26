@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import jwt from 'jsonwebtoken';
 
 // Load .env from backend-fastify folder (works when started via root server.js too)
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -29,6 +30,7 @@ import { handleAudioSocket } from './services/aiBot';
 import { handleThreadsSocket } from './services/threadSockets';
 import { ensureDefaultUser } from './utils/seedDefaultUser';
 import { connectMongo, getLastMongoError, isMongoConnected, validateMongoUri } from './utils/mongo';
+import { loadSecurityConfig, getIceServers } from './utils/securityConfig';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/nexus-zoom';
@@ -37,6 +39,9 @@ const ENABLE_SOCKET_FILE_LOGS = process.env.ENABLE_SOCKET_FILE_LOGS === 'true';
 const isRenderHost = !!(process.env.RENDER || process.env.RENDER_SERVICE_NAME);
 const isProduction = process.env.NODE_ENV === 'production' || isRenderHost;
 const isDefaultLocalUri = !process.env.MONGO_URI || MONGO_URI.includes('127.0.0.1');
+
+// SECURITY: Validate all required environment variables at startup
+const securityConfig = loadSecurityConfig();
 
 const server = fastify({
   logger: isProduction
@@ -97,9 +102,15 @@ async function connectDatabase() {
 
 // 2. REGISTER INJECTED COMPONENT PLUGINS
 async function bootstrap() {
-  // CORS compliance rules
+  // CORS compliance rules — restrict to allowed origins in production
+  const corsOrigin = securityConfig.corsAllowedOrigins.length > 0
+    ? securityConfig.corsAllowedOrigins
+    : isProduction
+      ? false  // Deny all cross-origin in production if no origins configured
+      : true;  // Allow all in development
+
   await server.register(cors, {
-    origin: true,
+    origin: corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'x-speaker-name'],
   });
@@ -158,47 +169,66 @@ async function bootstrap() {
   await server.register(statusRoutes, { prefix: '/api/status' });
   await server.register(threadsRoutes, { prefix: '/api/threads' });
 
-  // 3b. ICE / TURN server config endpoint
+  // 3b. ICE / TURN server config endpoint — credentials from environment
   server.get('/api/meet/ice-servers', async () => {
-    return [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      {
-        urls: "turn:free.expressturn.com:3478",
-        username: "000000002097290800",
-        credential: "XnOg5DVFwGY/30tgW+PnfhmXv0c="
-      }
-    ];
+    return getIceServers();
   });
 
-  // 4. ATTACH WEBRTC SIGNALLING & MAIL SOCKET CHANNELS
-  server.get('/ws/webrtc', { websocket: true }, (connection: any, req: any) => {
-    server.log.info('New secure WebRTC client socket handshake initiated.');
+  // ── WebSocket Authentication Helper ──────────────────────────────────────
+  function authenticateWs(connection: any, req: any): any | null {
     const ws = connection.socket || connection;
-    handleWebRtcSignalling(ws);
+    try {
+      const url = new URL(req.url, 'http://localhost');
+      const token = url.searchParams.get('token');
+      if (!token) {
+        ws.close(4001, 'Authentication required: token query parameter missing');
+        return null;
+      }
+      const decoded = jwt.verify(token, securityConfig.jwtSecret) as any;
+      if (!decoded || !decoded.userId) {
+        ws.close(4001, 'Authentication failed: invalid token');
+        return null;
+      }
+      return { ws, user: decoded };
+    } catch (err: any) {
+      ws.close(4001, err.name === 'TokenExpiredError' ? 'Token expired' : 'Authentication failed');
+      return null;
+    }
+  }
+
+  // 4. ATTACH WEBRTC SIGNALLING & MAIL SOCKET CHANNELS (with JWT auth)
+  server.get('/ws/webrtc', { websocket: true }, (connection: any, req: any) => {
+    const auth = authenticateWs(connection, req);
+    if (!auth) return;
+    server.log.info(`Authenticated WebRTC client: ${auth.user.email}`);
+    handleWebRtcSignalling(auth.ws);
   });
 
   server.get('/ws/mail', { websocket: true }, (connection: any, req: any) => {
-    server.log.info('New secure Mail Socket connection initiated.');
-    const ws = connection.socket || connection;
-    handleMailSocket(ws, req);
+    const auth = authenticateWs(connection, req);
+    if (!auth) return;
+    server.log.info(`Authenticated Mail Socket: ${auth.user.email}`);
+    handleMailSocket(auth.ws, req);
   });
 
   server.get('/ws/audio', { websocket: true }, (connection: any, req: any) => {
-    const ws = connection.socket || connection;
-    handleAudioSocket(ws);
+    const auth = authenticateWs(connection, req);
+    if (!auth) return;
+    handleAudioSocket(auth.ws);
   });
 
   server.get('/ws/threads', { websocket: true }, (connection: any, req: any) => {
-    const ws = connection.socket || connection;
-    handleThreadsSocket(ws, req);
+    const auth = authenticateWs(connection, req);
+    if (!auth) return;
+    handleThreadsSocket(auth.ws, req);
   });
 
-  // 4b. 1-to-1 VOICE CALL SIGNALING (Chat module  completely separate from /ws/webrtc)
+  // 4b. 1-to-1 VOICE CALL SIGNALING (Chat module — completely separate from /ws/webrtc)
   server.get('/ws/calls', { websocket: true }, (connection: any, req: any) => {
-    server.log.info('New voice call signaling connection.');
-    const ws = connection.socket || connection;
-    handleCallSignaling(ws);
+    const auth = authenticateWs(connection, req);
+    if (!auth) return;
+    server.log.info(`Authenticated voice call signaling: ${auth.user.email}`);
+    handleCallSignaling(auth.ws);
   });
 
   // Status check endpoint

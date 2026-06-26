@@ -13,7 +13,7 @@ const STATUS_BADGES: Record<string, { label: string, color: string, bg: string }
 
 export default function FilesTab() {
   const { user } = getSession();
-  const workspaceId = user?.workspaceId || 'antigraviity-hq';
+  const workspaceId = user?.workspaceId || 'forge-india-connect';
 
   const [projects, setProjects] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);

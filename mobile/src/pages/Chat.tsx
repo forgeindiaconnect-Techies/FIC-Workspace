@@ -226,7 +226,7 @@ export default function Chat() {
   const [savingGroupAction, setSavingGroupAction] = React.useState(false);
 
   const { user } = getSession();
-  const workspaceId = user?.workspaceId || 'antigraviity-hq';
+  const workspaceId = user?.workspaceId || 'forge-india-connect';
   const email = user?.email || 'admin@fic.com';
 
   const loadCallLogs = React.useCallback(async () => {

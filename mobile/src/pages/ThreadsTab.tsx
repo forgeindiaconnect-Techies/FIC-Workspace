@@ -18,7 +18,7 @@ const btoaPolyfill = (input: string) => {
 
 export default function ThreadsTab() {
   const { user } = getSession();
-  const workspaceId = user?.workspaceId || 'antigraviity-hq';
+  const workspaceId = user?.workspaceId || 'forge-india-connect';
   const currentUserEmail = user?.email || 'admin@fic.com';
   const currentUserName = user?.name || 'Admin';
 

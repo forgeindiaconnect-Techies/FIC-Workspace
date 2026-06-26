@@ -474,7 +474,7 @@ ${fullText}`;
       if (!pEmail) continue;
 
       await Mail.create({
-        workspaceId: meeting.workspaceId || 'antigraviity-hq',
+        workspaceId: meeting.workspaceId || 'forge-india-connect',
         ownerEmail: pEmail,
         folder: 'inbox',
         senderName: 'Forge India Connect AI',

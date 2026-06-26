@@ -9,7 +9,7 @@ async function run() {
   
   const result = await users.updateOne(
     { email: 'dhanush@fic.com' },
-    { $set: { workspaceId: 'antigraviity-hq', role: 'Member' } }
+    { $set: { workspaceId: 'forge-india-connect', role: 'Member' } }
   );
   
   console.log("Matched:", result.matchedCount);

@@ -119,7 +119,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
         body: JSON.stringify({
           event: 'meeting.created',
           data: {
-            workspaceId: 'antigraviity-hq',
+            workspaceId: 'forge-india-connect',
             title: meeting.title,
             host: request.user!.name || 'Host User',
             hostEmail: request.user!.email || 'host@antigraviity.com',
@@ -137,7 +137,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
 
       // Broadcast meeting-update to trigger UI refresh
       try {
-        const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+        const workspaceId = request.user?.workspaceId || 'forge-india-connect';
         const allWorkspaceUsers = await User.find({ workspaceId });
         const { activeMailSockets } = require('../services/mailSockets');
         if (activeMailSockets) {
@@ -154,7 +154,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
 
       // Send AI email invitations to all team members in the workspace
       try {
-        const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+        const workspaceId = request.user?.workspaceId || 'forge-india-connect';
         const allUsers = await User.find({ workspaceId });
         const targetEmails = allUsers.map(u => u.email).filter(e => e !== request.user!.email);
 
@@ -366,7 +366,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   // 10. GET WORKSPACE ROOMS
   fastify.get('/rooms', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+      const workspaceId = request.user?.workspaceId || 'forge-india-connect';
       const rooms = await Room.find({ workspaceId }).sort({ createdAt: -1 });
       return reply.code(200).send(rooms);
     } catch (err: any) {
@@ -378,7 +378,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
   fastify.post('/rooms', { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { title, tag, color } = request.body as any;
-      const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+      const workspaceId = request.user?.workspaceId || 'forge-india-connect';
       if (!title || !tag) return reply.code(400).send({ error: 'Title and Tag are required.' });
 
       const room = await Room.create({
@@ -509,7 +509,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
 
       // Broadcast meeting-update to trigger UI refresh
       try {
-        const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+        const workspaceId = request.user?.workspaceId || 'forge-india-connect';
         const allWorkspaceUsers = await User.find({ workspaceId });
         const { activeMailSockets } = require('../services/mailSockets');
         if (activeMailSockets) {
@@ -651,7 +651,7 @@ export async function meetingRoutes(fastify: FastifyInstance) {
 
       // Broadcast meeting-update to trigger UI refresh
       try {
-        const workspaceId = request.user?.workspaceId || 'antigraviity-hq';
+        const workspaceId = request.user?.workspaceId || 'forge-india-connect';
         const allWorkspaceUsers = await User.find({ workspaceId });
         const { activeMailSockets } = require('../services/mailSockets');
         if (activeMailSockets) {

@@ -20,7 +20,7 @@ cloudinary.config({
   api_secret: cloudinaryApiSecret,
 });
 
-const defaultWorkspaceId = 'antigraviity-hq';
+const defaultWorkspaceId = 'forge-india-connect';
 
 function normalizeEmail(value: string) {
   return String(value || '').trim().toLowerCase();

@@ -12,9 +12,54 @@ import {
 } from '../utils/redis';
 import { generateMfaSecret, verifyMfaToken } from '../utils/mfa';
 import { isMongoConnected } from '../utils/mongo';
+import { loadSecurityConfig, validatePasswordStrength } from '../utils/securityConfig';
 
-const getJwtSecret = () => process.env.JWT_SECRET || 'nexus-jwt-secret-key';
-const getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || 'nexus-refresh-secret-key';
+// SECURITY: No fallback values — securityConfig crashes on startup if missing
+const getJwtSecret = () => loadSecurityConfig().jwtSecret;
+const getJwtRefreshSecret = () => loadSecurityConfig().jwtRefreshSecret;
+const isProduction = () => loadSecurityConfig().isProduction;
+
+// ── JSON Schema for request validation ───────────────────────────────────────
+const signupSchema = {
+  body: {
+    type: 'object' as const,
+    required: ['name', 'email', 'password'],
+    properties: {
+      name: { type: 'string', minLength: 2, maxLength: 100 },
+      email: { type: 'string', format: 'email', maxLength: 254 },
+      password: { type: 'string', minLength: 8, maxLength: 128 },
+      avatarUrl: { type: 'string', maxLength: 2048 },
+    },
+    additionalProperties: false,
+  }
+};
+
+const loginSchema = {
+  body: {
+    type: 'object' as const,
+    required: ['email', 'password'],
+    properties: {
+      email: { type: 'string', format: 'email', maxLength: 254 },
+      password: { type: 'string', minLength: 1, maxLength: 128 },
+    },
+    additionalProperties: false,
+  }
+};
+
+const subscriptionSignupSchema = {
+  body: {
+    type: 'object' as const,
+    required: ['name', 'organisationName', 'email', 'password'],
+    properties: {
+      name: { type: 'string', minLength: 2, maxLength: 100 },
+      organisationName: { type: 'string', minLength: 2, maxLength: 200 },
+      email: { type: 'string', format: 'email', maxLength: 254 },
+      password: { type: 'string', minLength: 8, maxLength: 128 },
+      subscriptionTier: { type: 'string', enum: ['starter', 'pro', 'enterprise'] },
+    },
+    additionalProperties: false,
+  }
+};
 
 export async function authRoutes(fastify: FastifyInstance) {
   
@@ -22,23 +67,25 @@ export async function authRoutes(fastify: FastifyInstance) {
   async function issueTokens(user: any) {
     const email = user.email || user.adminEmail;
     const role = user.role || 'company-admin';
-    const workspaceId = user.workspaceId || 'antigraviity-hq';
+    const workspaceId = user.workspaceId || 'forge-india-connect';
 
+    // SECURITY: Short-lived access token (15 min instead of 30 days)
     const accessToken = jwt.sign(
       { userId: user._id, email, name: user.name, role, workspaceId },
       getJwtSecret(),
-      { expiresIn: '30d' }
+      { expiresIn: '15m' }
     );
 
+    // SECURITY: Reasonable refresh token lifetime (7 days instead of 180)
     const refreshTokenString = jwt.sign(
       { userId: user._id },
       getJwtRefreshSecret(),
-      { expiresIn: '180d' }
+      { expiresIn: '7d' }
     );
 
     // Save refresh token to MongoDB for long-lived signed-in sessions.
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 180);
+    expiresAt.setDate(expiresAt.getDate() + 7);
 
     await RefreshToken.create({
       userId: user._id,
@@ -62,7 +109,7 @@ export async function authRoutes(fastify: FastifyInstance) {
   }
 
   // 1A. SIGNUP SUBSCRIPTION
-  fastify.post('/signup-subscription', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.post('/signup-subscription', { schema: subscriptionSignupSchema }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!isMongoConnected()) {
         return reply.code(503).send({ error: 'Database is not connected.' });
@@ -79,8 +126,9 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (tier === 'pro') maxUsers = 40;
       if (tier === 'enterprise') maxUsers = 99999;
 
-      if (password.length < 6) {
-        return reply.code(400).send({ error: 'Password must be at least 6 characters.' });
+      const passwordError = validatePasswordStrength(password);
+      if (passwordError) {
+        return reply.code(400).send({ error: passwordError });
       }
 
       const normEmail = email.toLowerCase().trim();
@@ -133,7 +181,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       const tokenBundle = await issueTokens(user);
       return reply.code(201).send(tokenBundle);
     } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to create subscription.', details: err.message });
+      return reply.code(500).send({ error: 'Failed to create subscription.', ...(isProduction() ? {} : { details: err.message }) });
     }
   });
   // 1B. START DEMO ACCOUNT
@@ -188,7 +236,7 @@ export async function authRoutes(fastify: FastifyInstance) {
   });
 
   // 1. SIGNUP
-  fastify.post('/signup', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.post('/signup', { schema: signupSchema }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!isMongoConnected()) {
         return reply.code(503).send({
@@ -201,8 +249,9 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.code(400).send({ error: 'Name, email, and password are required.' });
       }
 
-      if (password.length < 6) {
-        return reply.code(400).send({ error: 'Password must be at least 6 characters.' });
+      const passwordError = validatePasswordStrength(password);
+      if (passwordError) {
+        return reply.code(400).send({ error: passwordError });
       }
 
       const normEmail = email.toLowerCase().trim();
@@ -240,12 +289,12 @@ export async function authRoutes(fastify: FastifyInstance) {
       const tokenBundle = await issueTokens(user);
       return reply.code(201).send(tokenBundle);
     } catch (err: any) {
-      return reply.code(500).send({ error: 'Failed to create user account.', details: err.message });
+      return reply.code(500).send({ error: 'Failed to create user account.', ...(isProduction() ? {} : { details: err.message }) });
     }
   });
 
   // 2. LOGIN (Incorporating Lockout & MFA Challenges)
-  fastify.post('/login', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.post('/login', { schema: loginSchema }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!isMongoConnected()) {
         return reply.code(503).send({
@@ -332,7 +381,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       const tokenBundle = await issueTokens(user);
       return reply.code(200).send(tokenBundle);
     } catch (err: any) {
-      return reply.code(500).send({ error: 'Login handler error.', details: err.message });
+      return reply.code(500).send({ error: 'Login handler error.', ...(isProduction() ? {} : { details: err.message }) });
     }
   });
 
@@ -363,7 +412,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       const tokenBundle = await issueTokens(user);
       return reply.code(200).send(tokenBundle);
     } catch (err: any) {
-      return reply.code(401).send({ error: 'MFA verification failed.', details: err.message });
+      return reply.code(401).send({ error: 'MFA verification failed.' });
     }
   });
 
@@ -394,7 +443,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       const tokenBundle = await issueTokens(user);
       return reply.code(200).send(tokenBundle);
     } catch (err: any) {
-      return reply.code(401).send({ error: 'Token rotation failed.', details: err.message });
+      return reply.code(401).send({ error: 'Token rotation failed.' });
     }
   });
 
@@ -511,8 +560,9 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (!currentPassword || !newPassword) {
         return reply.code(400).send({ error: 'Current password and new password are required.' });
       }
-      if (newPassword.length < 6) {
-        return reply.code(400).send({ error: 'New password must be at least 6 characters.' });
+      const passwordError = validatePasswordStrength(newPassword);
+      if (passwordError) {
+        return reply.code(400).send({ error: passwordError });
       }
 
       const user = await User.findById(request.user!.id);

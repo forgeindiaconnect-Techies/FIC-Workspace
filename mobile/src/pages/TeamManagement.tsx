@@ -27,7 +27,7 @@ export default function TeamManagement() {
       setLoading(true);
       setError(null);
       const { user } = getSession();
-      const workspace = user?.workspaceId || 'antigraviity-hq';
+      const workspace = user?.workspaceId || 'forge-india-connect';
       const data = await api.members.getMembers(workspace);
       
       // Handle both cases: if data is an array, or if data is an object like { members: [...] }
@@ -53,7 +53,7 @@ export default function TeamManagement() {
     try {
       setSubmitting(true);
       const { user } = getSession();
-      const workspace = user?.workspaceId || 'antigraviity-hq';
+      const workspace = user?.workspaceId || 'forge-india-connect';
       
       await api.members.addMember({
         name: newName,

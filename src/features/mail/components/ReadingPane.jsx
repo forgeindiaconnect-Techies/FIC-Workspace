@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getApiUrl } from '../../../api';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Reply, Forward, Archive, Trash2, Clock, 
+  Reply, Forward, Archive, Trash2, 
   MoreVertical, Star, Paperclip, Download,
-  Zap, ChevronRight, MessageSquare, Sparkles,
-  ArrowLeft, Maximize2, ExternalLink
+  Sparkles, ArrowLeft, Maximize2
 } from 'lucide-react';
 import { useMailStore } from '../store';
 import { clsx } from 'clsx';
@@ -18,7 +16,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const ReadingPane = () => {
   const { selectedId, setSelectedId, getAuth, openCompose } = useMailStore();
-  const [showAIPanel, setShowAIPanel] = useState(false);
+
   const queryClient = useQueryClient();
   const auth = getAuth();
 
@@ -58,19 +56,6 @@ const ReadingPane = () => {
       return selected;
     },
     enabled: !!selectedId
-  });
-
-  // AI Summary Mutation
-  const summaryMutation = useMutation({
-    mutationFn: async (content) => {
-      const token = localStorage.getItem('token');
-      const res = await fetch(getApiUrl('/api/mail/summarize'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ content })
-      });
-      return res.json();
-    }
   });
 
   // AI Smart Reply Mutation
@@ -244,12 +229,12 @@ const ReadingPane = () => {
     }
   };
 
+  // Auto-trigger smart replies when a mail is selected
   useEffect(() => {
-    if (showAIPanel && mail) {
-      summaryMutation.mutate(mail.content);
+    if (mail) {
       smartReplyMutation.mutate({ content: mail.content, sender: mail.sender });
     }
-  }, [showAIPanel, selectedId]);
+  }, [selectedId]);
 
   if (!selectedId) {
     return (
@@ -296,17 +281,6 @@ const ReadingPane = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setShowAIPanel(!showAIPanel)}
-              className={cn(
-                "btn h-8 px-3 rounded flex items-center gap-2 text-xs font-semibold transition-colors border",
-                showAIPanel 
-                  ? "bg-blue-600 text-white border-blue-600" 
-                  : "bg-white text-blue-600 border-blue-200 hover:bg-blue-50"
-              )}
-            >
-              <Sparkles size={14} /> AI Insights
-            </button>
             <ToolbarButton icon={Star} label="Star" active={mail.isStarred} onClick={handleToggleStar} />
             <ToolbarButton icon={MoreVertical} label="More" />
           </div>
@@ -458,73 +432,7 @@ const ReadingPane = () => {
         </div>
       </div>
 
-      {/* AI Side Panel */}
-      <AnimatePresence>
-        {showAIPanel && (
-          <motion.div
-            initial={{ x: 380 }}
-            animate={{ x: 0 }}
-            exit={{ x: 380 }}
-            transition={{ type: 'tween', duration: 0.2 }}
-            className="w-[320px] lg:w-[380px] h-full border-l border-slate-200 bg-slate-50 flex flex-col shrink-0"
-          >
-            <div className="h-16 flex items-center justify-between px-5 border-b border-slate-200 bg-white">
-               <div className="flex items-center gap-2">
-                 <Sparkles size={16} className="text-blue-600" />
-                 <h2 className="text-sm font-semibold text-slate-800">Antigravity AI</h2>
-               </div>
-               <button onClick={() => setShowAIPanel(false)} className="p-1.5 hover:bg-slate-100 rounded text-slate-500 transition-colors">
-                 <XIcon size={16} />
-               </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
-               {/* Summary Card */}
-               <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-6 rounded bg-purple-100 flex items-center justify-center text-purple-600">
-                      <Zap size={14} fill="currentColor" />
-                    </div>
-                    <span className="text-xs font-semibold text-slate-700">AI Summary</span>
-                  </div>
-                  {summaryMutation.isPending ? (
-                    <p className="text-sm text-slate-500 animate-pulse">Summarizing email thread...</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {summaryMutation.data?.summary?.map((point, i) => (
-                        <li key={i} className="flex gap-2 text-sm text-slate-700 leading-relaxed">
-                           <ChevronRight size={14} className="shrink-0 text-blue-600 mt-1" />
-                           {point.replace(/^[\s•*-]+/, '')}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-               </div>
 
-               {/* Action Suggestions */}
-               <div className="space-y-3">
-                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">Recommended Actions</p>
-                 <div className="space-y-1.5">
-                    <AIActionItem label="Approve Timeline" icon={CheckCircle} />
-                    <AIActionItem label="Schedule QA Sync" icon={Clock} />
-                    <AIActionItem label="Share with Stakeholders" icon={ExternalLink} />
-                 </div>
-               </div>
-
-               {/* Priority Insight */}
-               <div className="bg-slate-800 rounded-lg p-5 text-white shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Sparkles size={14} className="text-blue-300" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-100">Priority Insight</span>
-                  </div>
-                  <p className="text-sm leading-relaxed text-slate-300">
-                    This thread is marked as <span className="font-semibold text-white">High Priority</span> because it contains critical project delivery updates.
-                  </p>
-               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
@@ -559,28 +467,6 @@ const AttachmentCard = ({ name, size, type }) => (
   </div>
 );
 
-const AIActionItem = ({ label, icon: Icon }) => (
-  <button className="w-full flex items-center justify-between p-3 bg-white border border-slate-200 rounded hover:bg-slate-50 hover:border-slate-300 transition-colors group shadow-sm">
-    <div className="flex items-center gap-3">
-      <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-500 group-hover:text-blue-600">
-        <Icon size={14} />
-      </div>
-      <span className="text-sm font-medium text-slate-700 group-hover:text-blue-700">{label}</span>
-    </div>
-    <ChevronRight size={14} className="text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-transform" />
-  </button>
-);
 
-const XIcon = ({ size }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-  </svg>
-);
-
-const CheckCircle = ({ size, className }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-  </svg>
-);
 
 export default ReadingPane;

@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { Task } from '../models/Task';
 import { authenticate } from '../middlewares/auth';
 
-const defaultWorkspaceId = 'antigraviity-hq';
+const defaultWorkspaceId = 'forge-india-connect';
 
 export async function taskRoutes(fastify: FastifyInstance) {
   fastify.addHook('preValidation', authenticate);

@@ -1,8 +1,10 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User';
+import { loadSecurityConfig } from '../utils/securityConfig';
 
-const getJwtSecret = () => process.env.JWT_SECRET || 'nexus-jwt-secret-key';
+// SECURITY: No more fallback values — crashes if JWT_SECRET is missing
+const getJwtSecret = () => loadSecurityConfig().jwtSecret;
 
 // Extend FastifyRequest type interface to hold user model info
 declare module 'fastify' {
@@ -50,8 +52,13 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       return reply.code(403).send({ error: 'Demo accounts have read-only access.' });
     }
   } catch (err: any) {
-    console.error('JWT Verification failed! Error:', err.message);
-    return reply.code(401).send({ error: 'Unauthorized: Session authentication failed.' });
+    // SECURITY: Don't log full error details — just the type
+    const isExpired = err.name === 'TokenExpiredError';
+    return reply.code(401).send({ 
+      error: isExpired 
+        ? 'Unauthorized: Access token has expired.' 
+        : 'Unauthorized: Session authentication failed.' 
+    });
   }
 }
 

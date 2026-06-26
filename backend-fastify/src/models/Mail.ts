@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 const mailSchema = new mongoose.Schema({
-  workspaceId: { type: String, required: true, default: 'antigraviity-hq' },
+  workspaceId: { type: String, required: true, default: 'forge-india-connect' },
   ownerEmail: { type: String, required: true }, // The user who owns this specific copy of the email
   folder: { type: String, enum: ['inbox', 'sent', 'drafts', 'trash', 'archive'], default: 'inbox' },
   senderName: { type: String, required: true },

@@ -30,7 +30,7 @@ async function dispatchSummaryMail(meeting: any, summaryHtml: string) {
     const recipientEmails = users.map((u: any) => u.email);
 
     const mailDoc = {
-      workspaceId: 'antigraviity-hq',
+      workspaceId: 'forge-india-connect',
       senderName: 'Forge India Connect AI',
       senderEmail: 'ai-assistant@nexus.app',
       recipientEmails,

@@ -380,7 +380,7 @@ export default function Meetings() {
   }, []);
 
   const { user } = getSession();
-  const workspaceId = user?.workspaceId || 'antigraviity-hq';
+  const workspaceId = user?.workspaceId || 'forge-india-connect';
   const localUserId = String(user?.id || user?._id || '');
   const peerKeyFor = (peer: any) => peer?.userId ? `user-${peer.userId}` : String(peer?.peerId || peer?.id || Date.now());
 
