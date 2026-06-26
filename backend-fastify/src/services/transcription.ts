@@ -28,7 +28,7 @@ export async function transcribeChunk(
     const transcription = await groq.audio.transcriptions.create({
       file: fs.createReadStream(filePath),
       model: 'whisper-large-v3',
-      prompt: 'Meeting conversation in Tamil and English. Transcribe accurately.',
+      prompt: 'வணக்கம், this is a meeting conversation in English and Tamil (தமிழ்). Transcribe accurately, preserving both English and Tamil words.',
       temperature: 0,
       response_format: 'verbose_json',
     }) as any;
@@ -38,9 +38,6 @@ export async function transcribeChunk(
     
     const cleanText = lowerText.replace(/[^a-z0-9\s]/g, '').trim();
     
-    // Check for high probability of silence/no-speech using segment data
-    // Removed avgNoSpeechProb > 0.6 check to ensure we capture all audio chunks correctly without aggressively dropping them.
-    // Whisper often hallucinates the prompt or generic phrases on silent chunks
     const isHallucination = cleanText.includes('meeting conversation in tamil and english transcribe accurately') ||
                             cleanText.includes('meeting conversation transcribe accurately') || 
                             cleanText.includes('transcribe accurately') ||
@@ -48,12 +45,18 @@ export async function transcribeChunk(
                             cleanText.includes('we go on') ||
                             cleanText.includes('were going to go on') ||
                             cleanText.includes('you see were getting some different individuals') ||
+                            cleanText.includes('transcription by') ||
+                            cleanText.includes('transcribed by') ||
+                            cleanText.includes('eğri de konuşayım') ||
+                            cleanText.includes('tries to communicate') ||
                             cleanText === 'thank you' || 
                             cleanText === 'thanks' ||
+                            cleanText === 'tchau' ||
+                            cleanText === 'tchau tchau' ||
                             cleanText === 'subscribe' ||
                             cleanText === 'terima kasih';
 
-    if (text && !isHallucination && cleanText.length > 0) {
+    if (text && !isHallucination && cleanText.length > 1) {
       await Transcript.create({
         meetingId,
         userId,
