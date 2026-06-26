@@ -65,10 +65,31 @@ export async function registerWebPush() {
     // 5. Subscribe to the push service
     console.log('[WebPush] Subscribing browser to PushManager...');
     const applicationServerKey = urlBase64ToUint8Array(publicKey);
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: applicationServerKey
-    });
+    
+    let subscription;
+    try {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey
+      });
+    } catch (subError) {
+      console.warn('[WebPush] Direct subscription failed. Attempting to clear stale subscription and retry...', subError);
+      try {
+        const existingSubscription = await registration.pushManager.getSubscription();
+        if (existingSubscription) {
+          await existingSubscription.unsubscribe();
+          console.log('[WebPush] Stale subscription cleared successfully.');
+        }
+        // Retry subscription with the new key
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey
+        });
+      } catch (retryError) {
+        console.error('[WebPush] Subscription retry failed:', retryError);
+        throw retryError;
+      }
+    }
 
     console.log('[WebPush] Obtained browser push subscription:', JSON.stringify(subscription));
 
