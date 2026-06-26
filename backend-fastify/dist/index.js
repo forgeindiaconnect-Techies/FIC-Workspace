@@ -5464,7 +5464,6 @@ async function bootstrap() {
       hint: connected ? void 0 : isDefaultLocalUri ? "Add MONGO_URI in Render Environment (MongoDB Atlas connection string)." : "Atlas: allow 0.0.0.0/0 in Network Access; reset DB password; encode @ as %40 in MONGO_URI."
     };
   });
-  await connectDatabase();
   try {
     await server.listen({ port: PORT, host: "0.0.0.0" });
     console.log(`
@@ -5479,6 +5478,9 @@ async function bootstrap() {
     server.log.error(err);
     process.exit(1);
   }
+  connectDatabase().catch((err) => {
+    server.log.error(`Database connection bootstrap failed: ${err.message}`);
+  });
 }
 bootstrap();
 //# sourceMappingURL=index.js.map

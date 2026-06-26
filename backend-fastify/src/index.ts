@@ -247,9 +247,7 @@ async function bootstrap() {
     };
   });
 
-  // Connect Database and launch Server port list
-  await connectDatabase();
-
+  // Start server listening first, so Render's port scan succeeds immediately
   try {
     await server.listen({ port: PORT, host: '0.0.0.0' });
     console.log(`\n======================================================`);
@@ -262,6 +260,11 @@ async function bootstrap() {
     server.log.error(err);
     process.exit(1);
   }
+
+  // Connect Database in the background to prevent blocking port binding
+  connectDatabase().catch((err) => {
+    server.log.error(`Database connection bootstrap failed: ${err.message}`);
+  });
 }
 
 bootstrap();
