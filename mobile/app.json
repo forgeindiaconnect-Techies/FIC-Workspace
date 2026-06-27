@@ -49,6 +49,14 @@
     },
     "plugins": [
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24
+          }
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Allow Nexus to access your camera for video meetings.",
