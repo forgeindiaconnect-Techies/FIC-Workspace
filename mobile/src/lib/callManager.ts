@@ -22,6 +22,7 @@
 
 import { getRTCPeerConnectionClass, getMediaDevices, getIceServers } from './webrtc';
 import { api } from './api';
+import { Platform, PermissionsAndroid } from 'react-native';
 
 export type CallState =
   | 'idle'
@@ -276,6 +277,28 @@ class CallManager {
 
   //  Outbound call 
 
+  private async requestMicPermission(): Promise<boolean> {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Microphone Permission',
+            message: 'Nexus needs access to your microphone for voice calls.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          },
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (err) {
+        console.warn(err);
+        return false;
+      }
+    }
+    return true; // iOS and Web handle this via browser or Info.plist automatically
+  }
+
   async startCall(targetEmail: string, targetName: string, callerName: string): Promise<boolean> {
     if (this._state !== 'idle') return false;
 
@@ -313,6 +336,13 @@ class CallManager {
 
     // Gather local audio
     try {
+      const hasPermission = await this.requestMicPermission();
+      if (!hasPermission) {
+        console.warn('[CallManager] Mic permission denied');
+        this.cleanupPeer();
+        this.setState('idle');
+        return false;
+      }
       const stream = await getMediaDevices().getUserMedia({ audio: true, video: false });
       this.localStream = stream;
       if (pc.addStream) {
@@ -387,6 +417,12 @@ class CallManager {
     this.pc = pc;
 
     try {
+      const hasPermission = await this.requestMicPermission();
+      if (!hasPermission) {
+        console.warn('[CallManager] Mic permission denied');
+        this.cleanupPeer();
+        return false;
+      }
       const stream = await getMediaDevices().getUserMedia({ audio: true, video: false });
       this.localStream = stream;
       if (pc.addStream) {
