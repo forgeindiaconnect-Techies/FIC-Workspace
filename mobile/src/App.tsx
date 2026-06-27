@@ -92,16 +92,21 @@ function DeepLinkHandler() {
             } else if (data.type === 'incoming_call') {
               const { callerEmail, callerName, offer, isVideo } = data as any;
               if (callerEmail && offer) {
-                callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
+                const parsedOffer = typeof offer === 'string' ? JSON.parse(offer) : offer;
+                const isVideoBool = isVideo === 'true' || isVideo === true;
+                callManager.handleIncomingCallFromPush(callerEmail, callerName, parsedOffer, isVideoBool);
+                if (initialNotification?.pressAction?.id === 'answer') {
+                  setTimeout(() => callManager.answerCall(), 500);
+                }
               }
             }
           }
         }
       }).catch(err => console.warn('getInitialNotification error:', err));
 
-      responseSubscription = notifee.onForegroundEvent(({ type, detail }) => {
-        if (type === EventType.PRESS) {
-          const data = detail.notification?.data;
+        responseSubscription = notifee.onForegroundEvent(({ type, detail }) => {
+          if (type === EventType.PRESS || type === EventType.ACTION_PRESS) {
+            const data = detail.notification?.data;
           console.log('[Notifee] User tapped on notification in foreground, data:', data);
           if (data) {
             if (data.type === 'chat') {
@@ -113,7 +118,12 @@ function DeepLinkHandler() {
             } else if (data.type === 'incoming_call') {
               const { callerEmail, callerName, offer, isVideo } = data as any;
               if (callerEmail && offer) {
-                callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
+                const parsedOffer = typeof offer === 'string' ? JSON.parse(offer) : offer;
+                const isVideoBool = isVideo === 'true' || isVideo === true;
+                callManager.handleIncomingCallFromPush(callerEmail, callerName, parsedOffer, isVideoBool);
+                if (detail?.pressAction?.id === 'answer') {
+                  setTimeout(() => callManager.answerCall(), 500);
+                }
               }
             }
           }
