@@ -1,14 +1,15 @@
 import { User } from '../models/User';
-const admin = require('firebase-admin');
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getMessaging } from 'firebase-admin/messaging';
 
 // Initialize Firebase Admin if not already initialized
-if (!admin.apps.length) {
+if (!getApps().length) {
   try {
     let credential;
     // Check if the service account is provided via an environment variable (useful for Render/Vercel)
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      credential = admin.credential.cert(serviceAccount);
+      credential = cert(serviceAccount);
     } else {
       // Fallback to local file dynamically to prevent ESBuild bundle failures on Render
       // where the file does not exist during CI/CD.
@@ -16,14 +17,14 @@ if (!admin.apps.length) {
         const fs = require('fs');
         const path = require('path');
         const fileContent = fs.readFileSync(path.join(__dirname, '../../serviceAccountKey.json'), 'utf8');
-        credential = admin.credential.cert(JSON.parse(fileContent));
+        credential = cert(JSON.parse(fileContent));
       } catch (err: any) {
         throw new Error('Local serviceAccountKey.json not found and FIREBASE_SERVICE_ACCOUNT env var is missing');
       }
     }
     
-    admin.initializeApp({
-      credential
+    initializeApp({
+      credential,
     });
     console.log('[PushService] Firebase Admin initialized successfully.');
   } catch (error: any) {
@@ -101,7 +102,7 @@ export async function sendPushNotification(
       tokens
     };
 
-    const response = await admin.messaging().sendEachForMulticast(message);
+    const response = await getMessaging().sendEachForMulticast(message);
     
     console.log(`[PushService] FCM push result: ${response.successCount} successful, ${response.failureCount} failed.`);
     
