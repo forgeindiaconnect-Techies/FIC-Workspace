@@ -13,7 +13,7 @@ import {
   Plus, Search, Send, Shield, ShieldCheck, Users, X, UserPlus,
   MessageSquare, MoreVertical, Paperclip, Camera, Hash,
   Bell, Star, Smile, Edit, Edit3, Edit2, Home, Grid, FileText,
-  Trash2, Eye, Settings, Play, Pause, PhoneCall, PhoneIncoming, PhoneOutgoing
+  Trash2, Eye, Settings, Play, Pause, PhoneCall, PhoneIncoming, PhoneOutgoing, Video as VideoIcon
 } from 'lucide-react-native';
 import { api, getSession, SOCKET_URL } from '../lib/api';
 import { getRTCPeerConnectionClass, getMediaDevices, getIceServers, RTCView } from '../lib/webrtc';
@@ -257,14 +257,15 @@ export default function Chat() {
     if (tab === 'calls') loadCallLogs();
   }, [tab, loadCallLogs]);
 
-  const startCall = async () => {
+  const startCall = async (isVideo: boolean = false) => {
     if (!selectedChat || !user) return;
     
     try {
       const success = await callManager.startCall(
         selectedChat.email,
         selectedChat.name,
-        user.name || email
+        user.name || email,
+        isVideo
       );
       
       if (!success) {
@@ -1462,7 +1463,9 @@ export default function Chat() {
                   <Text style={tw`text-[12px] font-medium ml-2 ${chat.unread > 0 ? 'text-[#0053B2]' : 'text-[#667781]'}`}>{chat.time}</Text>
                 </View>
                 <View style={tw`flex-row justify-between items-center`}>
-                  <Text style={tw`text-[15px] text-[#667781] flex-1`} numberOfLines={1}>{chat.lastMsg}</Text>
+                  <Text style={tw`text-[15px] text-[#667781] flex-1`} numberOfLines={1}>
+                    {(chat.lastMsg || '').replace(/<[^>]+>/g, '').trim()}
+                  </Text>
                   <View style={tw`flex-row items-center gap-2 ml-2`}>
                     {chat.unread > 0 && (
                       <View style={tw`w-[20px] h-[20px] bg-[#0053B2] rounded-full items-center justify-center`}>
@@ -1639,11 +1642,11 @@ export default function Chat() {
             </TouchableOpacity>
           </View>
           <View style={tw`flex-row gap-4 items-center`}>
-            <TouchableOpacity onPress={startCall}>
-              <PhoneOff size={22} color="#000" />
+            <TouchableOpacity onPress={() => startCall(false)}>
+              <PhoneCall size={22} color="#000" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => {}}>
-              <Camera size={22} color="#000" />
+            <TouchableOpacity onPress={() => startCall(true)}>
+              <VideoIcon size={22} color="#000" />
             </TouchableOpacity>
             {selectedChat?.type === 'group' && (
               <TouchableOpacity onPress={() => openGroupInfo(selectedChat)}>
@@ -1707,7 +1710,9 @@ export default function Chat() {
                         )}
                       </View>
                     )}
-                    <Text style={tw`text-[14px] ${msg.self ? 'text-white' : 'text-[#000000]'} font-medium leading-[20px]`}>{msg.text}</Text>
+                    <Text style={tw`text-[14px] ${msg.self ? 'text-white' : 'text-[#000000]'} font-medium leading-[20px]`}>
+                      {(msg.text || '').replace(/<[^>]+>/g, '').trim()}
+                    </Text>
                   </View>
                 </View>
               );

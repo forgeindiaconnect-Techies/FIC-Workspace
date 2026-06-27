@@ -1,5 +1,6 @@
 import { registerWebRTCGlobals } from './src/lib/webrtc';
 import notifee, { EventType } from '@notifee/react-native';
+import './src/lib/pushHelper';
 
 registerWebRTCGlobals();
 

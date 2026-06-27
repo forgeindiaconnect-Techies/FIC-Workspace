@@ -4,6 +4,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { TopBar } from './layout';
 import { Outlet, useLocation } from '../lib/router';
 import { getScreenType, getContentPadding } from '../lib/responsive';
+import Meetings from '../pages/Meetings';
 
 export default function AppLayout() {
   const location = useLocation();
@@ -48,6 +49,7 @@ export default function AppLayout() {
         ]}>
           <View style={styles.contentWrapper}>
             <Outlet />
+            <Meetings />
           </View>
         </View>
       </View>

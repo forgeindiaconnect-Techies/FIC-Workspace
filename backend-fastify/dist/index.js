@@ -226,6 +226,10 @@ async function sendPushNotification(recipientEmails, title, body, data) {
     if (!recipientEmails || recipientEmails.length === 0) {
       return;
     }
+    if (!admin.apps.length) {
+      console.warn("[PushService] Firebase Admin is not initialized. Cannot send push notification.");
+      return;
+    }
     const normalizedEmails = recipientEmails.map((email) => email.trim().toLowerCase());
     const users = await User.find({
       email: { $in: normalizedEmails },
@@ -235,50 +239,69 @@ async function sendPushNotification(recipientEmails, title, body, data) {
       console.log(`[PushService] No registered push tokens found for recipients: ${normalizedEmails.join(", ")}`);
       return;
     }
-    const messages = [];
-    const seenTokens = /* @__PURE__ */ new Set();
-    for (const user of users) {
-      if (user.expoPushToken && !seenTokens.has(user.expoPushToken)) {
-        seenTokens.add(user.expoPushToken);
-        messages.push({
-          to: user.expoPushToken,
-          sound: "default",
-          title,
-          body,
-          data,
-          channelId: "default",
-          priority: "high"
-        });
+    const tokens = Array.from(new Set(users.map((u) => u.expoPushToken).filter(Boolean)));
+    if (tokens.length === 0) {
+      return;
+    }
+    const stringifiedData = {};
+    if (data) {
+      for (const [key, value] of Object.entries(data)) {
+        stringifiedData[key] = typeof value === "object" ? JSON.stringify(value) : String(value);
       }
     }
-    if (messages.length === 0) {
-      return;
-    }
-    console.log(`[PushService] Dispatching push notifications to ${messages.length} token(s)...`);
-    const response = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate"
+    console.log(`[PushService] Dispatching FCM push notifications to ${tokens.length} token(s)...`);
+    const message = {
+      notification: {
+        title,
+        body
       },
-      body: JSON.stringify(messages)
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[PushService] Expo Push gateway returned status ${response.status}: ${errorText}`);
-      return;
+      data: stringifiedData,
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "default",
+          sound: "default"
+        }
+      },
+      tokens
+    };
+    const response = await admin.messaging().sendEachForMulticast(message);
+    console.log(`[PushService] FCM push result: ${response.successCount} successful, ${response.failureCount} failed.`);
+    if (response.failureCount > 0) {
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          console.error(`[PushService] Failed to send to token ${tokens[idx]}:`, resp.error);
+        }
+      });
     }
-    const result = await response.json();
-    console.log("[PushService] Expo push result:", JSON.stringify(result));
   } catch (error) {
     console.error("[PushService] Failed to send push notifications:", error);
   }
 }
+var admin;
 var init_pushNotifications = __esm({
   "src/services/pushNotifications.ts"() {
     "use strict";
     init_User();
+    admin = __toESM(require("firebase-admin"));
+    if (!admin.apps.length) {
+      try {
+        let credential2;
+        if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+          const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+          credential2 = admin.credential.cert(serviceAccount);
+        } else {
+          const serviceAccount = require("../../serviceAccountKey.json");
+          credential2 = admin.credential.cert(serviceAccount);
+        }
+        admin.initializeApp({
+          credential: credential2
+        });
+        console.log("[PushService] Firebase Admin initialized successfully.");
+      } catch (error) {
+        console.warn("[PushService] Failed to initialize Firebase Admin. Ensure serviceAccountKey.json is present:", error.message);
+      }
+    }
   }
 });
 
@@ -5111,11 +5134,8 @@ function handleCallSignaling(ws) {
       const email = (decoded.email || "").toLowerCase().trim();
       if (!email) return send2(ws, { type: "error", message: "email missing from token" });
       const existing = onlineUsers.get(email);
-      if (existing && existing !== ws && existing.readyState === import_ws3.WebSocket.OPEN) {
-        try {
-          existing.close();
-        } catch {
-        }
+      if (existing && existing !== ws) {
+        console.log(`[CallSignaling] User ${email} connected from a new session.`);
       }
       registeredEmail = email;
       onlineUsers.set(email, ws);
@@ -5371,7 +5391,7 @@ async function connectDatabase() {
   }
 }
 async function bootstrap() {
-  const corsOrigin = securityConfig.corsAllowedOrigins.length > 0 ? securityConfig.corsAllowedOrigins : isProduction2 ? ["https://workspace-blue-theta-87.vercel.app"] : true;
+  const corsOrigin = securityConfig.corsAllowedOrigins.length > 0 ? securityConfig.corsAllowedOrigins : isProduction2 ? ["https://workspace-blue-theta-87.vercel.app", "http://localhost:8081", "http://localhost:3000"] : true;
   await server.register(import_cors.default, {
     origin: corsOrigin,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

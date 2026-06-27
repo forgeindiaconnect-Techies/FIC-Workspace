@@ -65,14 +65,7 @@
       "@config-plugins/react-native-webrtc",
       "expo-font",
       "@react-native-community/datetimepicker",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/landing-logo.png",
-          "color": "#2D6EFF",
-          "defaultChannel": "default"
-        }
-      ],
+
       "@react-native-firebase/app",
       "./withAndroidScreenShare.js"
     ],

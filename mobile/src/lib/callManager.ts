@@ -46,6 +46,7 @@ class CallManager {
   private peerEmail: string | null = null;   // who we're calling / being called by
   private peerName: string | null = null;
   private localName: string | null = null;
+  public isVideoCall: boolean = false;
   private pendingOffer: any = null;           // SDP offer stored while ringing
   private socketUrl: string = '';
   private token: string = '';
@@ -201,9 +202,10 @@ class CallManager {
     this.peerName = callerName || callerEmail;
     this.callRole = 'callee';
     this.pendingOffer = offer;
+    this.isVideoCall = isVideo;
     this.setState('ringing');
-    console.log('[CallManager] Incoming call from Push:', callerEmail);
-    this.dispatch({ type: 'incoming_call', caller: { email: callerEmail, name: callerName } });
+    console.log('[CallManager] Incoming call from Push:', callerEmail, 'Video:', isVideo);
+    this.dispatch({ type: 'incoming_call', caller: { email: callerEmail, name: callerName }, isVideo });
   }
 
   //  Inbound message handler 
@@ -212,7 +214,7 @@ class CallManager {
     const { type } = msg;
 
     if (type === 'incoming_call') {
-      const { callerEmail, callerName, offer } = msg;
+      const { callerEmail, callerName, offer, isVideo } = msg;
       if (!callerEmail || !offer) {
         console.warn('[CallManager] Invalid incoming_call message', msg);
         return;
@@ -221,9 +223,10 @@ class CallManager {
       this.peerName = callerName || callerEmail;
       this.callRole = 'callee';
       this.pendingOffer = offer;
+      this.isVideoCall = isVideo || false;
       this.setState('ringing');
-      console.log('[CallManager] Incoming call from', callerEmail);
-      this.dispatch({ type: 'incoming_call', caller: { email: callerEmail, name: callerName } });
+      console.log('[CallManager] Incoming call from', callerEmail, 'Video:', this.isVideoCall);
+      this.dispatch({ type: 'incoming_call', caller: { email: callerEmail, name: callerName }, isVideo: this.isVideoCall });
       return;
     }
 
@@ -299,7 +302,7 @@ class CallManager {
     return true; // iOS and Web handle this via browser or Info.plist automatically
   }
 
-  async startCall(targetEmail: string, targetName: string, callerName: string): Promise<boolean> {
+  async startCall(targetEmail: string, targetName: string, callerName: string, isVideo: boolean = false): Promise<boolean> {
     if (this._state !== 'idle') return false;
 
     if (!this.socketUrl || !this.token) {
@@ -321,6 +324,7 @@ class CallManager {
     this.peerName = targetName;
     this.localName = callerName;
     this.callRole = 'caller';
+    this.isVideoCall = isVideo;
     this.setState('calling');
 
     const PC = getRTCPeerConnectionClass();
@@ -343,7 +347,7 @@ class CallManager {
         this.setState('idle');
         return false;
       }
-      const stream = await getMediaDevices().getUserMedia({ audio: true, video: false });
+      const stream = await getMediaDevices().getUserMedia({ audio: true, video: this.isVideoCall });
       this.localStream = stream;
       if (pc.addStream) {
         pc.addStream(stream);
@@ -387,6 +391,7 @@ class CallManager {
           targetEmail, 
           callerName, 
           offer: pc.localDescription,
+          isVideo: this.isVideoCall
         }
       });
       return true;
@@ -434,7 +439,7 @@ class CallManager {
         this.cleanupPeer();
         return false;
       }
-      const stream = await getMediaDevices().getUserMedia({ audio: true, video: false });
+      const stream = await getMediaDevices().getUserMedia({ audio: true, video: this.isVideoCall });
       this.localStream = stream;
       if (pc.addStream) {
         pc.addStream(stream);

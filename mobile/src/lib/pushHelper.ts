@@ -1,45 +1,48 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import messaging from '@react-native-firebase/messaging';
+import notifee, { AndroidImportance, AndroidCategory, AndroidVisibility } from '@notifee/react-native';
 import { api } from './api';
 
 /**
- * Requests permission for remote notifications, retrieves the Expo push token,
+ * Requests permission for remote notifications, retrieves the FCM push token,
  * and sends it to the backend to associate it with the active user session.
  */
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
   if (Platform.OS === 'web') return null;
 
   try {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
+    const authStatus = await messaging().requestPermission();
+    const enabled =
+      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== 'granted') {
+    if (!enabled) {
       console.warn('[PushHelper] Notification permission was not granted.');
       return null;
     }
 
-    // Retrieve the raw device push token (FCM token on Android, APNs token on iOS)
-    const tokenData = await Notifications.getDevicePushTokenAsync();
-
-    const token = tokenData.data;
-    console.log('[PushHelper] Retrieved Expo push token:', token);
+    // Retrieve the FCM push token
+    const token = await messaging().getToken();
+    console.log('[PushHelper] Retrieved FCM push token:', token);
 
     // Register token on the backend
     await api.auth.registerPushToken(token);
     console.log('[PushHelper] Successfully registered push token on the backend.');
 
-    // Configure notification channel for Android devices
+    // Configure notification channels for Android devices
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#2563eb',
+      await notifee.createChannel({
+        id: 'default',
+        name: 'Default',
+        importance: AndroidImportance.HIGH,
+        vibration: true,
+      });
+      await notifee.createChannel({
+        id: 'calls',
+        name: 'Incoming Calls',
+        importance: AndroidImportance.HIGH,
+        sound: 'default',
+        vibration: true,
       });
     }
 
@@ -51,8 +54,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
 }
 
 // Background Task for FCM Data-Only Messages (Incoming Calls)
-import messaging from '@react-native-firebase/messaging';
-import notifee, { AndroidImportance, AndroidCategory, AndroidVisibility } from '@notifee/react-native';
+
 
 messaging().setBackgroundMessageHandler(async (remoteMessage) => {
   const message = remoteMessage.data;

@@ -1,20 +1,9 @@
 import React from "react";
 import { View, ActivityIndicator, Platform, DeviceEventEmitter, Animated, Text, TouchableOpacity, StyleSheet } from "react-native";
-import * as Notifications from 'expo-notifications';
+import notifee, { EventType } from '@notifee/react-native';
 import { registerForPushNotificationsAsync } from "./lib/pushHelper";
 import { X } from 'lucide-react-native';
 
-if (Platform.OS !== 'web') {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-  });
-}
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { BrowserRouter, Routes, Route, Navigate } from "./lib/router";
 import AppLayout from "./components/AppLayout";
@@ -89,24 +78,31 @@ function DeepLinkHandler() {
 
     if (Platform.OS !== 'web') {
       // Handle Notifee initial notification (cold start)
-      notifee.getInitialNotification().then(initialNotification => {
+      notifee.getInitialNotification().then((initialNotification: any) => {
         if (initialNotification) {
           const data = initialNotification.notification.data;
           console.log('[Notifee] Cold start notification data:', data);
-          if (data && data.type === 'incoming_call') {
-            const { callerEmail, callerName, offer, isVideo } = data as any;
-            if (callerEmail && offer) {
-              callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
+          if (data) {
+            if (data.type === 'chat') {
+              navigate('/chat');
+            } else if (data.type === 'mail') {
+              navigate('/mail');
+            } else if (data.type === 'post') {
+              navigate('/chat');
+            } else if (data.type === 'incoming_call') {
+              const { callerEmail, callerName, offer, isVideo } = data as any;
+              if (callerEmail && offer) {
+                callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
+              }
             }
           }
         }
       }).catch(err => console.warn('getInitialNotification error:', err));
 
-      // Handle Expo notification that opened the app from a cold start
-      Notifications.getLastNotificationResponseAsync().then(response => {
-        if (response) {
-          const data = response.notification.request.content.data;
-          console.log('[PushNotification] Cold start notification data:', data);
+      responseSubscription = notifee.onForegroundEvent(({ type, detail }) => {
+        if (type === EventType.PRESS) {
+          const data = detail.notification?.data;
+          console.log('[Notifee] User tapped on notification in foreground, data:', data);
           if (data) {
             if (data.type === 'chat') {
               navigate('/chat');
@@ -121,30 +117,6 @@ function DeepLinkHandler() {
               }
             }
           }
-        }
-      }).catch(err => console.warn('getLastNotificationResponseAsync error:', err));
-
-      // Handle tapping on push notifications while the app is backgrounded or foregrounded
-      responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-        try {
-          const data = response.notification.request.content.data;
-          console.log('[PushNotification] User tapped on notification, data:', data);
-          if (data) {
-            if (data.type === 'chat') {
-              navigate('/chat');
-            } else if (data.type === 'mail') {
-              navigate('/mail');
-            } else if (data.type === 'post') {
-              navigate('/chat');
-            } else if (data.type === 'incoming_call') {
-              const { callerEmail, callerName, offer, isVideo } = data as any;
-              if (callerEmail && offer) {
-                callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('[PushNotification] Handle tap error:', err);
         }
       });
     }
@@ -152,7 +124,7 @@ function DeepLinkHandler() {
     return () => {
       sub.remove();
       if (responseSubscription) {
-        responseSubscription.remove();
+        responseSubscription(); // unsubscribe from notifee
       }
     };
   }, [navigate]);
@@ -173,15 +145,7 @@ export default function App() {
     const requestPermissions = async () => {
       if (Platform.OS === 'web') return;
       try {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        if (existingStatus !== 'granted') {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
-        if (finalStatus !== 'granted') {
-          console.warn('[Notifications] Permission denied.');
-        }
+        await notifee.requestPermission();
       } catch (e) {
         console.warn('[Notifications] Request permission error:', e);
       }
@@ -227,13 +191,11 @@ export default function App() {
 
                 // Present OS-level local notification popup
                 if (Platform.OS !== 'web') {
-                  await Notifications.scheduleNotificationAsync({
-                    content: {
-                      title: `New Message from ${data.message.senderName || 'Workspace'}`,
-                      body: data.message.content || 'Sent a file.',
-                      sound: true,
-                    },
-                    trigger: null, // trigger immediately
+                  await notifee.displayNotification({
+                    title: `New Message from ${data.message.senderName || 'Workspace'}`,
+                    body: data.message.content || 'Sent a file.',
+                    data: { type: 'chat' },
+                    android: { channelId: 'default' },
                   });
                 }
               } else if (data.type === 'NEW_MAIL') {
@@ -249,13 +211,11 @@ export default function App() {
                 });
 
                 if (Platform.OS !== 'web') {
-                  await Notifications.scheduleNotificationAsync({
-                    content: {
-                      title: `New Email: ${data.mail.subject || '(No Subject)'}`,
-                      body: `From: ${data.mail.senderName || data.mail.senderEmail}`,
-                      sound: true,
-                    },
-                    trigger: null,
+                  await notifee.displayNotification({
+                    title: `New Email: ${data.mail.subject || '(No Subject)'}`,
+                    body: `From: ${data.mail.senderName || data.mail.senderEmail}`,
+                    data: { type: 'mail' },
+                    android: { channelId: 'default' },
                   });
                 }
               }
@@ -286,8 +246,6 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      {/* Global incoming call overlay  appears on any screen */}
-      <IncomingCallOverlay />
   {(loading || !fontsLoaded) ? (
       <View
         style={{
@@ -301,6 +259,8 @@ export default function App() {
       </View>
   ) : (
     <BrowserRouter>
+      {/* Global incoming call overlay  appears on any screen */}
+      <IncomingCallOverlay />
       <DeepLinkHandler />
       <InAppNotificationToast />
       <Routes>
@@ -318,8 +278,8 @@ export default function App() {
         >
           <Route index element={<Navigate to="/home" replace />} />
           <Route path="home" element={<Home />} />
-          <Route path="meetings" element={<Meetings />} />
           <Route path="mail" element={<Mail />} />
+          <Route path="meetings" element={null} />
           <Route path="chat" element={<Chat />} />
           <Route path="docs" element={<Docs />} />
           <Route path="sheets" element={<Sheets />} />

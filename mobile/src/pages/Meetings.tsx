@@ -2,9 +2,10 @@ import React from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Dimensions, Platform, Modal, TextInput, ActivityIndicator,
-  Alert, StatusBar, useWindowDimensions, ViewStyle, DeviceEventEmitter,
+  Alert, StatusBar, useWindowDimensions, ViewStyle, DeviceEventEmitter, Animated, PanResponder,
 } from 'react-native';
 import RenderHtml from 'react-native-render-html';
+import { useLocation } from '../lib/router';
 import {
   Video, Calendar, Clock, Users, Play, Bell, BellRing, User,
   Mic, MicOff, VideoOff, PhoneOff, Copy, Lock, Shield,
@@ -96,6 +97,36 @@ export default function Meetings() {
   const [audioOutputModal, setAudioOutputModal] = React.useState(false);
   const [currentAudioRoute, setCurrentAudioRoute] = React.useState('SPEAKER_PHONE');
   const [availableAudioRoutes, setAvailableAudioRoutes] = React.useState<string[]>(['SPEAKER_PHONE', 'EARPIECE']);
+
+
+  const [userToggledMinimize, setUserToggledMinimize] = React.useState(false);
+  const location = useLocation();
+  const isMeetingsRoute = location.pathname.startsWith('/meetings');
+  const isMinimized = !isMeetingsRoute || userToggledMinimize;
+
+  const PIP_WIDTH = 120;
+  const PIP_HEIGHT = 160;
+  const pan = React.useRef(new Animated.ValueXY({ x: width - PIP_WIDTH - 20, y: height - PIP_HEIGHT - 100 })).current;
+
+  const panResponder = React.useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
+      },
+      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
+      onPanResponderRelease: () => {
+        pan.extractOffset();
+      },
+    })
+  ).current;
+
+  React.useEffect(() => {
+    if (!activeRoom) {
+      setUserToggledMinimize(false);
+      pan.setValue({ x: width - PIP_WIDTH - 20, y: height - PIP_HEIGHT - 100 });
+      pan.flattenOffset();
+    }
+  }, [activeRoom]);
 
   // Form fields
   const [meetTitle, setMeetTitle] = React.useState('');
@@ -991,7 +1022,7 @@ export default function Meetings() {
     let reconnectAttempts = 0;
     const maxReconnectAttempts = 5;
 
-    const buildWsUrl = () => {
+    const buildWsUrl = (tokenStr: string) => {
       let wsBase = SOCKET_URL;
       console.log('[Signaling] Raw SOCKET_URL:', SOCKET_URL);
       if (wsBase.startsWith('https://')) {
@@ -1002,11 +1033,11 @@ export default function Meetings() {
         wsBase = `wss://${wsBase}`;
       }
       wsBase = wsBase.replace(/\/+$/, '');
-      return `${wsBase}/ws/webrtc`;
+      return `${wsBase}/ws/webrtc${tokenStr ? `?token=${encodeURIComponent(tokenStr)}` : ''}`;
     };
 
     const setupWs = () => {
-      const wsUrl = buildWsUrl();
+      const wsUrl = buildWsUrl(token);
       console.log('[Signaling] Connecting to:', wsUrl, 'room:', signalingRoomId, 'attempt:', reconnectAttempts + 1);
 
       const ws = new WebSocket(wsUrl);
@@ -1931,8 +1962,9 @@ export default function Meetings() {
 
     const displayPeers = [...basePeers, ...screenSharePeers, ...localScreenSharePeer];
 
-    return (
-      <View style={s.roomRoot}>
+    let RoomView = null;
+    RoomView = (
+      <View style={[s.roomRoot, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }]}>
         <StatusBar hidden />
 
         {/* TOP BAR */}
@@ -1944,6 +1976,11 @@ export default function Meetings() {
             <Text style={s.roomTitle} numberOfLines={1}>{activeRoom.title}</Text>
           </View>
           <View style={s.roomTopRight}>
+
+            <TouchableOpacity onPress={() => setUserToggledMinimize(true)} style={{ marginRight: 16 }}>
+              <Minimize2 size={22} color="#fff" />
+            </TouchableOpacity>
+
             <View style={s.e2eeBadge}>
               <Shield size={11} color="#10b981" />
               <Text style={s.e2eeText}>E2EE</Text>
@@ -1996,7 +2033,7 @@ export default function Meetings() {
                       {isPinnedLocal ? (
                         <>
                           {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
-                            <RTCView style={s.cameraView} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={facing === 'front'} muted />
+                            <RTCView style={s.cameraView} stream={localStream} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={facing === 'front'} muted />
                           ) : (
                             <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                               <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
@@ -2020,7 +2057,7 @@ export default function Meetings() {
                               ? (remoteScreenStreams[originalId] || (originalPeerId ? remoteScreenStreams[originalPeerId] : null))
                               : (remoteStreams[pinnedPeer.id] || (pinnedPeer.peerId ? remoteStreams[pinnedPeer.peerId] : null)));
                             return rtcAvailableNow && remoteStream ? (
-                              <RTCView style={s.cameraView} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
+                              <RTCView style={s.cameraView} stream={remoteStream} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                             ) : (
                               <View style={[s.videoAvatar, { backgroundColor: (pinnedPeer as any).isBot ? '#1e40af' : '#475569' }]}>
                                 <Text style={s.videoAvatarText}>{(pinnedPeer as any).isBot ? 'FI' : avatarFor(pinnedPeer.name)}</Text>
@@ -2044,7 +2081,7 @@ export default function Meetings() {
                       {!isPinnedLocal && (
                         <TouchableOpacity style={s.unpinnedTile} onPress={() => setPinnedUser('local')}>
                           {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
-                            <RTCView style={s.cameraView} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={facing === 'front'} muted />
+                            <RTCView style={s.cameraView} stream={localStream} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={facing === 'front'} muted />
                           ) : (
                             <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                               <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff' }}>{avatarFor(localUser?.name || 'You')}</Text>
@@ -2067,7 +2104,7 @@ export default function Meetings() {
                         return (
                           <TouchableOpacity key={peer.id} style={s.unpinnedTile} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
                             {rtcAvailableNow && remoteStream && (!(peer as any).videoOff || isScreen || isLocalScreen) ? (
-                              <RTCView style={s.cameraView} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
+                              <RTCView style={s.cameraView} stream={remoteStream} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                             ) : (
                               <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
                                 <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff' }}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>
@@ -2091,7 +2128,7 @@ export default function Meetings() {
                   {/* LOCAL CAMERA TILE */}
                   <TouchableOpacity activeOpacity={0.85} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser('local')}>
                     {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
-                      <RTCView style={s.cameraView} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={facing === 'front'} muted />
+                      <RTCView style={s.cameraView} stream={localStream} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={facing === 'front'} muted />
                     ) : (
                       <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                         <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
@@ -2122,7 +2159,7 @@ export default function Meetings() {
                     return (
                       <TouchableOpacity activeOpacity={0.85} key={peer.id} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
                         {rtcAvailableNow && remoteStream && (!(peer as any).videoOff || isScreen || isLocalScreen) ? (
-                          <RTCView style={s.cameraView} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
+                          <RTCView style={s.cameraView} stream={remoteStream} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                         ) : (
                           <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
                             <Text style={s.videoAvatarText}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>
@@ -2397,7 +2434,7 @@ export default function Meetings() {
   }
 
   //  MEETINGS HOME SCREEN 
-  return (
+  const BackgroundView = isMeetingsRoute ? (
     <ScrollView style={s.container} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
 
       <View style={s.quickGrid}>
@@ -2789,7 +2826,9 @@ export default function Meetings() {
       </Modal>
 
     </ScrollView>
-  );
+  ) : null;
+
+  return BackgroundView;
 }
 
 const getStyles = (width: number, height: number, isMobile: boolean) => StyleSheet.create({

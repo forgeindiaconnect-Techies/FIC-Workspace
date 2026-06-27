@@ -522,14 +522,14 @@ const MeetingApp = () => {
     return myId.localeCompare(remotePeerId) > 0;
   }, []);
 
-  const buildWsUrl = () => {
+  const buildWsUrl = (token) => {
     const API_URL = getApiUrl('/');
     let wsBase = API_URL;
     if (wsBase.startsWith('https://')) wsBase = wsBase.replace('https://', 'wss://');
     else if (wsBase.startsWith('http://')) wsBase = wsBase.replace('http://', 'ws://');
     else wsBase = `wss://${wsBase}`;
     wsBase = wsBase.replace(/\/+$/, '');
-    return `${wsBase}/ws/webrtc`;
+    return `${wsBase}/ws/webrtc${token ? `?token=${encodeURIComponent(token)}` : ''}`;
   };
 
   const copyMeetingInvite = () => {
@@ -727,7 +727,7 @@ const m = Math.floor((seconds % 3600) / 60);
 
     intentionalCloseRef.current = false;
     meetingIdRef.current = signalingRoomId;
-    const wsUrl = buildWsUrl();
+    const wsUrl = buildWsUrl(token);
     console.log('[Signaling] Connecting to:', wsUrl, 'room:', signalingRoomId);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
