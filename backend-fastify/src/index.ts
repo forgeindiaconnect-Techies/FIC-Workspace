@@ -106,7 +106,7 @@ async function bootstrap() {
   const corsOrigin = securityConfig.corsAllowedOrigins.length > 0
     ? securityConfig.corsAllowedOrigins
     : isProduction
-      ? ['https://workspace-blue-theta-87.vercel.app']  // Allow the deployed Vercel frontend by default
+      ? ['https://workspace-blue-theta-87.vercel.app', 'http://localhost:8081', 'http://localhost:3000']  // Allow the deployed frontend and local dev ports
       : true;  // Allow all in development
 
   await server.register(cors, {
