@@ -35,7 +35,7 @@
     "expo-print": "~15.0.8",
     "expo-sharing": "~14.0.8",
     "expo-status-bar": "~3.0.9",
-    "expo-task-manager": "^56.0.19",
+    "expo-task-manager": "~14.0.9",
     "expo-video": "~3.0.16",
     "lucide-react-native": "^0.475.0",
     "react": "19.1.0",
