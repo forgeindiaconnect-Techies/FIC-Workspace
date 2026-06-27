@@ -1386,7 +1386,7 @@ const m = Math.floor((seconds % 3600) / 60);
            </div>
            <div className="w-full max-w-2xl space-y-6 md:space-y-10 animate-fade mt-16 md:mt-0">
               <div className="relative aspect-video bg-[#1a1b1e] rounded-[24px] md:rounded-[40px] overflow-hidden border-2 border-white/5 shadow-2xl">
-                 <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover mirror ${!videoOn ? 'hidden' : ''}`} />
+                 <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${!videoOn ? 'hidden' : ''}`} />
                  {!videoOn && <div className="absolute inset-0 flex items-center justify-center"><UserAvatar name={auth.user} /></div>}
                  
                  <div className="absolute bottom-4 md:bottom-8 left-1/2 -translate-x-1/2 flex gap-3 md:gap-4">
@@ -1509,7 +1509,7 @@ const m = Math.floor((seconds % 3600) / 60);
                   <div className="flex-1 min-h-0 min-w-0 relative rounded-3xl overflow-hidden bg-slate-800">
                     {pinnedUser === 'local' ? (
                       <>
-                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn) ? 'hidden' : ''} mirror`} />
+                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn) ? 'hidden' : ''}`} />
                         {(!videoOn) && (
                           <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
                             <span className="text-6xl md:text-8xl font-black text-white">{auth.user?.charAt(0)?.toUpperCase()}</span>
@@ -1591,7 +1591,7 @@ const m = Math.floor((seconds % 3600) / 60);
                     {/* Local tile in strip (if not pinned) */}
                     {pinnedUser !== 'local' && (
                       <div className="relative rounded-2xl overflow-hidden bg-slate-800 w-[140px] md:w-full aspect-video shrink-0 cursor-pointer group" onClick={() => setPinnedUser('local')}>
-                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full ${isScreenSharing ? 'object-contain' : 'object-cover'} ${(!videoOn && !isScreenSharing) ? 'hidden' : ''} ${!isScreenSharing ? 'mirror' : ''}`} />
+                        <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full ${isScreenSharing ? 'object-contain' : 'object-cover'} ${(!videoOn && !isScreenSharing) ? 'hidden' : ''}`} />
                         {(!videoOn && !isScreenSharing) && (
                           <div className="absolute inset-0 flex items-center justify-center bg-blue-600">
                             <span className="text-xl font-black text-white">{auth.user?.charAt(0)?.toUpperCase()}</span>
@@ -1661,7 +1661,7 @@ const m = Math.floor((seconds % 3600) / 60);
                          </div>
                       )}
                       <div className={`relative rounded-3xl overflow-hidden bg-slate-800 ${tileClass} cursor-pointer group`}>
-                         <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn) ? 'hidden' : ''} mirror`} />
+                         <video playsInline muted ref={userVideo} autoPlay className={`w-full h-full object-cover ${(!videoOn) ? 'hidden' : ''}`} />
                          {(!videoOn) && (
                             <div className="absolute inset-0 flex items-center justify-center bg-[#1a1b1e]">
                                <UserAvatar name={auth.user} />
