@@ -166,17 +166,20 @@ export const mediaDevices: any = readMediaDevices();
 export function RTCView(props: any) {
   const NativeRTCView = getNativeRTCView();
   if (NativeRTCView) {
-    const streamURL =
-      props.streamURL ||
-      (typeof props.stream === 'string' ? props.stream : props.stream?.toURL?.());
-    return React.createElement(NativeRTCView, {
-      streamURL,
-      stream: props.stream,
+    const nativeProps: any = {
       objectFit: props.objectFit === 'contain' ? 'contain' : 'cover',
       style: props.style,
       mirror: props.mirror,
       zOrder: props.zOrder,
-    });
+    };
+
+    if (props.stream) {
+      nativeProps.stream = props.stream;
+    } else {
+      nativeProps.streamURL = props.streamURL || (typeof props.stream === 'string' ? props.stream : props.stream?.toURL?.());
+    }
+
+    return React.createElement(NativeRTCView, nativeProps);
   }
 
   if (readRTCPeerConnection()) {
