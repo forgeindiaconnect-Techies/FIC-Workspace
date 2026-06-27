@@ -51,7 +51,7 @@ export async function sendPushNotification(
       return;
     }
 
-    if (!admin.apps.length) {
+    if (!getApps().length) {
       console.warn('[PushService] Firebase Admin is not initialized. Cannot send push notification.');
       return;
     }
