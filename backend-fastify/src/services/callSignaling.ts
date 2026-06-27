@@ -12,6 +12,7 @@ function send(ws: WebSocket, payload: object) {
   }
 }
 
+
 /**
  * Handles 1-to-1 voice call signaling.
  * Completely separate from /ws/webrtc (meeting room signaling).
@@ -46,9 +47,11 @@ export function handleCallSignaling(ws: WebSocket) {
       if (!email) return send(ws, { type: 'error', message: 'email missing from token' });
 
       // Close any stale connection for this email
+      // Track the newest connection without forcefully closing the old one,
+      // preventing infinite reconnect loops across multiple tabs.
       const existing = onlineUsers.get(email);
-      if (existing && existing !== ws && existing.readyState === WebSocket.OPEN) {
-        try { existing.close(); } catch {}
+      if (existing && existing !== ws) {
+        console.log(`[CallSignaling] User ${email} connected from a new session.`);
       }
 
       registeredEmail = email;
