@@ -10,9 +10,16 @@ if (!admin.apps.length) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
       credential = admin.credential.cert(serviceAccount);
     } else {
-      // Fallback to local file
-      const serviceAccount = require('../../serviceAccountKey.json');
-      credential = admin.credential.cert(serviceAccount);
+      // Fallback to local file dynamically to prevent ESBuild bundle failures on Render
+      // where the file does not exist during CI/CD.
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const fileContent = fs.readFileSync(path.join(__dirname, '../../serviceAccountKey.json'), 'utf8');
+        credential = admin.credential.cert(JSON.parse(fileContent));
+      } catch (err: any) {
+        throw new Error('Local serviceAccountKey.json not found and FIREBASE_SERVICE_ACCOUNT env var is missing');
+      }
     }
     
     admin.initializeApp({
