@@ -49,3 +49,61 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     return null;
   }
 }
+
+// Background Task for FCM Data-Only Messages (Incoming Calls)
+import * as TaskManager from 'expo-task-manager';
+import notifee, { AndroidImportance, AndroidCategory, AndroidVisibility } from '@notifee/react-native';
+
+const BACKGROUND_NOTIFICATION_TASK = 'BACKGROUND-NOTIFICATION-TASK';
+
+TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error, executionInfo }: any) => {
+  if (error) {
+    console.error('[PushHelper] Background Task Error:', error);
+    return;
+  }
+  if (data) {
+    const message = data.notification?.request?.content?.data || data.data;
+    if (message && message.type === 'incoming_call') {
+      const channelId = await notifee.createChannel({
+        id: 'calls',
+        name: 'Incoming Calls',
+        importance: AndroidImportance.HIGH,
+        sound: 'default',
+        vibration: true,
+      });
+
+      await notifee.displayNotification({
+        title: 'Incoming Call',
+        body: `${message.callerName || message.callerEmail} is calling...`,
+        data: message,
+        android: {
+          channelId,
+          category: AndroidCategory.CALL,
+          visibility: AndroidVisibility.PUBLIC,
+          importance: AndroidImportance.HIGH,
+          autoCancel: false,
+          ongoing: true,
+          fullScreenAction: {
+            id: 'default',
+            launchActivity: 'default',
+          },
+          pressAction: {
+            id: 'default',
+          },
+          actions: [
+            {
+              title: 'Answer',
+              pressAction: { id: 'answer', launchActivity: 'default' },
+            },
+            {
+              title: 'Decline',
+              pressAction: { id: 'decline' },
+            },
+          ],
+        },
+      });
+    }
+  }
+});
+
+Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);

@@ -43,7 +43,8 @@
         "android.permission.WAKE_LOCK",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.VIBRATE"
+        "android.permission.VIBRATE",
+        "android.permission.USE_FULL_SCREEN_INTENT"
       ]
     },
     "plugins": [
@@ -72,6 +73,7 @@
           "defaultChannel": "default"
         }
       ],
+      "@notifee/react-native",
       "./withAndroidScreenShare.js"
     ],
     "updates": {
@@ -82,7 +84,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "9a59e2da-9908-4e8f-a3d2-4a6af81ab2ff"
+        "projectId": "56fb8a0e-f73b-4a6f-a2b4-b80b4cc7c5bd"
       }
     }
   }

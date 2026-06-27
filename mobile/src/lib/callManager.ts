@@ -416,6 +416,17 @@ class CallManager {
     const pc = new PC({ iceServers });
     this.pc = pc;
 
+    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+      if (this.socketUrl && this.token) {
+        this.connect();
+      }
+    }
+    const connected = await this.waitForSocketOpen(12000);
+    if (!connected) {
+      console.warn('[CallManager] Socket not connected for answerCall');
+      return false;
+    }
+
     try {
       const hasPermission = await this.requestMicPermission();
       if (!hasPermission) {

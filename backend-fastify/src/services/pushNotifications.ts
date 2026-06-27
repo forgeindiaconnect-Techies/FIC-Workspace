@@ -86,18 +86,23 @@ export async function sendPushNotification(
 
     console.log(`[PushService] Dispatching FCM push notifications to ${tokens.length} token(s)...`);
 
+    const isCall = data?.type === 'incoming_call';
     const message = {
-      notification: {
-        title,
-        body
-      },
+      ...(isCall ? {} : {
+        notification: {
+          title,
+          body
+        }
+      }),
       data: stringifiedData,
       android: {
         priority: 'high' as const,
-        notification: {
-          channelId: 'default',
-          sound: 'default'
-        }
+        ...(isCall ? {} : {
+          notification: {
+            channelId: 'default',
+            sound: 'default'
+          }
+        })
       },
       tokens
     };
