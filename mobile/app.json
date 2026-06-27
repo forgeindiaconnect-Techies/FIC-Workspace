@@ -73,7 +73,6 @@
           "defaultChannel": "default"
         }
       ],
-      "@notifee/react-native",
       "./withAndroidScreenShare.js"
     ],
     "updates": {
