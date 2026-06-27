@@ -1,17 +1,31 @@
 import { User } from '../models/User';
+import * as admin from 'firebase-admin';
 
-interface PushPayload {
-  to: string;
-  sound?: 'default' | null;
-  title: string;
-  body: string;
-  data?: Record<string, any>;
-  channelId?: string;
-  priority?: 'default' | 'normal' | 'high';
+// Initialize Firebase Admin if not already initialized
+if (!admin.apps.length) {
+  try {
+    let credential;
+    // Check if the service account is provided via an environment variable (useful for Render/Vercel)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      credential = admin.credential.cert(serviceAccount);
+    } else {
+      // Fallback to local file
+      const serviceAccount = require('../../serviceAccountKey.json');
+      credential = admin.credential.cert(serviceAccount);
+    }
+    
+    admin.initializeApp({
+      credential
+    });
+    console.log('[PushService] Firebase Admin initialized successfully.');
+  } catch (error: any) {
+    console.warn('[PushService] Failed to initialize Firebase Admin. Ensure serviceAccountKey.json is present:', error.message);
+  }
 }
 
 /**
- * Sends remote push notifications to recipients via Expo's Push Notification Service.
+ * Sends remote push notifications to recipients via Firebase Admin SDK (FCM).
  *
  * @param recipientEmails List of recipient email addresses.
  * @param title The notification title.
@@ -29,10 +43,15 @@ export async function sendPushNotification(
       return;
     }
 
+    if (!admin.apps.length) {
+      console.warn('[PushService] Firebase Admin is not initialized. Cannot send push notification.');
+      return;
+    }
+
     // Normalize emails for robust lookup
     const normalizedEmails = recipientEmails.map(email => email.trim().toLowerCase());
 
-    // Find users with registered Expo push tokens
+    // Find users with registered raw FCM tokens
     const users = await User.find({
       email: { $in: normalizedEmails },
       expoPushToken: { $exists: true, $ne: '' }
@@ -43,48 +62,50 @@ export async function sendPushNotification(
       return;
     }
 
-    const messages: PushPayload[] = [];
-    const seenTokens = new Set<string>();
+    const tokens = Array.from(new Set(users.map(u => u.expoPushToken).filter(Boolean))) as string[];
 
-    for (const user of users) {
-      if (user.expoPushToken && !seenTokens.has(user.expoPushToken)) {
-        seenTokens.add(user.expoPushToken);
-        messages.push({
-          to: user.expoPushToken,
-          sound: 'default',
-          title,
-          body,
-          data,
-          channelId: 'default',
-          priority: 'high'
-        });
+    if (tokens.length === 0) {
+      return;
+    }
+
+    // Convert data values to strings (FCM only accepts string values in data payload)
+    const stringifiedData: Record<string, string> = {};
+    if (data) {
+      for (const [key, value] of Object.entries(data)) {
+        stringifiedData[key] = typeof value === 'object' ? JSON.stringify(value) : String(value);
       }
     }
 
-    if (messages.length === 0) {
-      return;
-    }
+    console.log(`[PushService] Dispatching FCM push notifications to ${tokens.length} token(s)...`);
 
-    console.log(`[PushService] Dispatching push notifications to ${messages.length} token(s)...`);
-
-    const response = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
+    const message = {
+      notification: {
+        title,
+        body
       },
-      body: JSON.stringify(messages),
-    });
+      data: stringifiedData,
+      android: {
+        priority: 'high' as const,
+        notification: {
+          channelId: 'default',
+          sound: 'default'
+        }
+      },
+      tokens
+    };
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[PushService] Expo Push gateway returned status ${response.status}: ${errorText}`);
-      return;
+    const response = await admin.messaging().sendEachForMulticast(message);
+    
+    console.log(`[PushService] FCM push result: ${response.successCount} successful, ${response.failureCount} failed.`);
+    
+    if (response.failureCount > 0) {
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          console.error(`[PushService] Failed to send to token ${tokens[idx]}:`, resp.error);
+        }
+      });
     }
 
-    const result = await response.json() as any;
-    console.log('[PushService] Expo push result:', JSON.stringify(result));
   } catch (error) {
     console.error('[PushService] Failed to send push notifications:', error);
   }

@@ -23,10 +23,8 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       return null;
     }
 
-    // Retrieve the Expo push token using the projectId specified in mobile/app.json
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: '9a59e2da-9908-4e8f-a3d2-4a6af81ab2ff',
-    });
+    // Retrieve the raw device push token (FCM token on Android, APNs token on iOS)
+    const tokenData = await Notifications.getDevicePushTokenAsync();
 
     const token = tokenData.data;
     console.log('[PushHelper] Retrieved Expo push token:', token);
