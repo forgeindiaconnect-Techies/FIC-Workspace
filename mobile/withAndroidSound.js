@@ -12,7 +12,7 @@ const withAndroidSound = (config) => {
         fs.mkdirSync(resDir, { recursive: true });
       }
       
-      const soundFile = path.join(projectRoot, '..', 'public', 'phone-calling-1.wav');
+      const soundFile = path.join(projectRoot, 'assets', 'phone-calling-1.wav');
       const destFile = path.join(resDir, 'phone_calling_1.wav');
       
       if (fs.existsSync(soundFile)) {
