@@ -202,6 +202,7 @@ async function bootstrap() {
     if (!auth) return;
     server.log.info(`Authenticated WebRTC client: ${auth.user.email}`);
     handleWebRtcSignalling(auth.ws);
+    return new Promise(() => {}); // Keep connection alive
   });
 
   server.get('/ws/mail', { websocket: true }, (connection: any, req: any) => {
@@ -209,18 +210,21 @@ async function bootstrap() {
     if (!auth) return;
     server.log.info(`Authenticated Mail Socket: ${auth.user.email}`);
     handleMailSocket(auth.ws, req);
+    return new Promise(() => {}); // Keep connection alive
   });
 
   server.get('/ws/audio', { websocket: true }, (connection: any, req: any) => {
     const auth = authenticateWs(connection, req);
     if (!auth) return;
     handleAudioSocket(auth.ws);
+    return new Promise(() => {}); // Keep connection alive
   });
 
   server.get('/ws/threads', { websocket: true }, (connection: any, req: any) => {
     const auth = authenticateWs(connection, req);
     if (!auth) return;
     handleThreadsSocket(auth.ws, req);
+    return new Promise(() => {}); // Keep connection alive
   });
 
   // 4b. 1-to-1 VOICE CALL SIGNALING (Chat module — completely separate from /ws/webrtc)
@@ -229,6 +233,7 @@ async function bootstrap() {
     if (!auth) return;
     server.log.info(`Authenticated voice call signaling: ${auth.user.email}`);
     handleCallSignaling(auth.ws);
+    return new Promise(() => {}); // Keep connection alive
   });
 
   // Status check endpoint
