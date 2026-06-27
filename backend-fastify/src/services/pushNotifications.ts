@@ -1,5 +1,5 @@
 import { User } from '../models/User';
-import admin from 'firebase-admin';
+const admin = require('firebase-admin');
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
