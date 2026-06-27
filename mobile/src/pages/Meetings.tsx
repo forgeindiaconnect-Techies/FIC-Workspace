@@ -2033,7 +2033,7 @@ export default function Meetings() {
                       {isPinnedLocal ? (
                         <>
                           {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
-                            <RTCView style={s.cameraView} stream={localStream} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={false} muted />
+                            <RTCView style={s.cameraView} stream={localStream} objectFit="cover" mirror={false} muted />
                           ) : (
                             <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                               <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
@@ -2057,7 +2057,7 @@ export default function Meetings() {
                               ? (remoteScreenStreams[originalId] || (originalPeerId ? remoteScreenStreams[originalPeerId] : null))
                               : (remoteStreams[pinnedPeer.id] || (pinnedPeer.peerId ? remoteStreams[pinnedPeer.peerId] : null)));
                             return rtcAvailableNow && remoteStream ? (
-                              <RTCView style={s.cameraView} stream={remoteStream} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
+                              <RTCView style={s.cameraView} stream={remoteStream} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                             ) : (
                               <View style={[s.videoAvatar, { backgroundColor: (pinnedPeer as any).isBot ? '#1e40af' : '#475569' }]}>
                                 <Text style={s.videoAvatarText}>{(pinnedPeer as any).isBot ? 'FI' : avatarFor(pinnedPeer.name)}</Text>
@@ -2081,7 +2081,7 @@ export default function Meetings() {
                       {!isPinnedLocal && (
                         <TouchableOpacity style={s.unpinnedTile} onPress={() => setPinnedUser('local')}>
                           {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
-                            <RTCView style={s.cameraView} stream={localStream} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={false} muted />
+                            <RTCView style={s.cameraView} stream={localStream} objectFit="cover" mirror={false} muted />
                           ) : (
                             <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                               <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff' }}>{avatarFor(localUser?.name || 'You')}</Text>
@@ -2104,7 +2104,7 @@ export default function Meetings() {
                         return (
                           <TouchableOpacity key={peer.id} style={s.unpinnedTile} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
                             {rtcAvailableNow && remoteStream && (!(peer as any).videoOff || isScreen || isLocalScreen) ? (
-                              <RTCView style={s.cameraView} stream={remoteStream} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
+                              <RTCView style={s.cameraView} stream={remoteStream} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                             ) : (
                               <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
                                 <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff' }}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>
@@ -2128,7 +2128,7 @@ export default function Meetings() {
                   {/* LOCAL CAMERA TILE */}
                   <TouchableOpacity activeOpacity={0.85} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser('local')}>
                     {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
-                      <RTCView style={s.cameraView} stream={localStream} streamURL={typeof rtcLocalStreamSource === 'string' ? rtcLocalStreamSource : rtcLocalStreamSource?.toURL?.() || ''} objectFit="cover" mirror={false} muted />
+                      <RTCView style={s.cameraView} stream={localStream} objectFit="cover" mirror={false} muted />
                     ) : (
                       <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                         <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
@@ -2159,7 +2159,7 @@ export default function Meetings() {
                     return (
                       <TouchableOpacity activeOpacity={0.85} key={peer.id} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser(peer.id || peer.peerId || '')}>
                         {rtcAvailableNow && remoteStream && (!(peer as any).videoOff || isScreen || isLocalScreen) ? (
-                          <RTCView style={s.cameraView} stream={remoteStream} streamURL={typeof remoteStream === 'string' ? remoteStream : remoteStream?.toURL?.() || ''} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
+                          <RTCView style={s.cameraView} stream={remoteStream} objectFit={(isScreen || isLocalScreen) ? "contain" : "cover"} />
                         ) : (
                           <View style={[s.videoAvatar, { backgroundColor: (peer as any).isBot ? '#1e40af' : '#475569' }]}>
                             <Text style={s.videoAvatarText}>{(peer as any).isBot ? 'FI' : avatarFor(peer.name)}</Text>

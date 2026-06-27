@@ -175,8 +175,6 @@ export function RTCView(props: any) {
 
     if (props.stream) {
       nativeProps.stream = props.stream;
-    } else {
-      nativeProps.streamURL = props.streamURL || (typeof props.stream === 'string' ? props.stream : props.stream?.toURL?.());
     }
 
     return React.createElement(NativeRTCView, nativeProps);
