@@ -1105,7 +1105,10 @@ async function authRoutes(fastify2) {
   });
   fastify2.post("/mfa/setup", { preHandler: authenticate }, async (request, reply) => {
     try {
-      const user = await User.findById(request.user.id);
+      let user = await User.findById(request.user.id);
+      if (!user && request.user?.email) {
+        user = await User.findOne({ email: request.user.email });
+      }
       if (!user) {
         return reply.code(404).send({ error: "User profile not found." });
       }
@@ -1123,7 +1126,10 @@ async function authRoutes(fastify2) {
       if (!token) {
         return reply.code(400).send({ error: "TOTP activation code is required." });
       }
-      const user = await User.findById(request.user.id);
+      let user = await User.findById(request.user.id);
+      if (!user && request.user?.email) {
+        user = await User.findOne({ email: request.user.email });
+      }
       if (!user || !user.mfaSecret) {
         return reply.code(400).send({ error: "MFA setup must be initiated first." });
       }
@@ -1195,7 +1201,10 @@ async function authRoutes(fastify2) {
       if (passwordError) {
         return reply.code(400).send({ error: passwordError });
       }
-      const user = await User.findById(request.user.id);
+      let user = await User.findById(request.user.id);
+      if (!user && request.user?.email) {
+        user = await User.findOne({ email: request.user.email });
+      }
       if (!user) return reply.code(404).send({ error: "User not found." });
       const activeHash = user.passwordHash || user.password;
       if (!activeHash) {
@@ -1221,7 +1230,10 @@ async function authRoutes(fastify2) {
       if (!token) {
         return reply.code(400).send({ error: "Push token is required." });
       }
-      const user = await User.findById(request.user.id);
+      let user = await User.findById(request.user.id);
+      if (!user && request.user?.email) {
+        user = await User.findOne({ email: request.user.email });
+      }
       if (!user) {
         return reply.code(404).send({ error: "User not found." });
       }
@@ -1246,7 +1258,10 @@ async function authRoutes(fastify2) {
       if (!subscription || !subscription.endpoint || !subscription.keys) {
         return reply.code(400).send({ error: "Subscription object with endpoint and keys is required." });
       }
-      const user = await User.findById(request.user.id);
+      let user = await User.findById(request.user.id);
+      if (!user && request.user?.email) {
+        user = await User.findOne({ email: request.user.email });
+      }
       if (!user) {
         return reply.code(404).send({ error: "User not found." });
       }
@@ -1276,7 +1291,10 @@ async function authRoutes(fastify2) {
       if (!endpoint) {
         return reply.code(400).send({ error: "Subscription endpoint is required." });
       }
-      const user = await User.findById(request.user.id);
+      let user = await User.findById(request.user.id);
+      if (!user && request.user?.email) {
+        user = await User.findOne({ email: request.user.email });
+      }
       if (!user) {
         return reply.code(404).send({ error: "User not found." });
       }
