@@ -67,7 +67,8 @@
       "@react-native-community/datetimepicker",
 
       "@react-native-firebase/app",
-      "./withAndroidScreenShare.js"
+      "./withAndroidScreenShare.js",
+      "./withAndroidSound.js"
     ],
     "updates": {
       "enabled": false

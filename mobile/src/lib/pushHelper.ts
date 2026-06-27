@@ -38,10 +38,10 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
         vibration: true,
       });
       await notifee.createChannel({
-        id: 'calls',
+        id: 'calls_ring',
         name: 'Incoming Calls',
         importance: AndroidImportance.HIGH,
-        sound: 'default',
+        sound: 'phone_calling_1',
         vibration: true,
       });
     }
@@ -60,10 +60,10 @@ messaging().setBackgroundMessageHandler(async (remoteMessage) => {
   const message = remoteMessage.data;
   if (message && message.type === 'incoming_call') {
     const channelId = await notifee.createChannel({
-      id: 'calls',
+      id: 'calls_ring',
       name: 'Incoming Calls',
       importance: AndroidImportance.HIGH,
-      sound: 'default',
+      sound: 'phone_calling_1',
       vibration: true,
     });
 
