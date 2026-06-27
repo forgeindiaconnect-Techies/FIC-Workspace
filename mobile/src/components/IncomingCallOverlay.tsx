@@ -50,6 +50,9 @@ export default function IncomingCallOverlay() {
           break;
         case 'state_change':
           setCallState(event.state);
+          if (event.caller && event.caller.email) {
+            setCaller(event.caller);
+          }
           if (event.state === 'idle') { stopRing(); setCaller(null); setRemoteStream(null); }
           break;
         case 'remote_stream':

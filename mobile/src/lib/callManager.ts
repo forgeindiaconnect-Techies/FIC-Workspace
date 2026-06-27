@@ -188,7 +188,11 @@ class CallManager {
 
   private setState(s: CallState) {
     this._state = s;
-    this.dispatch({ type: 'state_change', state: s });
+    this.dispatch({ 
+      type: 'state_change', 
+      state: s, 
+      caller: { email: this.peerEmail || '', name: this.peerName || '' } 
+    });
   }
 
   handleIncomingCallFromPush(callerEmail: string, callerName: string, offer: any, isVideo: boolean = false) {
