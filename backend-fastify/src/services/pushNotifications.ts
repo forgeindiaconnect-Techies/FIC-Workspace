@@ -1,5 +1,5 @@
 import { User } from '../models/User';
-import * as admin from 'firebase-admin';
+import admin from 'firebase-admin';
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -106,7 +106,11 @@ export async function sendPushNotification(
     console.log(`[PushService] FCM push result: ${response.successCount} successful, ${response.failureCount} failed.`);
     
     if (response.failureCount > 0) {
-      response.responses.forEach((resp, idx) => {
+      const failedTokens = response.responses
+        .map((resp: any, idx: number) => (!resp.success ? tokens[idx] : null))
+        .filter((token: string | null) => token !== null);
+      
+      response.responses.forEach((resp: any, idx: number) => {
         if (!resp.success) {
           console.error(`[PushService] Failed to send to token ${tokens[idx]}:`, resp.error);
         }
