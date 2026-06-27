@@ -85,55 +85,61 @@ function DeepLinkHandler() {
     const sub = Linking.addEventListener('url', (e) => handleUrl(e.url));
     Linking.getInitialURL().then((url) => { if (url) handleUrl(url); });
     
-    // Handle notification that opened the app from a cold start (killed state)
-    Notifications.getLastNotificationResponseAsync().then(response => {
-      if (response) {
-        const data = response.notification.request.content.data;
-        console.log('[PushNotification] Cold start notification data:', data);
-        if (data) {
-          if (data.type === 'chat') {
-            navigate('/chat');
-          } else if (data.type === 'mail') {
-            navigate('/mail');
-          } else if (data.type === 'post') {
-            navigate('/chat');
-          } else if (data.type === 'incoming_call') {
-            const { callerEmail, callerName, offer, isVideo } = data as any;
-            if (callerEmail && offer) {
-              callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
-            }
-          }
-        }
-      }
-    });
+    let responseSubscription: any = null;
 
-    // Handle tapping on push notifications while the app is backgrounded or foregrounded
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-      try {
-        const data = response.notification.request.content.data;
-        console.log('[PushNotification] User tapped on notification, data:', data);
-        if (data) {
-          if (data.type === 'chat') {
-            navigate('/chat');
-          } else if (data.type === 'mail') {
-            navigate('/mail');
-          } else if (data.type === 'post') {
-            navigate('/chat');
-          } else if (data.type === 'incoming_call') {
-            const { callerEmail, callerName, offer, isVideo } = data as any;
-            if (callerEmail && offer) {
-              callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
+    if (Platform.OS !== 'web') {
+      // Handle notification that opened the app from a cold start (killed state)
+      Notifications.getLastNotificationResponseAsync().then(response => {
+        if (response) {
+          const data = response.notification.request.content.data;
+          console.log('[PushNotification] Cold start notification data:', data);
+          if (data) {
+            if (data.type === 'chat') {
+              navigate('/chat');
+            } else if (data.type === 'mail') {
+              navigate('/mail');
+            } else if (data.type === 'post') {
+              navigate('/chat');
+            } else if (data.type === 'incoming_call') {
+              const { callerEmail, callerName, offer, isVideo } = data as any;
+              if (callerEmail && offer) {
+                callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
+              }
             }
           }
         }
-      } catch (err) {
-        console.warn('[PushNotification] Handle tap error:', err);
-      }
-    });
+      }).catch(err => console.warn('getLastNotificationResponseAsync error:', err));
+
+      // Handle tapping on push notifications while the app is backgrounded or foregrounded
+      responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+        try {
+          const data = response.notification.request.content.data;
+          console.log('[PushNotification] User tapped on notification, data:', data);
+          if (data) {
+            if (data.type === 'chat') {
+              navigate('/chat');
+            } else if (data.type === 'mail') {
+              navigate('/mail');
+            } else if (data.type === 'post') {
+              navigate('/chat');
+            } else if (data.type === 'incoming_call') {
+              const { callerEmail, callerName, offer, isVideo } = data as any;
+              if (callerEmail && offer) {
+                callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[PushNotification] Handle tap error:', err);
+        }
+      });
+    }
 
     return () => {
       sub.remove();
-      responseSubscription.remove();
+      if (responseSubscription) {
+        responseSubscription.remove();
+      }
     };
   }, [navigate]);
 
