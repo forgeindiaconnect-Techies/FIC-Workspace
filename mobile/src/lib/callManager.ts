@@ -129,7 +129,7 @@ class CallManager {
       .replace(/^https:/, 'wss:');
 
     try {
-      const fullUrl = `${wsBase.replace(/\/+$/, '')}/ws/calls`;
+      const fullUrl = `${wsBase.replace(/\/+$/, '')}/ws/calls?token=${encodeURIComponent(this.token)}`;
       console.log('[CallManager] Connecting to', fullUrl);
       this.ws = new WebSocket(fullUrl);
     } catch (e) {
@@ -311,7 +311,11 @@ class CallManager {
     try {
       const stream = await getMediaDevices().getUserMedia({ audio: true, video: false });
       this.localStream = stream;
-      stream.getTracks().forEach((t: any) => pc.addTrack(t, stream));
+      if (pc.addStream) {
+        pc.addStream(stream);
+      } else {
+        stream.getTracks().forEach((t: any) => pc.addTrack(t, stream));
+      }
     } catch (err) {
       console.warn('[CallManager] Mic error', err);
       this.cleanupPeer();
@@ -326,8 +330,17 @@ class CallManager {
     };
 
     pc.ontrack = (ev: any) => {
-      this.remoteStream = ev.streams[0];
-      this.dispatch({ type: 'remote_stream', stream: ev.streams[0] });
+      if (ev.streams && ev.streams[0]) {
+        this.remoteStream = ev.streams[0];
+        this.dispatch({ type: 'remote_stream', stream: ev.streams[0] });
+      }
+    };
+
+    pc.onaddstream = (ev: any) => {
+      if (ev.stream) {
+        this.remoteStream = ev.stream;
+        this.dispatch({ type: 'remote_stream', stream: ev.stream });
+      }
     };
 
     try {
@@ -372,7 +385,11 @@ class CallManager {
     try {
       const stream = await getMediaDevices().getUserMedia({ audio: true, video: false });
       this.localStream = stream;
-      stream.getTracks().forEach((t: any) => pc.addTrack(t, stream));
+      if (pc.addStream) {
+        pc.addStream(stream);
+      } else {
+        stream.getTracks().forEach((t: any) => pc.addTrack(t, stream));
+      }
     } catch (err) {
       console.warn('[CallManager] Mic error', err);
       this.cleanupPeer();
@@ -386,8 +403,17 @@ class CallManager {
     };
 
     pc.ontrack = (ev: any) => {
-      this.remoteStream = ev.streams[0];
-      this.dispatch({ type: 'remote_stream', stream: ev.streams[0] });
+      if (ev.streams && ev.streams[0]) {
+        this.remoteStream = ev.streams[0];
+        this.dispatch({ type: 'remote_stream', stream: ev.streams[0] });
+      }
+    };
+
+    pc.onaddstream = (ev: any) => {
+      if (ev.stream) {
+        this.remoteStream = ev.stream;
+        this.dispatch({ type: 'remote_stream', stream: ev.stream });
+      }
     };
 
     try {
