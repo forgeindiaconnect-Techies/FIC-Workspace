@@ -88,7 +88,21 @@ function DeepLinkHandler() {
     let responseSubscription: any = null;
 
     if (Platform.OS !== 'web') {
-      // Handle notification that opened the app from a cold start (killed state)
+      // Handle Notifee initial notification (cold start)
+      notifee.getInitialNotification().then(initialNotification => {
+        if (initialNotification) {
+          const data = initialNotification.notification.data;
+          console.log('[Notifee] Cold start notification data:', data);
+          if (data && data.type === 'incoming_call') {
+            const { callerEmail, callerName, offer, isVideo } = data as any;
+            if (callerEmail && offer) {
+              callManager.handleIncomingCallFromPush(callerEmail, callerName, offer, isVideo || false);
+            }
+          }
+        }
+      }).catch(err => console.warn('getInitialNotification error:', err));
+
+      // Handle Expo notification that opened the app from a cold start
       Notifications.getLastNotificationResponseAsync().then(response => {
         if (response) {
           const data = response.notification.request.content.data;

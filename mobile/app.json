@@ -73,6 +73,7 @@
           "defaultChannel": "default"
         }
       ],
+      "@react-native-firebase/app",
       "./withAndroidScreenShare.js"
     ],
     "updates": {
