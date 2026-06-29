@@ -60,7 +60,7 @@ messaging().setBackgroundMessageHandler(async (remoteMessage) => {
   const message = remoteMessage.data;
   if (message && message.type === 'incoming_call') {
     const channelId = await notifee.createChannel({
-      id: 'calls_ring',
+      id: 'calls_ring_v3',
       name: 'Incoming Calls',
       importance: AndroidImportance.HIGH,
       sound: 'phone_calling_1',

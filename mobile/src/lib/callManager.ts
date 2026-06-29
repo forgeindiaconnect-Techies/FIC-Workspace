@@ -203,6 +203,22 @@ class CallManager {
     this.callRole = 'callee';
     this.pendingOffer = offer;
     this.isVideoCall = isVideo;
+
+    // Force reconnect since backend considers us offline if it sent a push
+    console.log('[CallManager] Incoming call from Push. Forcing reconnect...');
+    if (this.socketUrl && this.token) {
+      if (this.ws) {
+        const old = this.ws;
+        old.onopen = null;
+        old.onmessage = null;
+        old.onerror = null;
+        old.onclose = null;
+        try { old.close(); } catch {}
+        this.ws = null;
+      }
+      this.connect();
+    }
+
     this.setState('ringing');
     console.log('[CallManager] Incoming call from Push:', callerEmail, 'Video:', isVideo);
     this.dispatch({ type: 'incoming_call', caller: { email: callerEmail, name: callerName }, isVideo });
@@ -573,7 +589,7 @@ class CallManager {
         calleeEmail: this.peerEmail,
         calleeName: this.peerName || this.peerEmail,
         callerName: this.localName || 'Caller',
-        callType: 'audio',
+        callType: this.isVideoCall ? 'video' : 'audio',
         status,
         duration: durationSec
       });

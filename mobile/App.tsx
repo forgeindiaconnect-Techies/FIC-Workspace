@@ -10,8 +10,7 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
       // Need to tell server call declined? We can just clear the notification
       await notifee.cancelNotification(detail.notification?.id || '');
     } else if (detail.pressAction.id === 'answer') {
-      // Launch app handled by launchActivity
-      await notifee.cancelNotification(detail.notification?.id || '');
+      // Launch app handled by launchActivity. Do not cancel here, let getInitialNotification handle it.
     }
   }
 });

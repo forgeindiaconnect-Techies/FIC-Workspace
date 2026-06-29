@@ -2033,7 +2033,7 @@ export default function Meetings() {
                       {isPinnedLocal ? (
                         <>
                           {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
-                            <RTCView style={s.cameraView} stream={localStream} objectFit="cover" mirror={false} muted />
+                            <RTCView style={s.cameraView} stream={localStream} objectFit="cover" mirror={facing === 'front'} muted />
                           ) : (
                             <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                               <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
@@ -2081,7 +2081,7 @@ export default function Meetings() {
                       {!isPinnedLocal && (
                         <TouchableOpacity style={s.unpinnedTile} onPress={() => setPinnedUser('local')}>
                           {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
-                            <RTCView style={s.cameraView} stream={localStream} objectFit="cover" mirror={false} muted />
+                            <RTCView style={s.cameraView} stream={localStream} objectFit="cover" mirror={facing === 'front'} muted />
                           ) : (
                             <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                               <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff' }}>{avatarFor(localUser?.name || 'You')}</Text>
@@ -2128,7 +2128,7 @@ export default function Meetings() {
                   {/* LOCAL CAMERA TILE */}
                   <TouchableOpacity activeOpacity={0.85} style={[s.videoTile, tileStyle]} onPress={() => setPinnedUser('local')}>
                     {rtcAvailableNow && (rtcLocalStreamSource && !isVideoOff) ? (
-                      <RTCView style={s.cameraView} stream={localStream} objectFit="cover" mirror={false} muted />
+                      <RTCView style={s.cameraView} stream={localStream} objectFit="cover" mirror={facing === 'front'} muted />
                     ) : (
                       <View style={[s.videoAvatar, { backgroundColor: '#2563eb' }]}>
                         <Text style={s.videoAvatarText}>{avatarFor(localUser?.name || 'You')}</Text>
@@ -2431,6 +2431,7 @@ export default function Meetings() {
         {renderHostControlsModal()}
       </View>
     );
+    return RoomView;
   }
 
   //  MEETINGS HOME SCREEN 
